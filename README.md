@@ -1,0 +1,105 @@
+# speech
+
+A macOS command-line tool for speech to text. One binary, one engine protocol,
+one output format, whatever model is doing the work.
+
+It is built to answer a question that cannot be answered by reading benchmarks:
+for *your* language, on *your* Mac, with *your* recordings, which speech model
+is actually worth the download? So the first thing it can do is measure - WER,
+CER, real-time factor and peak memory against a reference corpus - and every
+model it later offers has to earn its place against Apple's built-in engines,
+which are free, already installed, and better than most people expect.
+
+Stage 0 of the development plan. The Apple engines, the scorer, the decoder, the
+event protocol and the evaluation harness are in place; FluidAudio and
+transcribe.cpp engines, the model catalog and live dictation are the stages
+after this one.
+
+## Build
+
+    ./build.sh          # produces build/speech (arm64, ad-hoc signed)
+    ./build.sh universal
+    ./test.sh           # builds, runs the unit tests and the CLI smoke tests
+
+Deployment target macOS 14. The Apple engines need macOS 26 and report why when
+they are unavailable. arm64 by default because two of the three planned engines
+are Apple Silicon only.
+
+No third-party dependencies. Nothing here needs Python, ffmpeg or a package
+manager; audio decoding is AVFoundation and recognition is the system's own
+frameworks.
+
+## Usage
+
+    speech <verb> [options] [arguments]
+
+Diagnostics go to stderr; the transcript goes to stdout. Exit status is 0 on
+success, 1 on a runtime error, 2 on a usage error or an engine that cannot run
+here, and 3 when a model is not installed.
+
+| Verb | Description |
+| --- | --- |
+| `info` | The machine, the models directory, engine availability, Apple locales supported and installed |
+| `engines` | The engines in this build with their capability flags |
+| `models install-locale <bcp47>` | Install Apple's speech assets for a locale |
+| `transcribe <media>` | Transcribe an audio or video file to txt, srt, vtt or json |
+| `eval` | Score a model against a manifest: WER, CER, RTFx, peak RSS |
+| `export <json>` | Convert a saved transcript to another format without re-transcribing |
+| `decode <media>` | Write the 16 kHz mono wav every engine would receive |
+
+`catalog`, `stream` and `notices` are defined by the plan and arrive in later
+stages; they refuse with a reason rather than pretending not to exist.
+
+Global options: `--json` (JSONL events on stdout, see `docs/protocol.md`),
+`--models-dir <path>`, `--log <path>`, `--verbose`.
+
+### Examples
+
+    speech info
+    speech models install-locale pl-PL
+    speech transcribe interview.mov --model apple.transcriber --format srt -o interview.srt
+    speech transcribe notes.m4a --model apple.dictation --language pl-PL
+    speech --json transcribe talk.mp3 --model apple.transcriber | jq -r 'select(.type=="segment.final").text'
+    speech eval --model apple.dictation --manifest ~/Corpora/fleurs/pl_pl/manifest.tsv --limit 200 --report Private/eval
+
+## Supported input
+
+Anything AVFoundation opens: wav, aiff, caf, m4a, mp3, mov, mp4, m4v. A movie's
+audio is decoded from all of its audio tracks, mixed down to 16 kHz mono. webm,
+mkv, ogg and opus are reported as unsupported rather than half-handled.
+
+Every engine is handed byte-identical audio, decoded once by AVFoundation. That
+is what makes a WER comparison between two engines mean anything, and it is why
+even the Apple engines - which would happily open the original file themselves -
+are fed a wav written from the same samples.
+
+## Measuring
+
+A manifest is a UTF-8 TSV with no header:
+
+    audio_path <TAB> reference_text [<TAB> language]
+
+`tools/fetch-fleurs.sh pl_pl en_us de_de` downloads FLEURS test splits
+(CC-BY-4.0, no account needed) and writes a manifest for each.
+`tools/make-manifest.sh <folder>` pairs recordings with same-basename `.txt`
+references. Public sets rank models; your own recordings decide.
+
+Scoring normalizes to NFC, lowercases in the reference language's locale, and
+replaces punctuation and symbols with spaces - keeping an apostrophe that sits
+between two letters, and folding the typographic form onto the ASCII one, so
+that a recognizer is not charged for its typography. Numbers are **not**
+normalized, which is why the FLEURS tooling takes the spelled-out
+`transcription` column.
+
+Corpus WER is total edits over total reference words, not the mean of per-row
+rates. A run that scored no rows exits 1 rather than reporting 0.00%.
+
+## Engines
+
+See `docs/engines.md`. Today: `apple.transcriber` (Apple's long-form engine, 10
+languages, no custom vocabulary) and `apple.dictation` (54 locales including
+Polish, accepts a custom vocabulary). Both need macOS 26.
+
+## License
+
+Apache-2.0. See LICENSE.
