@@ -1,7 +1,7 @@
 # The JSONL event protocol
 
 `speech --json <verb> ...` writes one JSON object per line to stdout and nothing
-else. Diagnostics go to stderr. This is the interface Transcriber.app's poller
+else. Diagnostics go to stderr. This is the interface Speech.app's poller
 reads, so it is a contract: a field may be added, but renaming or removing one
 is a breaking change and has to move in step with `Sources/SpeechCore/Events.swift`
 and the applet.

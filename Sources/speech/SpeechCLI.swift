@@ -53,7 +53,7 @@ func printGlobalUsage(to handle: FileHandle) {
     out += "\nGlobal options:\n"
     out += "  --json               Emit JSONL events on stdout instead of human text\n"
     out += "  --models-dir <path>  Where model files live"
-        + " (default ~/Library/Application Support/Transcriber/Models)\n"
+        + " (default ~/Library/Application Support/Speech/Models)\n"
     out += "  --log <path>         Append every event as JSONL to this file, whatever the mode\n"
     out += "  --verbose            Show the status line even when stderr is not a terminal\n"
     out += "  --help               Show this help\n"

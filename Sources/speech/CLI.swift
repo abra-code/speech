@@ -33,7 +33,7 @@ struct GlobalOptions: Sendable {
         }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Transcriber/Models", isDirectory: true)
+        return base.appendingPathComponent("Speech/Models", isDirectory: true)
     }
 
     /// Pulls the global flags out of the argument list and returns the rest
