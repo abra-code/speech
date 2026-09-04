@@ -56,6 +56,7 @@ an older applet.
 | `engine.ready` | `engine`, `model`, `capabilities`, `load_seconds`, `locale` |
 | `model.progress` | `model`, `phase`, `fraction`, `bytes_done`, `bytes_total`, `file` |
 | `model.installed` | `model`, `path`, `bytes` (the last two omitted when unknown) |
+| `model.entry` | `model`, `state`, `path`, `bytes`, `bytes_are_lower_bound` (`path`/`bytes` omitted when there are none; the flag omitted when false) |
 | `progress` | `fraction`, `audio_seconds_done`, `audio_seconds_total` |
 | `segment.partial` | the Segment fields, flat |
 | `segment.final` | the Segment fields, flat |
@@ -65,6 +66,26 @@ an older applet.
 | `done` | `segments`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `output` |
 | `eval.row` | `index`, `path`, `reference`, `hypothesis`, `wer`, `cer`, `audio_seconds`, `wall_seconds` |
 | `eval.summary` | `model`, `language`, `rows`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `worst` |
+
+`model.entry` is one row of `models list` or `models status`. Its `state` is one
+of:
+
+| state | meaning |
+| --- | --- |
+| `installed` | present and usable |
+| `partial` | a download started and did not finish; resumable |
+| `missing` | not usable. `bytes` may still be present and non-zero, which means files are on disk that do not make a working model - delete and download again |
+| `system_managed` | the OS owns these weights (Apple's locale assets). No `path`, nothing to download or delete here |
+| `unknown` | files are present but no engine in this build can judge or use them - a row left by an older build or a pin bump. Offer deletion, never transcription |
+
+`bytes_are_lower_bound` means something under the row could not be read and the
+size is a floor, not a total. A consumer showing the figure must qualify it -
+deleting the row reclaims at least that much and possibly more.
+
+`path` is reported even for a `missing` row, because it is where a download
+would land, which is what a caller offering that download needs. `bytes` is
+omitted rather than zero when there is nothing on disk, so "not downloaded"
+stays distinguishable from "an empty download".
 
 `model.progress.phase` is one of `listing`, `downloading`, `compiling`,
 `installing`. `compiling` covers every "making the model usable" step that moves

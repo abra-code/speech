@@ -175,6 +175,35 @@ public protocol TranscriptionEngine: Sendable {
 
     /// Release weights and compute resources. Safe to call when not loaded.
     func unload() async
+
+    /// How the model store should judge whether this engine's weights are
+    /// present in a row directory. nil means the OS owns them and there is
+    /// nothing on disk here to inspect, count or delete - Apple's locale
+    /// assets, which `models list` reports as `system_managed`.
+    ///
+    /// This is the engine's half of the store's contract: the store owns
+    /// placement and interruption, the engine owns "are these the right
+    /// files", and neither keeps a table of the other's facts.
+    nonisolated var completenessCheck: ModelCompletenessCheck? { get }
+
+    /// Fetch this row's weights into its directory.
+    ///
+    /// Separate from `prepare` on purpose. A FluidAudio row is one to three
+    /// gigabytes; if preparing could download, then `speech transcribe` on a
+    /// fresh machine would block for minutes on a fetch nobody agreed to, and
+    /// an eval pointed at a mistyped id would quietly pull the wrong model.
+    /// `prepare` therefore throws `modelMissing` and this is the only path
+    /// that touches the network, reached only from `speech models download`.
+    func install(progress: @escaping LoadProgressHandler) async throws
+}
+
+extension TranscriptionEngine {
+    /// Engines that ship no weights of their own need not implement these.
+    public nonisolated var completenessCheck: ModelCompletenessCheck? { nil }
+
+    public func install(progress: @escaping LoadProgressHandler) async throws {
+        throw SpeechError.usage("'\(id)' has no downloadable weights of its own")
+    }
 }
 
 public protocol LiveSession: Sendable {
@@ -236,9 +265,38 @@ public struct EngineSpec: Sendable, Equatable {
         guard !engine.isEmpty, !model.isEmpty else {
             throw SpeechError.usage("catalog id '\(catalogID)' is not <engine>.<model>[@<variant>]")
         }
+        // Every part becomes a path component in `directory`, and in stage 3
+        // ids arrive from a catalog TSV rather than only from argv. Validate
+        // here so a crafted or corrupt id cannot make `models delete` point at
+        // a directory outside the store: "fluid.../../../Documents" parses into
+        // a model of "../../../Documents" without this.
+        for (label, part) in [("engine", engine), ("model", model)] + (variant.map { [("variant", $0)] } ?? []) {
+            try validatePathComponent(part, label: label, catalogID: catalogID)
+        }
         return EngineSpec(
             catalogID: catalogID, engine: engine, model: model,
             variant: variant, modelsDirectory: modelsDirectory)
+    }
+
+    /// Rejects anything that would not survive being used as a single path
+    /// component. Dots inside a name are fine ("nemotron-3.5-asr"); a name that
+    /// *is* a dot sequence, or that carries a separator, is not.
+    private static func validatePathComponent(
+        _ part: String, label: String, catalogID: String
+    ) throws {
+        let bad: String
+        if part.contains("/") {
+            bad = "contains '/'"
+        } else if part.contains("\0") {
+            bad = "contains a null byte"
+        } else if part.allSatisfy({ $0 == "." }) {
+            bad = "is a path traversal component"
+        } else if part.hasPrefix(".") {
+            bad = "starts with '.'"
+        } else {
+            return
+        }
+        throw SpeechError.usage("catalog id '\(catalogID)': the \(label) part '\(part)' \(bad)")
     }
 
     /// Where this row's files live: `<models-dir>/<engine>/<model>[@<variant>]`.

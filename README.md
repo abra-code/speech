@@ -18,16 +18,18 @@ after this one.
 ## Build
 
     ./build.sh          # produces build/speech (arm64, ad-hoc signed)
-    ./build.sh universal
     ./test.sh           # builds, runs the unit tests and the CLI smoke tests
 
 Deployment target macOS 14. The Apple engines need macOS 26 and report why when
-they are unavailable. arm64 by default because two of the three planned engines
-are Apple Silicon only.
+they are unavailable. arm64 only: FluidAudio's sources use Float16, which is
+unavailable on x86_64 macOS, and its CoreML pipelines want the Neural Engine in
+any case.
 
-No third-party dependencies. Nothing here needs Python, ffmpeg or a package
-manager; audio decoding is AVFoundation and recognition is the system's own
-frameworks.
+One dependency, FluidAudio, pinned to 0.15.6. It brings the Parakeet, Canary and
+Nemotron CoreML pipelines and fetches a binary xcframework at resolve time, so
+the first build needs the network. Beyond it nothing here needs Python, ffmpeg or
+a package manager; audio decoding is AVFoundation and the Apple engines are the
+system's own frameworks.
 
 ## Usage
 

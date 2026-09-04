@@ -11,6 +11,7 @@
 import Foundation
 import SpeechCore
 import SpeechApple
+import SpeechFluid
 
 struct VerbEntry: Sendable {
     let name: String
@@ -74,6 +75,7 @@ func writeErr(_ message: String) {
 func makeRegistry() -> EngineRegistry {
     let registry = EngineRegistry()
     registry.register(prefix: "apple", factory: AppleEngineFactory.make)
+    registry.register(prefix: "fluid", factory: FluidEngineFactory.make)
     return registry
 }
 

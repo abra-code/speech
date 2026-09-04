@@ -157,6 +157,11 @@ public final class EventSink: @unchecked Sendable {
         switch payload {
         case .engineReady(let e):
             status("Engine \(e.model) ready in \(fmt(e.loadSeconds))s")
+        case .modelEntry:
+            // Nothing. `models list` and `models status` print their own
+            // aligned table through `text()`; rendering the event too would
+            // duplicate every row.
+            break
         case .modelProgress(let p):
             switch p.phase {
             case .downloading:

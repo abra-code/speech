@@ -82,9 +82,69 @@ expect_code 2 "$SPEECH" catalog
 
 echo "== info and engines =="
 expect_grep "apple.transcriber" "$SPEECH" engines
+# The FluidAudio rows are listed whether or not their weights are downloaded:
+# "available" is about this machine, not about the model store.
+expect_grep "fluid.parakeet-v3@int8" "$SPEECH" engines
+# Languages Apple has no engine for at all - the reason this row exists.
+expect_grep " sl " "$SPEECH" engines
 expect_grep "Models dir:" "$SPEECH" info
 "$SPEECH" --json info > "$TMP/info.json"
 expect_json_file "$TMP/info.json"
+
+# The model store, exercised against an empty directory of its own so the test
+# never touches the user's real downloads and never needs the network. The
+# download path itself is not covered here: it is half a gigabyte over HTTP,
+# which does not belong in a smoke suite.
+echo "== models =="
+MODELS="$TMP/models"
+mkdir -p "$MODELS"
+
+expect_grep "No models are installed" "$SPEECH" --models-dir "$MODELS" models list
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-v3@int8
+expect_grep '"state":"missing"' \
+    "$SPEECH" --json --models-dir "$MODELS" models status fluid.parakeet-v3@int8
+# The path is reported even when nothing is installed: it is where the download
+# would land, which is what an applet offering that download needs.
+expect_grep '"path":' \
+    "$SPEECH" --json --models-dir "$MODELS" models status fluid.parakeet-v3@int8
+
+# Apple's assets are owned by the OS: no path, no size, and download refuses
+# rather than pretending.
+expect_grep "system_managed" "$SPEECH" --models-dir "$MODELS" models status apple.transcriber
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models download apple.transcriber
+
+# A catalog id becomes a path, and in stage 3 ids come from a TSV rather than
+# argv. Any component that could escape the store must be refused at parse,
+# because `models delete` removes the directory an id names.
+for bad in "fluid.../../../Documents" "fluid..." "fluid./etc/passwd"; do
+    expect_code 2 "$SPEECH" --models-dir "$MODELS" models status "$bad"
+    expect_code 2 "$SPEECH" --models-dir "$MODELS" models delete "$bad"
+done
+if [ -n "$(ls -A "$MODELS")" ]; then fail "a rejected catalog id created something in the store"; fi
+
+# A typo in the variant must not read as a valid row.
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-v3@int9
+# Deleting what was never installed is a no-op, not an error.
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-v3@int8
+
+# Every row `list` prints must also be addressable by `status` and `delete`.
+# A row whose id does not even parse still exists on disk and still occupies
+# space, and listing one that delete then refuses is the disagreement this
+# guards against.
+mkdir -p "$MODELS/fluid/@weird"
+echo "occupying space" > "$MODELS/fluid/@weird/blob.bin"
+expect_grep "unknown to this build" "$SPEECH" --models-dir "$MODELS" models list
+expect_grep "unknown to this build" "$SPEECH" --models-dir "$MODELS" models status "fluid.@weird"
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete "fluid.@weird"
+if [ -d "$MODELS/fluid/@weird" ]; then fail "delete left the row behind"; fi
+
+# A half-finished download must never look installed, whatever is in the
+# directory. The marker is the store's own, so this needs no real weights.
+mkdir -p "$MODELS/fluid/parakeet-v3@int8"
+touch "$MODELS/fluid/parakeet-v3@int8/.partial"
+expect_grep "partial" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-v3@int8
+expect_code 3 "$SPEECH" --models-dir "$MODELS" transcribe --model fluid.parakeet-v3@int8 "$TMP/fox.aiff"
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-v3@int8
 
 echo "== decode =="
 expect_ok "$SPEECH" decode "$TMP/fox.aiff" --output "$TMP/fox.wav"
@@ -104,7 +164,10 @@ expect_code 1 "$SPEECH" transcribe "$TMP/absent.wav" --model apple.transcriber
 # no error - and every engine test would then fail for a reason that has nothing
 # to do with the code. Require at least one supported locale before running them.
 apple_locales=$("$SPEECH" info 2>/dev/null | sed -n 's/.*supported (\([0-9]*\)).*/\1/p' | head -1)
-if "$SPEECH" engines | grep -q "apple.transcriber  available" \
+# Match the column with a regex, not a fixed run of spaces: the id column is
+# padded to the widest id, so adding a longer engine id (fluid.parakeet-v3@int8)
+# silently turned this probe false and skipped every Apple test below it.
+if "$SPEECH" engines | grep -qE "apple\.transcriber +available" \
     && [ -n "$apple_locales" ] && [ "$apple_locales" -gt 0 ]; then
     expect_grep "quick brown fox" \
         "$SPEECH" transcribe "$TMP/fox.aiff" --model apple.transcriber --language en-US

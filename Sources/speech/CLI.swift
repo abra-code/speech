@@ -131,6 +131,15 @@ struct ArgScanner {
         }
     }
 
+    /// For subcommands that take no arguments at all. Without it a stray word
+    /// is silently accepted, and `models list bogus` looks like it worked.
+    func requireNoPositionals() throws {
+        guard positionals.isEmpty else {
+            throw SpeechError.usage(
+                "'\(verb)' takes no arguments, got '\(positionals.joined(separator: " "))'")
+        }
+    }
+
     func requirePositional(_ name: String) throws -> String {
         guard let first = positionals.first else {
             throw SpeechError.usage("missing <\(name)>")

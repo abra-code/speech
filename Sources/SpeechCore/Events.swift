@@ -30,6 +30,7 @@ public struct SpeechEvent: Sendable, Equatable {
         case engineReady(EngineReady)
         case modelProgress(ModelProgress)
         case modelInstalled(ModelInstalled)
+        case modelEntry(ModelEntry)
         case progress(BatchProgress)
         case segmentPartial(Segment)
         case segmentFinal(Segment)
@@ -45,6 +46,7 @@ public struct SpeechEvent: Sendable, Equatable {
             case .engineReady: return "engine.ready"
             case .modelProgress: return "model.progress"
             case .modelInstalled: return "model.installed"
+            case .modelEntry: return "model.entry"
             case .progress: return "progress"
             case .segmentPartial: return "segment.partial"
             case .segmentFinal: return "segment.final"
@@ -108,6 +110,45 @@ public struct SpeechEvent: Sendable, Equatable {
             case model, phase, fraction, file
             case bytesDone = "bytes_done"
             case bytesTotal = "bytes_total"
+        }
+    }
+
+    /// One row of `models list` / `models status`: what is on disk for a
+    /// catalog id. Emitted once per row so a consumer reads the same stream it
+    /// reads for everything else, rather than parsing a table.
+    ///
+    /// `modified` is deliberately absent: the rest of this protocol carries
+    /// only monotonic `t` and never a wall-clock timestamp, and a download date
+    /// is presentation, not a fact the applet acts on.
+    public struct ModelEntry: Codable, Sendable, Equatable {
+        public var model: String
+        public var state: ModelInstallState
+        /// The row directory. Omitted for `system_managed` rows, which have no
+        /// path this tool owns.
+        public var path: String?
+        /// On-disk bytes. Omitted rather than zero when nothing is installed,
+        /// so "not downloaded" is distinguishable from "an empty download".
+        public var bytes: Int64?
+        /// True when something under the row could not be read, so `bytes` is a
+        /// lower bound. Omitted when false. A consumer that shows a size must
+        /// qualify it, or it reports a figure smaller than what deleting the
+        /// row would actually reclaim.
+        public var bytesAreLowerBound: Bool?
+
+        public init(
+            model: String, state: ModelInstallState, path: String? = nil,
+            bytes: Int64? = nil, bytesAreLowerBound: Bool = false
+        ) {
+            self.model = model
+            self.state = state
+            self.path = path
+            self.bytes = bytes
+            self.bytesAreLowerBound = bytesAreLowerBound ? true : nil
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case model, state, path, bytes
+            case bytesAreLowerBound = "bytes_are_lower_bound"
         }
     }
 
@@ -335,6 +376,7 @@ extension SpeechEvent: Codable {
         case .engineReady(let p): try p.encode(to: encoder)
         case .modelProgress(let p): try p.encode(to: encoder)
         case .modelInstalled(let p): try p.encode(to: encoder)
+        case .modelEntry(let p): try p.encode(to: encoder)
         case .progress(let p): try p.encode(to: encoder)
         case .segmentPartial(let p): try p.encode(to: encoder)
         case .segmentFinal(let p): try p.encode(to: encoder)
@@ -355,6 +397,7 @@ extension SpeechEvent: Codable {
         case "engine.ready": payload = .engineReady(try EngineReady(from: decoder))
         case "model.progress": payload = .modelProgress(try ModelProgress(from: decoder))
         case "model.installed": payload = .modelInstalled(try ModelInstalled(from: decoder))
+        case "model.entry": payload = .modelEntry(try ModelEntry(from: decoder))
         case "progress": payload = .progress(try BatchProgress(from: decoder))
         case "segment.partial": payload = .segmentPartial(try Segment(from: decoder))
         case "segment.final": payload = .segmentFinal(try Segment(from: decoder))

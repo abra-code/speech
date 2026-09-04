@@ -59,6 +59,36 @@ struct EventProtocolTests {
         let systemInstall = try roundTrip(.modelInstalled(.init(model: "apple.dictation@pl_PL")))
         #expect(systemInstall["path"] == nil)
         #expect(systemInstall["bytes"] == nil)
+        let installedRow = try roundTrip(.modelEntry(.init(
+            model: "fluid.parakeet-v3@int8", state: .installed,
+            path: "/tmp/models/fluid/parakeet-v3@int8", bytes: 483_000_000)))
+        // The wire spelling is snake_case like every other multi-word value in
+        // this protocol. An applet switches on this string.
+        #expect(installedRow["state"] as? String == "installed")
+
+        let systemRow = try roundTrip(.modelEntry(.init(
+            model: "apple.transcriber", state: .systemManaged)))
+        #expect(systemRow["state"] as? String == "system_managed")
+        #expect(systemRow["path"] == nil)
+        #expect(systemRow["bytes"] == nil)
+
+        // A row that is not usable but is still occupying disk. `bytes` present
+        // with `state` missing is the whole point: it is how a failed download
+        // stops being invisible.
+        let brokenRow = try roundTrip(.modelEntry(.init(
+            model: "fluid.parakeet-v3@int4", state: .missing,
+            path: "/tmp/models/fluid/parakeet-v3@int4", bytes: 3000)))
+        #expect(brokenRow["state"] as? String == "missing")
+        #expect(brokenRow["bytes"] as? Int == 3000)
+
+        _ = try roundTrip(.modelEntry(.init(model: "fluid.canary-1b-v2@int4", state: .partial)))
+        // A row this build cannot judge. It must not be reported as installed:
+        // an applet reading models list --json would offer it for transcription,
+        // which then exits 2.
+        let unknownRow = try roundTrip(.modelEntry(.init(
+            model: "fluid.parakeet-v3@int8-v2", state: .unknown,
+            path: "/tmp/models/fluid/parakeet-v3@int8-v2", bytes: 2_100_000)))
+        #expect(unknownRow["state"] as? String == "unknown")
         _ = try roundTrip(.progress(.init(audioSecondsDone: 5, audioSecondsTotal: 20)))
         _ = try roundTrip(.segmentPartial(sampleSegment))
         _ = try roundTrip(.segmentFinal(sampleSegment))

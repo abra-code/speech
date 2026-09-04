@@ -9,6 +9,7 @@
 import Foundation
 import SpeechCore
 import SpeechApple
+import SpeechFluid
 
 struct KnownEngine {
     let id: String
@@ -21,7 +22,7 @@ struct KnownEngine {
 /// answer. Stage 1 and 2 append their rows here as their targets land.
 func knownEngines() -> [KnownEngine] {
     let appleAvailability = AppleSpeech.availability()
-    return [AppleSpeech.transcriberID, AppleSpeech.dictationID].compactMap { id in
+    let apple: [KnownEngine] = [AppleSpeech.transcriberID, AppleSpeech.dictationID].compactMap { id in
         let model = String(id.split(separator: ".").dropFirst().joined(separator: "."))
         guard let capabilities = AppleEngineFactory.capabilities(for: model) else { return nil }
         return KnownEngine(
@@ -30,6 +31,30 @@ func knownEngines() -> [KnownEngine] {
             available: appleAvailability.isAvailable,
             reason: appleAvailability.reason)
     }
+
+    // The FluidAudio rows this build can construct. "Available" here means the
+    // engine can run on this machine, not that its weights are downloaded -
+    // that is `models list`, and conflating the two would leave a user staring
+    // at "unavailable" for a row that only needs a download.
+    #if arch(arm64)
+    let fluidReason: String? = nil
+    let fluidAvailable = true
+    #else
+    let fluidReason: String? = "FluidAudio engines need Apple Silicon"
+    let fluidAvailable = false
+    #endif
+    let fluid: [KnownEngine] = [("parakeet-v3", "int8"), ("parakeet-v3", "int4")].compactMap {
+        model, variant in
+        guard let capabilities = FluidEngineFactory.capabilities(for: model, variant: variant)
+        else { return nil }
+        return KnownEngine(
+            id: "fluid.\(model)@\(variant)",
+            capabilities: capabilities,
+            available: fluidAvailable,
+            reason: fluidReason)
+    }
+
+    return apple + fluid
 }
 
 func capabilityFlags(_ capabilities: EngineCapabilities) -> [String] {
