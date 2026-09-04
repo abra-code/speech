@@ -43,12 +43,12 @@ func knownEngines() -> [KnownEngine] {
     let fluidReason: String? = "FluidAudio engines need Apple Silicon"
     let fluidAvailable = false
     #endif
-    let fluid: [KnownEngine] = [("parakeet-v3", "int8"), ("parakeet-v3", "int4")].compactMap {
+    let fluid: [KnownEngine] = FluidEngineFactory.catalogRows.compactMap {
         model, variant in
         guard let capabilities = FluidEngineFactory.capabilities(for: model, variant: variant)
         else { return nil }
         return KnownEngine(
-            id: "fluid.\(model)@\(variant)",
+            id: variant.map { "fluid.\(model)@\($0)" } ?? "fluid.\(model)",
             capabilities: capabilities,
             available: fluidAvailable,
             reason: fluidReason)

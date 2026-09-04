@@ -124,6 +124,14 @@ if [ -n "$(ls -A "$MODELS")" ]; then fail "a rejected catalog id created somethi
 
 # A typo in the variant must not read as a valid row.
 expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-v3@int9
+# Nemotron's variant is a chunk tier, so the typo shape is different: a number
+# that is a real FluidAudio tier this build does not ship (4480), and a number
+# with the unit attached. Both have to be refused rather than downloaded.
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-multilingual@4480
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-multilingual@2240ms
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-multilingual@2240
+# A bare id is the default tier, not a rejection.
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-multilingual
 # Deleting what was never installed is a no-op, not an error.
 expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-v3@int8
 
@@ -145,6 +153,17 @@ touch "$MODELS/fluid/parakeet-v3@int8/.partial"
 expect_grep "partial" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-v3@int8
 expect_code 3 "$SPEECH" --models-dir "$MODELS" transcribe --model fluid.parakeet-v3@int8 "$TMP/fox.aiff"
 expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-v3@int8
+
+# The same for a row whose weights sit three directories below the row itself:
+# a check applied at the wrong level would call this installed.
+mkdir -p "$MODELS/fluid/nemotron-multilingual@2240"
+touch "$MODELS/fluid/nemotron-multilingual@2240/metadata.json"
+touch "$MODELS/fluid/nemotron-multilingual@2240/tokenizer.json"
+expect_grep "missing" \
+    "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-multilingual@2240
+expect_code 3 "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model fluid.nemotron-multilingual@2240 "$TMP/fox.aiff"
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.nemotron-multilingual@2240
 
 echo "== decode =="
 expect_ok "$SPEECH" decode "$TMP/fox.aiff" --output "$TMP/fox.wav"

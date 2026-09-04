@@ -129,16 +129,57 @@ enum FluidModelFiles {
         { directory in CtcModels.modelsExist(at: directory) }
     }
 
-    /// Nemotron multilingual has no `modelsExist`, so the list is ours. The
-    /// tokenizer and metadata are included deliberately: `metadata.json` holds
-    /// the prompt dictionary that `setLanguage` reads, and a download that
-    /// stopped before it produces a model that loads and then cannot be
-    /// pointed at a language.
-    static var nemotronMultilingual: ModelCompletenessCheck {
-        requiring([
-            "preprocessor.mlmodelc", "encoder.mlmodelc", "decoder.mlmodelc",
-            "joint.mlmodelc", "tokenizer.json", "metadata.json",
-        ])
+    /// Nemotron multilingual ships no `modelsExist`, so this list is ours - and
+    /// it is deliberately *not* the file list in the plan's appendix, which was
+    /// copied from the repo contents rather than from the loader.
+    ///
+    /// What `loadModels(from:)` and `process(samples:)` between them actually
+    /// insist on is: `metadata.json` (it throws by name without it),
+    /// `tokenizer.json`, an encoder, and *some* decode path. Three files in the
+    /// appendix list are not requirements at all. `preprocessor.mlmodelc` is
+    /// never opened - the mel front-end is native Swift (`NemotronMelExtractor`)
+    /// and the CoreML preprocessor is vestigial. `decoder` and `joint` are
+    /// loaded through `locateOptionalModelBundle` and may be absent entirely,
+    /// because the "lean B1" ships replace the pair with a fused
+    /// `decoder_joint`, `decoder_joint_noencproj` or `decoder_joint_argmax`.
+    ///
+    /// Requiring the appendix list would report `partial` for a download that
+    /// loads and transcribes perfectly, and `finishInstall` would then refuse
+    /// to clear the marker - an install that can never succeed. So the check
+    /// below is a transcription of the loader's own guard, and every entry is
+    /// accepted as either a compiled `.mlmodelc` or an uncompiled `.mlpackage`,
+    /// which is the same pair `locateModelBundle` accepts.
+    static func nemotronMultilingual(chunkMs: Int) -> ModelCompletenessCheck {
+        { rowDirectory in
+            let directory = FluidPaths.nemotronVariant(in: rowDirectory, chunkMs: chunkMs)
+            let fm = FileManager.default
+            func present(_ name: String) -> Bool {
+                fm.fileExists(atPath: directory.appendingPathComponent(name).path)
+            }
+            // A compiled bundle counts only when its manifest is inside it.
+            // `.mlmodelc` is a directory, and the downloader creates the
+            // directory before it fetches the files within, so testing the
+            // directory alone reports a half-written encoder as complete -
+            // `finishInstall` then clears the partial marker, `models status`
+            // says installed, and the failure surfaces later as a load error
+            // rather than as exit 3 and a download instruction. Every compiled
+            // bundle FluidAudio ships carries `coremldata.bin` at its root.
+            //
+            // An uncompiled `.mlpackage` is checked by existence only: this
+            // program's downloads skip them entirely, so the case exists to
+            // match what `locateModelBundle` will accept, not to validate a
+            // download of ours.
+            func bundle(_ base: String) -> Bool {
+                present("\(base).mlmodelc/coremldata.bin") || present("\(base).mlpackage")
+            }
+            guard present("metadata.json"), present("tokenizer.json"), bundle("encoder") else {
+                return false
+            }
+            return (bundle("decoder") && bundle("joint"))
+                || bundle("decoder_joint")
+                || bundle("decoder_joint_noencproj")
+                || bundle("decoder_joint_argmax")
+        }
     }
 
     /// Parakeet Unified, likewise. The encoder is matched by prefix because its
@@ -196,6 +237,40 @@ enum FluidPaths {
     static func parakeetRepo(in rowDirectory: URL, version: AsrModelVersion) -> URL {
         rowDirectory.appendingPathComponent(
             AsrModels.defaultCacheDirectory(for: version).lastPathComponent, isDirectory: true)
+    }
+
+    /// The language code every Nemotron download in this program uses.
+    ///
+    /// Not the user's language, and that is the whole point. FluidAudio routes
+    /// en/es/fr/it/pt/de to a vocab-pruned "latin" ship and everything else to
+    /// the full multilingual one, so passing the caller's tag through would
+    /// make one catalog id mean different weights on disk depending on who
+    /// downloaded it first - and the second user would silently inherit the
+    /// first user's model, with `models list` showing one row either way. The
+    /// row id promises multilingual; "auto" is what delivers it.
+    static let nemotronLanguageCode = "auto"
+
+    /// Where `downloadVariant` puts a Nemotron multilingual ship.
+    ///
+    /// This family does not use the `AsrModels` rewrite. Its `to:` argument is
+    /// treated as a models *root* and the files land at
+    /// `<to>/<repo folderName>/<language directory>/<chunkMs>ms`, by appending
+    /// rather than by replacing the last component. Handing it the row
+    /// directory therefore keeps everything inside the row - there is no
+    /// sibling to escape to here - but the directory that `loadModels(from:)`
+    /// and the completeness check need is three components below the row, not
+    /// the row itself.
+    ///
+    /// Both components are read from FluidAudio rather than spelled out, so a
+    /// pin bump that renames the repo or re-routes "auto" moves this with it.
+    static func nemotronVariant(in rowDirectory: URL, chunkMs: Int) -> URL {
+        rowDirectory
+            .appendingPathComponent(Repo.nemotronMultilingual.folderName, isDirectory: true)
+            .appendingPathComponent(
+                StreamingNemotronMultilingualAsrManager.languageDirectory(
+                    for: nemotronLanguageCode),
+                isDirectory: true)
+            .appendingPathComponent("\(chunkMs)ms", isDirectory: true)
     }
 }
 
