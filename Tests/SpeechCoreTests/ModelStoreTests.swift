@@ -311,4 +311,168 @@ struct ModelStoreTests {
         #expect(formatBytes(2_400_000_000) == "2.4 GB")
         #expect(formatBytes(15_000_000) == "15 MB")
     }
+
+    // MARK: - Adoption
+
+    /// A download some other component wrote outside the store, plus whatever
+    /// else happens to share its directory.
+    private func makeCache(_ entries: [String]) throws -> URL {
+        let cache = try Fixtures.makeDirectory()
+        for name in entries {
+            let url = cache.appendingPathComponent(name)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(repeating: 0x42, count: 16).write(to: url)
+        }
+        return cache
+    }
+
+    @Test("adoption moves what was downloaded and leaves what was already there")
+    func adoptMovesOnlyWhatWeFetched() throws {
+        let (store, root) = try makeStore()
+        let cache = try makeCache(["weights.mlmodelc", "vocab.json", "someone-elses.mlmodelc"])
+        defer { Fixtures.cleanUp(root); Fixtures.cleanUp(cache) }
+        let spec = try spec("fluid.canary-1b-v2@int4", root)
+        let fm = FileManager.default
+
+        _ = try store.beginInstall(spec)
+        // vocab.json was in the cache before this program ran: it may be
+        // another application's, or a shared file the downloader saw no reason
+        // to re-fetch. Either way it is copied, never taken.
+        try store.adopt(
+            spec, from: cache,
+            wanted: ["weights.mlmodelc", "vocab.json"],
+            leaving: ["vocab.json", "someone-elses.mlmodelc"])
+
+        let row = try store.directory(for: spec)
+        #expect(fm.fileExists(atPath: row.appendingPathComponent("weights.mlmodelc").path))
+        #expect(fm.fileExists(atPath: row.appendingPathComponent("vocab.json").path))
+        // Never named by the engine, so never adopted. This is the case that
+        // would otherwise drag another application's model into this row, where
+        // `models delete` would later remove it.
+        #expect(!fm.fileExists(atPath: row.appendingPathComponent("someone-elses.mlmodelc").path))
+
+        #expect(!fm.fileExists(atPath: cache.appendingPathComponent("weights.mlmodelc").path))
+        #expect(fm.fileExists(atPath: cache.appendingPathComponent("vocab.json").path))
+        #expect(fm.fileExists(atPath: cache.appendingPathComponent("someone-elses.mlmodelc").path))
+    }
+
+    @Test("adoption removes the source only when it emptied it")
+    func adoptCleansUpOnlyItsOwnMess() throws {
+        let (store, root) = try makeStore()
+        let ours = try makeCache(["weights.mlmodelc"])
+        let shared = try makeCache(["weights.mlmodelc", "someone-elses.mlmodelc"])
+        defer {
+            Fixtures.cleanUp(root); Fixtures.cleanUp(ours); Fixtures.cleanUp(shared)
+        }
+        let fm = FileManager.default
+
+        let mine = try spec("fluid.canary-1b-v2@int4", root)
+        _ = try store.beginInstall(mine)
+        try store.adopt(mine, from: ours, wanted: ["weights.mlmodelc"], leaving: [])
+        #expect(!fm.fileExists(atPath: ours.path))
+
+        let other = try spec("fluid.parakeet-v3@int8", root)
+        _ = try store.beginInstall(other)
+        try store.adopt(other, from: shared, wanted: ["weights.mlmodelc"], leaving: [])
+        // Emptying is the test, not the snapshot: something of someone else's
+        // is still in there, so the directory stays.
+        #expect(fm.fileExists(atPath: shared.path))
+        #expect(fm.fileExists(atPath: shared.appendingPathComponent("someone-elses.mlmodelc").path))
+    }
+
+    @Test("adoption leaves the partial marker intact")
+    func adoptPreservesTheMarker() throws {
+        let (store, root) = try makeStore()
+        // A source that carries a file with the marker's name. The marker is
+        // the one file in a row whose loss changes the row's *state*, so an
+        // interruption part-way through adoption must still read as partial.
+        let cache = try makeCache(["weights.mlmodelc", ModelStore.partialMarkerName])
+        defer { Fixtures.cleanUp(root); Fixtures.cleanUp(cache) }
+        let spec = try spec("fluid.canary-1b-v2@int4", root)
+
+        let row = try store.beginInstall(spec)
+        try store.adopt(spec, from: cache, wanted: ["weights.mlmodelc"], leaving: [])
+        #expect(try store.state(of: spec, isComplete: Self.looksComplete) == .partial)
+        #expect(FileManager.default.fileExists(
+            atPath: row.appendingPathComponent(ModelStore.partialMarkerName).path))
+    }
+
+    @Test("a retried adoption replaces what the last attempt left")
+    func adoptReplacesStaleFiles() throws {
+        let (store, root) = try makeStore()
+        let cache = try makeCache(["weights.mlmodelc"])
+        defer { Fixtures.cleanUp(root); Fixtures.cleanUp(cache) }
+        let spec = try spec("fluid.canary-1b-v2@int4", root)
+
+        let row = try store.beginInstall(spec)
+        // What a previous interrupted attempt left behind. `moveItem` onto an
+        // existing path fails rather than merging, so without the replace this
+        // is an install that can never be retried.
+        try Data(repeating: 0x00, count: 4).write(to: row.appendingPathComponent("weights.mlmodelc"))
+        try store.adopt(spec, from: cache, wanted: ["weights.mlmodelc"], leaving: [])
+
+        let landed = try Data(contentsOf: row.appendingPathComponent("weights.mlmodelc"))
+        #expect(landed == Data(repeating: 0x42, count: 16))
+    }
+
+    @Test("adoption refuses a source inside the store")
+    func adoptRefusesSelfAdoption() throws {
+        let (store, root) = try makeStore()
+        defer { Fixtures.cleanUp(root) }
+        let canary = try spec("fluid.canary-1b-v2@int4", root)
+        let row = try store.beginInstall(canary)
+        try writeWeights(in: row)
+
+        // A row adopting from itself would move its contents into itself and
+        // then remove the source - deleting a model the user still has listed.
+        #expect(throws: SpeechError.self) {
+            try store.adopt(canary, from: row, wanted: ["weights.mlmodelc"], leaving: [])
+        }
+        let other = try spec("fluid.parakeet-v3@int8", root)
+        _ = try store.beginInstall(other)
+        #expect(throws: SpeechError.self) {
+            try store.adopt(other, from: row, wanted: ["weights.mlmodelc"], leaving: [])
+        }
+        #expect(FileManager.default.fileExists(
+            atPath: row.appendingPathComponent("weights.mlmodelc").path))
+    }
+
+    @Test("an entry the downloader never wrote is skipped, not an error")
+    func adoptToleratesMissingEntries() throws {
+        let (store, root) = try makeStore()
+        let cache = try makeCache(["weights.mlmodelc"])
+        defer { Fixtures.cleanUp(root); Fixtures.cleanUp(cache) }
+        let spec = try spec("fluid.canary-1b-v2@int4", root)
+
+        _ = try store.beginInstall(spec)
+        // Completeness is `finishInstall`'s job, not adoption's: reporting a
+        // missing file here would say "cannot move" about a file that was never
+        // downloaded, which points at the wrong problem.
+        try store.adopt(
+            spec, from: cache, wanted: ["weights.mlmodelc", "never-downloaded.json"], leaving: [])
+        #expect(throws: SpeechError.self) {
+            try store.finishInstall(spec, isComplete: { directory in
+                FileManager.default.fileExists(
+                    atPath: directory.appendingPathComponent("never-downloaded.json").path)
+            })
+        }
+    }
+
+    @Test("an OS floor is compared as a version, not as a string")
+    func osFloorParsing() {
+        // "9.0" must not read as newer than "15.0", which string comparison
+        // would say. The row this now guards is Apple's, at macOS 26; the
+        // binary's own floor is 15, so no row below that is reachable in
+        // production - these two only prove the comparison is numeric.
+        #expect(EngineCapabilities(minimumMacOS: "14.0").runsOnThisOS)
+        #expect(EngineCapabilities(minimumMacOS: "9.0").runsOnThisOS)
+        #expect(EngineCapabilities(minimumMacOS: "15.0").runsOnThisOS)
+        #expect(EngineCapabilities(minimumMacOS: "26.0").runsOnThisOS)
+        #expect(!EngineCapabilities(minimumMacOS: "999.0").runsOnThisOS)
+        // A malformed field reads as supported: refusing to run over a typo in
+        // a catalog column is worse than running.
+        #expect(EngineCapabilities(minimumMacOS: "").runsOnThisOS)
+        #expect(EngineCapabilities(minimumMacOS: "not-a-version").runsOnThisOS)
+    }
 }

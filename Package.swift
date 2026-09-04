@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "speech",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v15)
     ],
     products: [
         .executable(name: "speech", targets: ["speech"]),

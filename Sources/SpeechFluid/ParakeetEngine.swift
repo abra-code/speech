@@ -107,7 +107,11 @@ actor ParakeetEngine: TranscriptionEngine {
             languageID: false,
             languageHint: true,
             languages: FluidLanguage.parakeetLanguages,
-            minimumMacOS: "14.0")
+            // FluidAudio itself would run this family on macOS 14 - there is
+            // not one OS gate in its Parakeet or Nemotron sources - but the
+            // binary's floor is 15, so 14 is not a system this row can be
+            // reached on and claiming it would be a floor nobody can act on.
+            minimumMacOS: "15.0")
     }
 
     // MARK: - Lifecycle

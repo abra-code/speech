@@ -29,7 +29,12 @@ public struct EngineCapabilities: Codable, Sendable, Equatable {
     public var languageHint: Bool
     /// BCP-47 primary subtags. Empty means "any language" (Whisper's `*`).
     public var languages: [String]
-    /// Lowest macOS this engine runs on, as a version string ("14.0", "26.0").
+    /// Lowest macOS this engine runs on, as a version string ("15.0", "26.0").
+    ///
+    /// Never below the binary's own deployment target, which is macOS 15: a row
+    /// that named an older system would be describing something this build
+    /// cannot run anyway, and the applet would render a floor the user could
+    /// never satisfy by upgrading a model.
     public var minimumMacOS: String
 
     public init(
@@ -42,7 +47,7 @@ public struct EngineCapabilities: Codable, Sendable, Equatable {
         languageID: Bool = false,
         languageHint: Bool = false,
         languages: [String] = [],
-        minimumMacOS: String = "14.0"
+        minimumMacOS: String = "15.0"
     ) {
         self.batch = batch
         self.live = live
@@ -65,6 +70,30 @@ public struct EngineCapabilities: Codable, Sendable, Equatable {
         case languageHint = "language_hint"
         case languages
         case minimumMacOS = "minimum_macos"
+    }
+
+    /// Whether the running OS is new enough for this engine, by comparing
+    /// `minimumMacOS` against the system version.
+    ///
+    /// Lives here so that every row gets the answer for free rather than each
+    /// verb re-deriving it. Without it `speech engines` reported
+    /// `fluid.canary-1b-v2@int4` as available on macOS 14 - `minimum_macos`
+    /// was in the JSON and nowhere else - and `models download` would then
+    /// fetch 569 MB of int4 weights that machine could never load. The floor is
+    /// macOS 15 now, so that particular row can no longer be the one that
+    /// trips this, but the Apple rows need macOS 26 and always will.
+    ///
+    /// Parses leniently: an unreadable version string reads as "supported",
+    /// because refusing to run over a typo in a catalog field is worse than
+    /// running.
+    public var runsOnThisOS: Bool {
+        let parts = minimumMacOS.split(separator: ".").map { Int($0) ?? 0 }
+        guard !parts.isEmpty else { return true }
+        return ProcessInfo.processInfo.isOperatingSystemAtLeast(
+            OperatingSystemVersion(
+                majorVersion: parts[0],
+                minorVersion: parts.count > 1 ? parts[1] : 0,
+                patchVersion: parts.count > 2 ? parts[2] : 0))
     }
 
     /// True when this engine claims the language, by primary subtag. An empty

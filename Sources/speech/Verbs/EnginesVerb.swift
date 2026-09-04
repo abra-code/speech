@@ -47,6 +47,23 @@ func knownEngines() -> [KnownEngine] {
         model, variant in
         guard let capabilities = FluidEngineFactory.capabilities(for: model, variant: variant)
         else { return nil }
+        // The OS floor is per row rather than per engine family, and asked
+        // through `capabilities` rather than hardcoded here, so a row that
+        // raises its floor is reported correctly without touching this verb.
+        //
+        // It cannot fire today: every `fluid` row names macOS 15 and the binary
+        // will not launch below that. It is kept because the alternative is
+        // `available` and `minimum_macos` disagreeing the first time a row
+        // needs something newer - which is how Canary shipped as "available" on
+        // systems that could not load it, with the real floor sitting in the
+        // JSON and nowhere else.
+        guard capabilities.runsOnThisOS else {
+            return KnownEngine(
+                id: variant.map { "fluid.\(model)@\($0)" } ?? "fluid.\(model)",
+                capabilities: capabilities,
+                available: false,
+                reason: "needs macOS \(capabilities.minimumMacOS) or later")
+        }
         return KnownEngine(
             id: variant.map { "fluid.\(model)@\($0)" } ?? "fluid.\(model)",
             capabilities: capabilities,

@@ -20,8 +20,11 @@ after this one.
     ./build.sh          # produces build/speech (arm64, ad-hoc signed)
     ./test.sh           # builds, runs the unit tests and the CLI smoke tests
 
-Deployment target macOS 14. The Apple engines need macOS 26 and report why when
-they are unavailable. arm64 only: FluidAudio's sources use Float16, which is
+Deployment target macOS 15, set by `fluid.canary-1b-v2@int4`: its int4 weight
+payloads need CoreML's macOS 15 runtime and no other precision is published for
+that model. Nothing else needs it - FluidAudio itself declares macOS 14 and has
+no OS gate in any engine used here. The Apple engines need macOS 26, are weak
+linked, and report why when they are unavailable. arm64 only: FluidAudio's sources use Float16, which is
 unavailable on x86_64 macOS, and its CoreML pipelines want the Neural Engine in
 any case.
 

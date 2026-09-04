@@ -165,6 +165,25 @@ expect_code 3 "$SPEECH" --models-dir "$MODELS" \
     transcribe --model fluid.nemotron-multilingual@2240 "$TMP/fox.aiff"
 expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.nemotron-multilingual@2240
 
+# Canary's precisions: only int4 is published, and the other two have to say so
+# rather than falling through to "unknown variant".
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.canary-1b-v2@fp16
+expect_grep_err "only int4" "$SPEECH" --models-dir "$MODELS" models status fluid.canary-1b-v2@fp16
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.canary-1b-v2@int8
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.canary-1b-v2@int4
+
+# The shape an interrupted Canary download leaves: every path FluidAudio checks
+# for exists, and not one of the bundles has been filled. Their own
+# `modelsExist` calls this installed; reporting that would clear the partial
+# marker and turn a resumable download into a load failure much later.
+CANARY="$MODELS/fluid/canary-1b-v2@int4"
+mkdir -p "$CANARY"/{Preprocessor,Projection,EncoderInt4,DecoderInt4}.mlmodelc
+: > "$CANARY/vocab.json"
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.canary-1b-v2@int4
+expect_code 3 "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model fluid.canary-1b-v2@int4 "$TMP/fox.aiff"
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.canary-1b-v2@int4
+
 echo "== decode =="
 expect_ok "$SPEECH" decode "$TMP/fox.aiff" --output "$TMP/fox.wav"
 if [ ! -s "$TMP/fox.wav" ]; then fail "decode produced no wav"; fi

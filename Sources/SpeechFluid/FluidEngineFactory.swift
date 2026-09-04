@@ -9,10 +9,12 @@ import Foundation
 import SpeechCore
 
 public enum FluidEngineFactory {
-    /// Rows implemented so far. Canary and Parakeet Unified are the rest of
-    /// stage 1 and are listed here as they land, so that `speech engines` never
-    /// advertises a row `make` would reject.
-    public static let implementedModels = ["parakeet-v3", "nemotron-multilingual"]
+    /// Rows implemented so far. Parakeet Unified is the rest of stage 1 and is
+    /// listed here as it lands, so that `speech engines` never advertises a row
+    /// `make` would reject.
+    public static let implementedModels = [
+        "parakeet-v3", "nemotron-multilingual", "canary-1b-v2",
+    ]
 
     /// Every `(model, variant)` this build can construct, in catalog order.
     ///
@@ -23,6 +25,7 @@ public enum FluidEngineFactory {
     public static let catalogRows: [(model: String, variant: String?)] =
         [("parakeet-v3", "int8"), ("parakeet-v3", "int4")]
         + NemotronFlavor.chunkTiers.map { ("nemotron-multilingual", String($0)) }
+        + [("canary-1b-v2", "int4")]
 
     public static func make(_ spec: EngineSpec) throws -> any TranscriptionEngine {
         // FluidAudio's CoreML packages are compiled for the Neural Engine and
@@ -38,6 +41,9 @@ public enum FluidEngineFactory {
                 model: spec.model, variant: spec.variant))
         case "nemotron-multilingual":
             return NemotronEngine(spec: spec, flavor: try NemotronFlavor.parse(
+                model: spec.model, variant: spec.variant))
+        case "canary-1b-v2":
+            return CanaryEngine(spec: spec, flavor: try CanaryFlavor.parse(
                 model: spec.model, variant: spec.variant))
         default:
             throw SpeechError.usage(

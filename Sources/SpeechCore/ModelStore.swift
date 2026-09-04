@@ -205,6 +205,90 @@ public struct ModelStore: Sendable {
         return dir
     }
 
+    /// Takes ownership of a download some other component placed elsewhere, by
+    /// moving the named entries into the row. Call between `beginInstall` and
+    /// `finishInstall`.
+    ///
+    /// This exists because not every downloader can be told where to write.
+    /// FluidAudio's `CanaryModels.download()` takes no directory at all - it
+    /// resolves to a private root under `~/Library/Application
+    /// Support/FluidAudio/Models` - and there is no repo-override hook in
+    /// 0.15.6. Leaving the weights there would put half a gigabyte outside the
+    /// store, invisible to `models list` and unreachable by `models delete`,
+    /// which is exactly the invisible occupancy this store exists to prevent.
+    ///
+    /// Three decisions, each of which was wrong in an earlier version.
+    ///
+    /// **Entries, not the directory.** `beginInstall` has already created the
+    /// row and written the `.partial` marker into it, and that marker has to
+    /// survive: an interruption part-way through this loop must leave a row
+    /// that reads as partial, not as installed.
+    ///
+    /// **Only what the caller asked for.** A shared cache is keyed by
+    /// repository, not by the variant this row wants, so another application's
+    /// fp16 model can be sitting in the very directory an int4 download writes
+    /// into. Taking everything would copy gigabytes of somebody else's weights
+    /// into this row, where `models delete` would later remove them and
+    /// `models list` would have been reporting them as ours all along. `wanted`
+    /// is the engine's file list, so an unrecognized neighbor is left exactly
+    /// where it was. It also means the marker cannot be collided with: no
+    /// engine names it.
+    ///
+    /// **Copy what predates us, move what does not.** `preexisting` is the
+    /// caller's snapshot of `source` from before it downloaded anything. An
+    /// entry in it may be another application's - or may be a shared file this
+    /// row genuinely needs and the downloader therefore did not re-fetch - so
+    /// it is copied and left in place. Everything else this program just
+    /// downloaded and moves. Copying unconditionally is not the safe default:
+    /// it silently doubles a gigabyte of disk. Deciding per directory rather
+    /// than per entry is not safe either, and that is the version that would
+    /// have destroyed the other application's model.
+    ///
+    /// The source directory is removed only if this call emptied it, which is
+    /// its own answer to "was any of it somebody else's".
+    public func adopt(
+        _ spec: EngineSpec, from source: URL, wanted: Set<String>, leaving preexisting: Set<String>
+    ) throws {
+        let destination = try directory(for: spec)
+        let fm = FileManager.default
+        // Never adopt from inside the store. Without this, a source that
+        // resolved to the row itself - or to another row - would move a row's
+        // contents into itself, and the cleanup would then delete a model the
+        // user still has listed.
+        guard !isContained(source.standardizedFileURL) else {
+            throw SpeechError.runtime(
+                "refusing to adopt '\(spec.catalogID)' from \(source.path),"
+                + " which is inside the models directory")
+        }
+        for name in wanted.sorted() {
+            let from = source.appendingPathComponent(name)
+            guard fm.fileExists(atPath: from.path) else { continue }
+            let to = destination.appendingPathComponent(name)
+            do {
+                // A retried install finds the last attempt's files already
+                // here. Replacing is right: the source is the fresher download,
+                // and `moveItem` onto an existing path fails rather than
+                // merging.
+                if fm.fileExists(atPath: to.path) {
+                    try fm.removeItem(at: to)
+                }
+                if preexisting.contains(name) {
+                    try fm.copyItem(at: from, to: to)
+                } else {
+                    try fm.moveItem(at: from, to: to)
+                }
+            } catch {
+                throw SpeechError.runtime(
+                    "cannot move \(name) into \(destination.path): \(error.localizedDescription)")
+            }
+        }
+        // Best effort, and only when nothing of anyone else's is left: an empty
+        // shell is not worth failing an otherwise complete install over.
+        if let remaining = try? fm.contentsOfDirectory(atPath: source.path), remaining.isEmpty {
+            try? fm.removeItem(at: source)
+        }
+    }
+
     /// Verifies what landed and clears the partial marker. Throws with the
     /// directory left marked partial when the check fails, so a retry resumes
     /// instead of the next run trusting a broken install.

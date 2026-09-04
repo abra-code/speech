@@ -88,8 +88,13 @@ a drift gets noticed.
 
 | id prefix | backend | stage |
 | --- | --- | --- |
-| `fluid` | FluidAudio 0.15.6, CoreML on the ANE, macOS 14+ | 1 |
-| `ggml` | transcribe.cpp 0.2.3 xcframework, ggml with Metal, macOS 13+ | 2 |
+| `fluid` | FluidAudio 0.15.6, CoreML on the ANE | 1 |
+| `ggml` | transcribe.cpp 0.2.3 xcframework, ggml with Metal | 2 |
+
+Both libraries would run lower - FluidAudio declares macOS 14 and transcribe.cpp
+macOS 13 - but the binary's deployment target is macOS 15, set by
+`fluid.canary-1b-v2@int4`, whose int4 weight payloads need CoreML's macOS 15
+runtime and which has no other published precision.
 
 A build without those targets simply has no `fluid` or `ggml` entry in the
 engine registry and reports `unavailable` for those ids, rather than failing to

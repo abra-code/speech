@@ -121,8 +121,102 @@ enum FluidModelFiles {
         }
     }
 
+    /// `CanaryModels.modelsExist`, plus the check it is missing.
+    ///
+    /// Theirs is `fileExists` over five names, four of which are `.mlmodelc`
+    /// *directories*. The downloader creates each bundle directory before it
+    /// fetches a single file inside it, so for most of a 569 MB download all
+    /// five paths exist and none of the weights are complete. Taking their
+    /// answer alone made an interruption in that window - which is the normal
+    /// place to be interrupted, not an edge case - report `installed` at 0 B,
+    /// clear the partial marker, and fail later at `MLModel(contentsOf:)`
+    /// instead of at exit 3.
+    ///
+    /// Every compiled bundle FluidAudio ships carries `coremldata.bin` at its
+    /// root, so requiring it closes the reachable window. It does not make the
+    /// check airtight - a truncated `weight.bin` inside a complete-looking
+    /// bundle would still pass - and nothing short of a checksum would.
     static func canary(precision: CanaryPrecision) -> ModelCompletenessCheck {
-        { directory in CanaryModels.modelsExist(at: directory, precision: precision) }
+        { directory in
+            CanaryModels.modelsExist(at: directory, precision: precision)
+                && canaryBundles(precision: precision).allSatisfy {
+                    FileManager.default.fileExists(
+                        atPath: directory.appendingPathComponent("\($0).mlmodelc/coremldata.bin").path)
+                }
+        }
+    }
+
+    /// The four compiled bundles a Canary row must carry.
+    ///
+    /// `CanaryPrecision.encoderName` and `.decoderName` say this already but
+    /// are internal to FluidAudio, so the mapping is repeated here from their
+    /// public `ModelNames.Canary` constants. Duplication is safe in this one
+    /// direction: this list only ever *adds* a requirement on top of
+    /// `CanaryModels.modelsExist`, so a name that drifted out of date makes a
+    /// row read as permanently incomplete - loud and immediate - rather than as
+    /// wrongly complete.
+    static func canaryBundles(precision: CanaryPrecision) -> [String] {
+        let encoder: String
+        let decoder: String
+        switch precision {
+        case .int4:
+            encoder = ModelNames.Canary.encoderInt4
+            decoder = ModelNames.Canary.decoderInt4
+        case .int8:
+            encoder = ModelNames.Canary.encoderInt8
+            decoder = ModelNames.Canary.decoderInt8
+        case .fp16:
+            encoder = ModelNames.Canary.encoder
+            decoder = ModelNames.Canary.decoder
+        @unknown default:
+            encoder = ModelNames.Canary.encoderInt4
+            decoder = ModelNames.Canary.decoderInt4
+        }
+        return [ModelNames.Canary.preprocessor, ModelNames.Canary.projection, encoder, decoder]
+    }
+
+    /// Every entry a Canary row owns: the four bundles, the vocabulary the
+    /// tokenizer reads, and the repo's own metadata. This is what `adopt` takes
+    /// out of the shared cache, so anything else there - another application's
+    /// weights for a different precision, most obviously - is left alone rather
+    /// than dragged into this row.
+    static func canaryEntries(precision: CanaryPrecision) -> Set<String> {
+        Set(canaryBundles(precision: precision).map { "\($0).mlmodelc" })
+            .union([ModelNames.Canary.vocabularyFile, "metadata.json"])
+    }
+
+    /// Deletes the required entries that are present but unusable, so that
+    /// FluidAudio's own existence-only `modelsExist` cannot mistake a truncated
+    /// cache for a finished one and skip the fetch that would repair it.
+    ///
+    /// Without this, an interrupted download is unrepairable and the program
+    /// cannot say so. `CanaryModels.download` early-returns on the same
+    /// five-path test described above, so a cache holding four empty bundle
+    /// directories makes every retry fetch nothing, forever, and the only
+    /// repair is deleting a cache directory this program never names.
+    ///
+    /// Deliberately not `force: true`, which FluidAudio offers and which would
+    /// be one line: that removes the whole repo directory, and the directory is
+    /// shared per repository rather than per precision, so it would destroy
+    /// another application's complete Canary while repairing ours. Only entries
+    /// that are present *and* incomplete are removed, so a complete bundle is
+    /// never touched no matter who downloaded it.
+    static func evictIncompleteCanary(at directory: URL, precision: CanaryPrecision) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: directory.path) else { return }
+        for name in canaryBundles(precision: precision) {
+            let bundle = directory.appendingPathComponent("\(name).mlmodelc")
+            guard fm.fileExists(atPath: bundle.path),
+                  !fm.fileExists(atPath: bundle.appendingPathComponent("coremldata.bin").path)
+            else { continue }
+            try? fm.removeItem(at: bundle)
+        }
+        // An empty vocab.json satisfies their check and then throws inside the
+        // tokenizer, which is the same failure one step later.
+        let vocabulary = directory.appendingPathComponent(ModelNames.Canary.vocabularyFile)
+        if let size = try? fm.attributesOfItem(atPath: vocabulary.path)[.size] as? Int, size == 0 {
+            try? fm.removeItem(at: vocabulary)
+        }
     }
 
     static var ctc: ModelCompletenessCheck {
@@ -249,6 +343,29 @@ enum FluidPaths {
     /// first user's model, with `models list` showing one row either way. The
     /// row id promises multilingual; "auto" is what delivers it.
     static let nemotronLanguageCode = "auto"
+
+    /// Where `CanaryModels.download` puts its files, which is nowhere this
+    /// program chose.
+    ///
+    /// This family's downloader takes no directory argument at all: it resolves
+    /// to a private `modelsRootDirectory()` under `~/Library/Application
+    /// Support/FluidAudio/Models`, and 0.15.6 exposes no repo-override hook.
+    /// `load(from:)` and `modelsExist(at:)` do take a directory, so the route
+    /// is download into their cache, move the tree into the row, then load the
+    /// row - which is what `ModelStore.adopt` is for.
+    ///
+    /// Recomputed here rather than read back from `download`'s return value
+    /// because `install` has to know whether the cache was already populated
+    /// *before* it downloads: a cache some other application filled is not
+    /// this program's to empty.
+    static var canaryCache: URL {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first ?? FileManager.default.temporaryDirectory
+        return root
+            .appendingPathComponent("FluidAudio", isDirectory: true)
+            .appendingPathComponent("Models", isDirectory: true)
+            .appendingPathComponent(Repo.canary1bV2.folderName, isDirectory: true)
+    }
 
     /// Where `downloadVariant` puts a Nemotron multilingual ship.
     ///

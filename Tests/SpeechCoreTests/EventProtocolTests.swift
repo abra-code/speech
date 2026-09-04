@@ -43,7 +43,7 @@ struct EventProtocolTests {
         let capabilities = EngineCapabilities(
             batch: true, live: true, wordTimestamps: true, segmentTimestamps: true,
             vocabulary: true, diarization: false, languageID: true, languageHint: true,
-            languages: ["en", "pl"], minimumMacOS: "14.0")
+            languages: ["en", "pl"], minimumMacOS: "15.0")
 
         _ = try roundTrip(.engineReady(.init(
             engine: "apple.transcriber", model: "apple.transcriber",
