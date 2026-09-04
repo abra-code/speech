@@ -14,6 +14,7 @@ public enum FluidEngineFactory {
     /// `speech engines` never advertises one it would then reject.
     public static let implementedModels = [
         "parakeet-v3", "nemotron-multilingual", "canary-1b-v2", "parakeet-unified",
+        "parakeet-ctc-110m",
     ]
 
     /// Every `(model, variant)` this build can construct, in catalog order.
@@ -22,11 +23,28 @@ public enum FluidEngineFactory {
     /// `make` switch below cannot drift: a variant listed and not buildable is
     /// a row a user is invited to download and then refused. The variant sets
     /// are read from the flavor types for the same reason.
-    public static let catalogRows: [(model: String, variant: String?)] =
-        [("parakeet-v3", "int8"), ("parakeet-v3", "int4")]
-        + NemotronFlavor.chunkTiers.map { ("nemotron-multilingual", String($0)) }
-        + [("canary-1b-v2", "int4")]
-        + [("parakeet-unified", "int8"), ("parakeet-unified", "fp16")]
+    public static let catalogRows: [(model: String, variant: String?)] = buildCatalogRows()
+
+    /// Built in a function rather than as one chained expression: the type
+    /// checker gives up on a long `+` chain of tuple literals with optional
+    /// members.
+    private static func buildCatalogRows() -> [(model: String, variant: String?)] {
+        var rows: [(model: String, variant: String?)] = []
+        for variant in ["int8", "int4"] {
+            rows.append((model: "parakeet-v3", variant: variant))
+        }
+        for tier in NemotronFlavor.chunkTiers {
+            rows.append((model: "nemotron-multilingual", variant: String(tier)))
+        }
+        rows.append((model: "canary-1b-v2", variant: "int4"))
+        for variant in ["int8", "fp16"] {
+            rows.append((model: "parakeet-unified", variant: variant))
+        }
+        // The spotter has no variants and is not a transcriber, but it is a row
+        // a user downloads and deletes, so it belongs in the listing.
+        rows.append((model: "parakeet-ctc-110m", variant: nil))
+        return rows
+    }
 
     public static func make(_ spec: EngineSpec) throws -> any TranscriptionEngine {
         // FluidAudio's CoreML packages are compiled for the Neural Engine and
@@ -49,6 +67,11 @@ public enum FluidEngineFactory {
         case "parakeet-unified":
             return UnifiedEngine(spec: spec, flavor: try UnifiedFlavor.parse(
                 model: spec.model, variant: spec.variant))
+        case "parakeet-ctc-110m":
+            guard spec.variant == nil else {
+                throw SpeechError.usage("'\(spec.model)' has no variants")
+            }
+            return SpotterEngine(spec: spec)
         default:
             throw SpeechError.usage(
                 "unknown FluidAudio model '\(spec.model)'"

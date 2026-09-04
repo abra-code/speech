@@ -200,6 +200,26 @@ expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.parak
 expect_code 3 "$SPEECH" --models-dir "$MODELS" \
     transcribe --model fluid.parakeet-unified@int8 "$TMP/fox.aiff"
 expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-unified@int8
+
+# The CTC spotter is a store row like any other - downloadable, listable,
+# deletable - but not a transcriber, and it has no variants.
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-ctc-110m
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-ctc-110m@int8
+expect_code 2 "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model fluid.parakeet-ctc-110m "$TMP/fox.aiff"
+# "not batch" used to be reported as "live-only", which is wrong for a row that
+# is neither and sends the reader to `speech stream`, which refuses it too.
+expect_grep_err "not a transcription engine" "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model fluid.parakeet-ctc-110m "$TMP/fox.aiff"
+
+# An engine with no vocabulary support warns and continues, rather than
+# failing: the terms are a hint there, not a dependency. The opposite case -
+# an engine that *does* support them, with the spotter row absent - needs a
+# real model on disk to reach, so it is verified by hand rather than here.
+printf 'Solanki\nKirchner\n' > "$TMP/vocab.txt"
+expect_grep_err "cannot bias recognition" "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model apple.transcriber --vocab "$TMP/vocab.txt" "$TMP/fox.aiff"
+
 # The marker outranks any file check for this row too. It matters most here:
 # this is the only family whose install verifies by loading, so it is the only
 # one that can leave a row marked partial while holding a complete download.

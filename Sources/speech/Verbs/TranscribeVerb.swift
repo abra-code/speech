@@ -74,8 +74,24 @@ func runTranscribe(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [St
 
     let engine = try makeRegistry().make(catalogID: model, modelsDirectory: globals.modelsDirectory)
     if !engine.capabilities.batch {
-        throw SpeechError.usage("\(model) cannot transcribe files; it is a live-only engine")
+        // "Not batch" stopped implying "live" once the catalog gained a row
+        // that is neither: `fluid.parakeet-ctc-110m` is the spotter other rows
+        // use for custom vocabulary. Telling its user it is a live-only engine
+        // sends them to `speech stream`, which refuses it too.
+        throw SpeechError.usage(
+            engine.capabilities.live
+                ? "\(model) cannot transcribe files; it is a live-only engine"
+                : "\(model) cannot transcribe files; it is not a transcription engine")
     }
+    // Before the file is decoded and the weights are loaded. The engine gets to
+    // refuse a request it can already tell it cannot serve - today that is a
+    // custom vocabulary whose spotter row is not installed, which would
+    // otherwise surface after an hour of audio had been transcribed and thrown
+    // away.
+    try await engine.validate(
+        TranscribeOptions(
+            language: language, vocabulary: vocabulary,
+            wantWordTimestamps: timestamps == .word))
     if !engine.capabilities.supports(language: language) {
         // A warning, not a refusal. The capability list is a catalog fact that
         // can lag an OS update or a model release; the engine's own resolution

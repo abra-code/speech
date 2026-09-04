@@ -64,6 +64,11 @@ public enum Evaluator {
         }
         if languagesToPrepare.isEmpty { languagesToPrepare = [language] }
 
+        // Same pre-flight the transcribe path does, and it matters more here:
+        // a measuring run that discovers a missing dependency on row 200 has
+        // wasted far more than one file.
+        try await engine.validate(TranscribeOptions(language: language, wantWordTimestamps: false))
+
         let loadStart = ContinuousClock().now
         var resolvedLocales: [String] = []
         for candidate in languagesToPrepare {

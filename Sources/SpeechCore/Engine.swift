@@ -215,6 +215,21 @@ public protocol TranscriptionEngine: Sendable {
     /// files", and neither keeps a table of the other's facts.
     nonisolated var completenessCheck: ModelCompletenessCheck? { get }
 
+    /// Check what can be checked about a request before any audio is decoded.
+    ///
+    /// Exists because the expensive work comes first otherwise. Custom
+    /// vocabulary needs a second model in the store, and whether that row is
+    /// present is a filesystem question with no dependence on the audio, the
+    /// decode or the loaded weights - but the engine only sees the terms when
+    /// `transcribe` is called, by which point an hour of audio has been decoded
+    /// and a gigabyte of weights loaded. Discovering there that the answer was
+    /// "install another model first" throws all of it away.
+    ///
+    /// Cheap by contract: no downloads, no model loads, no audio. Throws the
+    /// same errors `transcribe` would, so a caller that skips it gets the same
+    /// outcome later rather than a different one.
+    func validate(_ options: TranscribeOptions) async throws
+
     /// Fetch this row's weights into its directory.
     ///
     /// Separate from `prepare` on purpose. A FluidAudio row is one to three
@@ -229,6 +244,9 @@ public protocol TranscriptionEngine: Sendable {
 extension TranscriptionEngine {
     /// Engines that ship no weights of their own need not implement these.
     public nonisolated var completenessCheck: ModelCompletenessCheck? { nil }
+
+    /// Nothing to check ahead of time is the common case.
+    public func validate(_ options: TranscribeOptions) async throws {}
 
     public func install(progress: @escaping LoadProgressHandler) async throws {
         throw SpeechError.usage("'\(id)' has no downloadable weights of its own")

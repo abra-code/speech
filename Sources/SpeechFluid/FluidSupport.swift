@@ -224,8 +224,31 @@ enum FluidModelFiles {
         }
     }
 
+    /// The CTC spotter row.
+    ///
+    /// `CtcModels.modelsExist` covers the two bundles and `vocab.json`, applied
+    /// at the repo subdirectory rather than the row - it does no rewrite of its
+    /// own, unlike the `download` beside it. Two additions on top.
+    ///
+    /// The bundles go through `isCompiledBundle`, for the same reason as
+    /// everywhere else: a directory the downloader created but has not filled
+    /// is not a model.
+    ///
+    /// And `tokenizer.json` is required, which their check does not ask for.
+    /// The spotter itself never reads it, but `VocabularyRescorer.create` does,
+    /// through `CtcTokenizer` - so without it the row installs cleanly, reports
+    /// `installed`, and then fails the first time somebody passes
+    /// `--vocabulary`. Requiring it here turns that into a download
+    /// instruction.
     static var ctc: ModelCompletenessCheck {
-        { directory in CtcModels.modelsExist(at: directory) }
+        { rowDirectory in
+            let directory = FluidPaths.ctcRepo(in: rowDirectory)
+            guard CtcModels.modelsExist(at: directory) else { return false }
+            guard FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent("tokenizer.json").path) else { return false }
+            return [ModelNames.CTC.melSpectrogramPath, ModelNames.CTC.audioEncoderPath]
+                .allSatisfy { isCompiledBundle(directory.appendingPathComponent($0)) }
+        }
     }
 
     /// Nemotron multilingual ships no `modelsExist`, so this list is ours - and
@@ -375,6 +398,24 @@ enum FluidPaths {
     static func parakeetRepo(in rowDirectory: URL, version: AsrModelVersion) -> URL {
         rowDirectory.appendingPathComponent(
             AsrModels.defaultCacheDirectory(for: version).lastPathComponent, isDirectory: true)
+    }
+
+    /// Where the CTC spotter's files go.
+    ///
+    /// This family uses the `AsrModels` convention, not the appending one:
+    /// `CtcModels.download(to:)` takes the *target* directory, then hands its
+    /// parent to `ModelHub`, which appends the repo folder back on. Handing it
+    /// the row directory would therefore write to the row's *sibling* - the
+    /// original Parakeet bug - so it is handed `<row>/<folderName>`, which
+    /// makes the round trip a no-op.
+    ///
+    /// `modelsExist(at:)` does no rewrite at all and wants this same directory,
+    /// while `load(from:)` wants its parent. Three functions in one type, two
+    /// conventions between them, which is why none of these paths are spelled
+    /// out at a call site.
+    static func ctcRepo(in rowDirectory: URL) -> URL {
+        rowDirectory.appendingPathComponent(
+            CtcModelVariant.ctc110m.repo.folderName, isDirectory: true)
     }
 
     /// Where `UnifiedAsrManager.loadModels(to:)` puts its files.

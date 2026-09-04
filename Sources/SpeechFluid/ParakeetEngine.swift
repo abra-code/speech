@@ -80,6 +80,13 @@ actor ParakeetEngine: TranscriptionEngine {
     /// in-flight load never sees its own `progress:` closure fire, because only
     /// the first caller's handler is wired to FluidAudio.
     private var loading: Task<Void, Error>?
+    /// The vocabulary booster, built on first use and kept while the term list
+    /// is unchanged. See `booster(for:)` for why it is guarded rather than
+    /// simply assigned.
+    private var booster: VocabularyBooster?
+    private var boosterTask: Task<VocabularyBooster, Error>?
+    /// Bumped by `unload()`, so a booster load that outlives it is not cached.
+    private var boosterEpoch = 0
 
     init(spec: EngineSpec, flavor: ParakeetFlavor) {
         self.spec = spec
@@ -98,11 +105,13 @@ actor ParakeetEngine: TranscriptionEngine {
             live: false,
             wordTimestamps: true,
             segmentTimestamps: true,
-            // Vocabulary boosting needs the CTC spotter row (fluid.parakeet-ctc-110m)
-            // as a second download. Until that lands, the honest answer is
-            // false, so `transcribe --vocabulary` warns and continues instead
-            // of silently ignoring the terms.
-            vocabulary: false,
+            // Through the CTC spotter row (`fluid.parakeet-ctc-110m`), which is
+            // a second download this row does not require until somebody
+            // actually passes terms. `true` here means "will honor them or say
+            // why", not "has everything it needs on disk" - the store answers
+            // that, and `transcribe` turns a missing spotter into exit 3 with
+            // the download command rather than a silently unbiased transcript.
+            vocabulary: true,
             diarization: false,
             languageID: false,
             languageHint: true,
@@ -195,6 +204,52 @@ actor ParakeetEngine: TranscriptionEngine {
         try store.finishInstall(spec, isComplete: check)
     }
 
+
+
+    /// Fails now rather than after the audio has been decoded and the weights
+    /// loaded: whether the spotter row is installed is a filesystem question
+    /// that does not need any of that.
+    func validate(_ options: TranscribeOptions) async throws {
+        guard !options.vocabulary.isEmpty else { return }
+        try VocabularyBooster.requireSpotter(modelsDirectory: spec.modelsDirectory)
+    }
+
+    /// The booster for this call's terms, or nil when none were asked for.
+    ///
+    /// Built lazily because the terms arrive with the transcribe call and not
+    /// before it, and cached because loading the spotter is a 103 MB model
+    /// load. The cache is not exercised by the CLI today - `transcribe` makes
+    /// one call per process and `eval` passes no vocabulary - so it is there
+    /// for the embedded callers stage 5 brings, not for a measurement this
+    /// change can claim.
+    ///
+    /// Two hazards, both from `load` being a suspension point in a reentrant
+    /// actor. A second caller arriving during the load must join it rather than
+    /// start its own 103 MB load, and a load that finishes after `unload()` has
+    /// run must not quietly re-populate an engine that reported its memory
+    /// freed. The epoch answers the second; joining the in-flight task answers
+    /// the first.
+    private func booster(for terms: [String]) async throws -> VocabularyBooster? {
+        guard !terms.isEmpty else { return nil }
+        if let booster, booster.terms == terms { return booster }
+        if let boosterTask {
+            // A failed load must not stop this caller from trying its own.
+            _ = try? await boosterTask.value
+            if let booster, booster.terms == terms { return booster }
+        }
+        let started = boosterEpoch
+        let task = Task {
+            try await VocabularyBooster.load(terms: terms, modelsDirectory: spec.modelsDirectory)
+        }
+        boosterTask = task
+        defer { if started == boosterEpoch { boosterTask = nil } }
+        let built = try await task.value
+        // Usable for this call either way; cached only if the engine is still
+        // the one that asked for it.
+        if started == boosterEpoch { booster = built }
+        return built
+    }
+
     func unload() async {
         // cleanup() also drops FluidAudio's process-global MLMultiArray cache,
         // which is prewarmed with 15-second buffers and owned by no manager
@@ -203,6 +258,9 @@ actor ParakeetEngine: TranscriptionEngine {
         // precisely to give the memory back.
         await manager?.cleanup()
         manager = nil
+        boosterEpoch &+= 1
+        boosterTask = nil
+        booster = nil
     }
 
     // MARK: - Transcription
@@ -229,10 +287,19 @@ actor ParakeetEngine: TranscriptionEngine {
             throw SpeechError.runtime("'\(id)' failed to transcribe: \(error.localizedDescription)")
         }
 
-        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return [] }
 
-        let duration = Double(samples.count) / 16000.0
+        // Rescoring happens after decoding and only rewrites words, so the
+        // timings below still describe the audio even when the text changed.
+        // FluidAudio makes the same choice in its own boosting path.
+        if let booster = try await booster(for: options.vocabulary),
+           let boosted = await booster.rescore(
+               text: text, timings: result.tokenTimings ?? [], samples: samples) {
+            text = boosted
+        }
+
+        let duration = Double(samples.count) / AudioDecoder.sampleRate
         let words = Self.words(from: result.tokenTimings, wanted: options.wantWordTimestamps)
         return [
             Segment(

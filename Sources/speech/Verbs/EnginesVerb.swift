@@ -120,10 +120,17 @@ func runEngines(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [Strin
         let name = engine.id.padding(toLength: width, withPad: " ", startingAt: 0)
         let state = engine.available ? "available" : "unavailable"
         var line = "\(name)  \(state.padding(toLength: 11, withPad: " ", startingAt: 0))"
-        line += capabilityFlags(engine.capabilities).joined(separator: ", ")
+        // A row can legitimately have no capability flags at all - the CTC
+        // spotter is a store row rather than a transcriber - and the separator
+        // between flags and languages then has nothing on its left. Build the
+        // pieces and join what is actually there.
+        var parts: [String] = []
+        let flags = capabilityFlags(engine.capabilities)
+        if !flags.isEmpty { parts.append(flags.joined(separator: ", ")) }
         if !engine.capabilities.languages.isEmpty {
-            line += "; " + engine.capabilities.languages.joined(separator: " ")
+            parts.append(engine.capabilities.languages.joined(separator: " "))
         }
+        line += parts.joined(separator: "; ")
         sink.text(line)
         if let reason = engine.reason {
             sink.text(String(repeating: " ", count: width + 2) + "  \(reason)")
