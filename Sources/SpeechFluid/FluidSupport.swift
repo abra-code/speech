@@ -132,16 +132,21 @@ enum FluidModelFiles {
     /// clear the partial marker, and fail later at `MLModel(contentsOf:)`
     /// instead of at exit 3.
     ///
-    /// Every compiled bundle FluidAudio ships carries `coremldata.bin` at its
-    /// root, so requiring it closes the reachable window. It does not make the
-    /// check airtight - a truncated `weight.bin` inside a complete-looking
-    /// bundle would still pass - and nothing short of a checksum would.
+    /// `isCompiledBundle` is the answer, and it is FluidAudio's own: their
+    /// `ModelCache` calls a `.mlmodelc` loadable when it is a directory holding
+    /// `coremldata.bin` with no `.partial` staging file left underneath. This
+    /// check was written before that was found, requiring only the manifest;
+    /// sharing the validator adds the staging-file half, which matters because
+    /// a bundle can carry its manifest and still be missing the weights that
+    /// were in flight.
+    ///
+    /// It still is not airtight - a truncated `weight.bin` that was fully
+    /// renamed into place would pass - and nothing short of a checksum would.
     static func canary(precision: CanaryPrecision) -> ModelCompletenessCheck {
         { directory in
             CanaryModels.modelsExist(at: directory, precision: precision)
                 && canaryBundles(precision: precision).allSatisfy {
-                    FileManager.default.fileExists(
-                        atPath: directory.appendingPathComponent("\($0).mlmodelc/coremldata.bin").path)
+                    isCompiledBundle(directory.appendingPathComponent("\($0).mlmodelc"))
                 }
         }
     }
@@ -276,21 +281,60 @@ enum FluidModelFiles {
         }
     }
 
-    /// Parakeet Unified, likewise. The encoder is matched by prefix because its
-    /// file name carries the precision.
-    static var unified: ModelCompletenessCheck {
-        { directory in
-            let fm = FileManager.default
-            guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else { return false }
-            let set = Set(names)
+    /// Parakeet Unified.
+    ///
+    /// The file list is FluidAudio's own - the `requiredFiles` set their
+    /// `loadModels(to:)` hands to `loadWithRecovery` - rather than a list read
+    /// off the repository, so a pin bump that renames a bundle moves this with
+    /// it. Note what is absent: the repo ships `parakeet_unified_preprocessor`
+    /// and `parakeet_unified_mel_encoder`, and the loader opens neither,
+    /// because the mel front end is computed in Swift.
+    ///
+    /// The bundle validation mirrors `ModelCache.validateCompiledModelLayout`,
+    /// which is FluidAudio's own definition of a loadable `.mlmodelc`: a
+    /// directory containing `coremldata.bin`. Their downloader applies it too,
+    /// which is why this family needs none of the cache repair Canary does -
+    /// but `prepare` never downloads, so the check still has to be able to tell
+    /// a half-written bundle from a finished one on its own.
+    static func unified(precision: UnifiedEncoderPrecision) -> ModelCompletenessCheck {
+        { rowDirectory in
+            let directory = FluidPaths.unifiedRepo(in: rowDirectory)
+            let names = ModelNames.ParakeetUnified.self
             let required = [
-                "parakeet_unified_decoder.mlmodelc",
-                "parakeet_unified_joint_decision_single_step.mlmodelc",
-                "vocab.json", "metadata.json",
+                names.offlineEncoderFile(precision: precision),
+                names.decoderFile,
+                names.jointDecisionFile,
+                names.vocab,
             ]
-            guard required.allSatisfy(set.contains) else { return false }
-            return names.contains { $0.hasPrefix("parakeet_unified_encoder") && $0.hasSuffix(".mlmodelc") }
+            return required.allSatisfy { name in
+                let path = directory.appendingPathComponent(name)
+                guard name.hasSuffix(".mlmodelc") else {
+                    return FileManager.default.fileExists(atPath: path.path)
+                }
+                return isCompiledBundle(path)
+            }
         }
+    }
+
+    /// A loadable compiled CoreML bundle: a directory with `coremldata.bin` in
+    /// it and no `.partial` staging file left anywhere underneath.
+    ///
+    /// Both halves matter and both come from FluidAudio's own cache validator.
+    /// The downloader creates a bundle directory before it fetches the files
+    /// inside, so existence alone reports a half-written model as finished; and
+    /// it stages each file as `<name>.partial`, so a bundle can hold
+    /// `coremldata.bin` and still be missing the weights that were in flight.
+    static func isCompiledBundle(_ url: URL) -> Bool {
+        let fm = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue,
+              fm.fileExists(atPath: url.appendingPathComponent("coremldata.bin").path)
+        else { return false }
+        guard let walker = fm.enumerator(at: url, includingPropertiesForKeys: nil) else { return true }
+        for case let item as URL in walker where item.pathExtension == "partial" {
+            return false
+        }
+        return true
     }
 
     /// A check that every named entry exists. Directory or file both count: a
@@ -331,6 +375,17 @@ enum FluidPaths {
     static func parakeetRepo(in rowDirectory: URL, version: AsrModelVersion) -> URL {
         rowDirectory.appendingPathComponent(
             AsrModels.defaultCacheDirectory(for: version).lastPathComponent, isDirectory: true)
+    }
+
+    /// Where `UnifiedAsrManager.loadModels(to:)` puts its files.
+    ///
+    /// The same appending convention as Nemotron rather than the `AsrModels`
+    /// rewrite: the argument is treated as a models root and the repo folder is
+    /// appended, so handing it the row directory keeps everything inside the
+    /// row and the loader's directory is one component below it.
+    static func unifiedRepo(in rowDirectory: URL) -> URL {
+        rowDirectory.appendingPathComponent(
+            Repo.parakeetUnified.folderName, isDirectory: true)
     }
 
     /// The language code every Nemotron download in this program uses.

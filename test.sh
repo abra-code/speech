@@ -184,6 +184,32 @@ expect_code 3 "$SPEECH" --models-dir "$MODELS" \
     transcribe --model fluid.canary-1b-v2@int4 "$TMP/fox.aiff"
 expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.canary-1b-v2@int4
 
+# Parakeet Unified: both precisions are real rows, and its weights sit one
+# directory below the row, so a check at the wrong level would call this
+# installed. The bundle needs its manifest, which is what an interrupted fetch
+# leaves out.
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@int8
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@fp16
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@int4
+UNIFIED="$MODELS/fluid/parakeet-unified@int8/parakeet-unified-en-0.6b"
+mkdir -p "$UNIFIED/parakeet_unified_encoder_int8.mlmodelc"
+mkdir -p "$UNIFIED/parakeet_unified_decoder.mlmodelc"
+mkdir -p "$UNIFIED/parakeet_unified_joint_decision_single_step.mlmodelc"
+: > "$UNIFIED/vocab.json"
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@int8
+expect_code 3 "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model fluid.parakeet-unified@int8 "$TMP/fox.aiff"
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-unified@int8
+# The marker outranks any file check for this row too. It matters most here:
+# this is the only family whose install verifies by loading, so it is the only
+# one that can leave a row marked partial while holding a complete download.
+mkdir -p "$MODELS/fluid/parakeet-unified@int8"
+touch "$MODELS/fluid/parakeet-unified@int8/.partial"
+expect_grep "partial" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@int8
+expect_code 3 "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model fluid.parakeet-unified@int8 "$TMP/fox.aiff"
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-unified@int8
+
 echo "== decode =="
 expect_ok "$SPEECH" decode "$TMP/fox.aiff" --output "$TMP/fox.wav"
 if [ ! -s "$TMP/fox.wav" ]; then fail "decode produced no wav"; fi

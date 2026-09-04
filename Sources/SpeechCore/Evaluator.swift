@@ -67,6 +67,19 @@ public enum Evaluator {
         let loadStart = ContinuousClock().now
         var resolvedLocales: [String] = []
         for candidate in languagesToPrepare {
+            // `transcribe` warns about a language the engine does not claim;
+            // this is the same warning for the measuring path, which did not
+            // have one. A measurement tool silently scoring an English-only
+            // model against a Polish reference reports a WER that looks like a
+            // result and is not - which is worse here than in `transcribe`,
+            // because the number gets written into a report.
+            if !engine.capabilities.supports(language: candidate) {
+                sink.warning(
+                    "\(catalogID) does not list '\(candidate ?? "")' among its languages"
+                    + " (\(engine.capabilities.languages.joined(separator: " ")));"
+                    + " the scores for those rows will not mean anything",
+                    code: "language_unsupported")
+            }
             let resolved = try await engine.prepare(language: candidate) { progress in
                 sink.modelProgress(model: catalogID, progress)
             }

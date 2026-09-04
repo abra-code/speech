@@ -108,6 +108,28 @@ struct CanaryTests {
         #expect(FluidModelFiles.canary(precision: .int4)(row) == false)
     }
 
+    @Test("a staging file left inside a bundle makes it incomplete")
+    func partialStagingFileIsIncomplete() throws {
+        let row = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: row) }
+
+        try makeEmptyBundles(row)
+        try writeVocabulary(row)
+        for name in FluidModelFiles.canaryBundles(precision: .int4) {
+            try fill(row, name)
+        }
+        #expect(FluidModelFiles.canary(precision: .int4)(row) == true)
+
+        // The half this check was missing until it moved onto FluidAudio's own
+        // bundle validator: files are staged as `<name>.partial`, so a bundle
+        // can carry its manifest and still be missing the weights that were in
+        // flight when the download died.
+        let weights = row.appendingPathComponent("EncoderInt4.mlmodelc/weights")
+        try FileManager.default.createDirectory(at: weights, withIntermediateDirectories: true)
+        try Data().write(to: weights.appendingPathComponent("weight.bin.partial"))
+        #expect(FluidModelFiles.canary(precision: .int4)(row) == false)
+    }
+
     @Test("eviction clears the wreckage that would block a retry")
     func evictionUnblocksARetry() throws {
         let cache = try makeDirectory()
