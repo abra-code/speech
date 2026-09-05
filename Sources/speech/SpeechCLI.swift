@@ -24,7 +24,7 @@ let gVerbs: [VerbEntry] = [
     VerbEntry(name: "engines", summary: "List the engines in this build with their capability flags", run: runEngines),
     VerbEntry(name: "models", summary: "Install Apple locales; download and manage model files", run: runModels),
     VerbEntry(name: "transcribe", summary: "Transcribe an audio or video file", run: runTranscribe),
-    VerbEntry(name: "eval", summary: "Score a model against a manifest (WER, CER, RTFx, peak RSS)", run: runEval),
+    VerbEntry(name: "eval", summary: "Score a model against a manifest (WER, CER, RTFx, peak memory)", run: runEval),
     VerbEntry(name: "export", summary: "Convert a saved json transcript to txt, srt or vtt", run: runExport),
     VerbEntry(name: "decode", summary: "Write the decoded 16 kHz mono wav a model would receive", run: runDecode),
 ]

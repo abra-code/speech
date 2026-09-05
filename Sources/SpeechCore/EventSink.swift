@@ -204,16 +204,16 @@ public final class EventSink: @unchecked Sendable {
         case .done(let d):
             statusDone("Done: \(d.segments) segments, \(fmt(d.audioSeconds))s audio in"
                 + " \(fmt(d.wallSeconds))s (\(fmt(d.rtfx))x real time),"
-                + " peak RSS \(SystemInfo.formatBytes(d.peakRSSBytes))")
+                + " peak memory \(SystemInfo.formatBytes(d.peakMemoryBytes))")
         case .evalRow(let r):
             statusDone(String(format: "[%d] WER %.2f%%  CER %.2f%%  %@",
                               r.index, r.wer * 100, r.cer * 100,
                               (r.path as NSString).lastPathComponent))
         case .evalSummary(let s):
             statusDone(String(
-                format: "%@ %@: %d rows, WER %.2f%%, CER %.2f%%, %.1fx real time, peak RSS %@",
+                format: "%@ %@: %d rows, WER %.2f%%, CER %.2f%%, %.1fx real time, peak memory %@",
                 s.model, s.language ?? "-", s.rows, s.wer * 100, s.cer * 100, s.rtfx,
-                SystemInfo.formatBytes(s.peakRSSBytes)))
+                SystemInfo.formatBytes(s.peakMemoryBytes)))
         }
     }
 

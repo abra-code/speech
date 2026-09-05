@@ -12,9 +12,16 @@
 //  3. Corpus WER is total edits over total reference tokens, never the mean of
 //     per-row rates. See ScoreCounts.combine.
 //
-// Peak RSS is reported as the process peak (`peak_rss_bytes`, the same meaning
-// it has in a `done` event) so it can be compared against published figures for
-// other tools. The baseline taken before prepare() and the resulting delta go
+// Memory is reported twice, and the two numbers are not interchangeable.
+// `peak_rss_bytes` is the process peak, kept because published figures for
+// other tools are RSS - but it is not reproducible here. A CoreML model's
+// weights are mapped for the Neural Engine, and whether those pages are counted
+// in *our* address space is the system's decision: three identical runs of
+// `fluid.parakeet-unified@fp16` measured 1.25 GB, 76 MB and 76 MB.
+// `peak_memory_bytes` is peak footprint plus the Neural Engine's mapping,
+// which over those same three runs stayed within 0.4% - 1291, 1286, 1286 MB.
+// (The Neural Engine half alone was identical to the byte; the footprint is
+// what moves the last few megabytes.) Rank engines by that one. The baseline taken before prepare() and the resulting deltas go
 // into the written report, where the question "what did the model cost" is
 // actually being asked.
 
@@ -25,6 +32,11 @@ public struct EvalOutcome: Sendable {
     public var rows: [SpeechEvent.EvalRow]
     public var skipped: [(index: Int, path: String, reason: String)]
     public var baselineRSSBytes: Int64
+    public var baselineMemoryBytes: Int64
+    /// The full memory breakdown at the end of the run, or nil on a kernel that
+    /// does not carry the ledgers. Nil means the report says so rather than
+    /// printing a footprint that omits half a gigabyte of model.
+    public var memory: SystemInfo.MemorySnapshot?
     public var loadSeconds: Double
     /// The locale identifiers the engine actually used, comma separated. A run
     /// that asked for "de" and measured de_AT has to say so, or its numbers
@@ -42,6 +54,7 @@ public enum Evaluator {
         reportDirectory: URL? = nil
     ) async throws -> EvalOutcome {
         let baselineRSS = SystemInfo.peakResidentBytes()
+        let baselineMemory = SystemInfo.peakMemoryBytes()
 
         // Prepare for every language this run will ask for, before the clock
         // starts on any row. A first run on an uninstalled locale downloads
@@ -180,16 +193,24 @@ public enum Evaluator {
                     reference: $0.reference, hypothesis: $0.hypothesis)
             }
 
+        // One read, because the report prints the two halves and their sum.
+        // Two reads could straddle a page fault and print a breakdown that
+        // does not add up, which in a measurement document reads as a bug in
+        // the measurement.
+        let memory = SystemInfo.memorySnapshot()
         let summary = SpeechEvent.EvalSummary(
             model: catalogID, language: language, rows: emitted.count,
             wer: word.rate, cer: character.rate,
             audioSeconds: totalAudio, wallSeconds: totalWall,
-            peakRSSBytes: SystemInfo.peakResidentBytes(), worst: Array(worst))
+            peakRSSBytes: memory?.residentPeak ?? SystemInfo.peakResidentBytes(),
+            peakMemoryBytes: memory?.peak ?? SystemInfo.peakResidentBytes(),
+            worst: Array(worst))
         sink.emit(.evalSummary(summary))
 
         let outcome = EvalOutcome(
             summary: summary, rows: emitted, skipped: skipped,
-            baselineRSSBytes: baselineRSS, loadSeconds: loadSeconds,
+            baselineRSSBytes: baselineRSS, baselineMemoryBytes: baselineMemory,
+            memory: memory, loadSeconds: loadSeconds,
             resolvedLocales: resolvedLocales.isEmpty ? nil : resolvedLocales.joined(separator: ","))
 
         if let reportDirectory {
@@ -226,6 +247,15 @@ public enum Evaluator {
         var peakRSSBytes: Int64
         var peakRSSBaselineBytes: Int64
         var peakRSSDeltaBytes: Int64
+        /// Peak footprint plus the Neural Engine mapping - the reproducible
+        /// number, and the one a RAM estimate should be built from.
+        var peakMemoryBytes: Int64
+        var peakMemoryBaselineBytes: Int64
+        var peakMemoryDeltaBytes: Int64
+        /// The two halves of `peakMemoryBytes`, absent together on a kernel
+        /// that does not report the ledgers.
+        var peakFootprintBytes: Int64?
+        var peakNeuralBytes: Int64?
 
         private enum CodingKeys: String, CodingKey {
             case model, engine, language, date, machine, os, rows, skipped, wer, cer
@@ -241,6 +271,11 @@ public enum Evaluator {
             case peakRSSBytes = "peak_rss_bytes"
             case peakRSSBaselineBytes = "peak_rss_baseline_bytes"
             case peakRSSDeltaBytes = "peak_rss_delta_bytes"
+            case peakMemoryBytes = "peak_memory_bytes"
+            case peakMemoryBaselineBytes = "peak_memory_baseline_bytes"
+            case peakMemoryDeltaBytes = "peak_memory_delta_bytes"
+            case peakFootprintBytes = "peak_footprint_bytes"
+            case peakNeuralBytes = "peak_neural_bytes"
         }
     }
 
@@ -278,7 +313,12 @@ public enum Evaluator {
             loadSeconds: outcome.loadSeconds,
             peakRSSBytes: summary.peakRSSBytes,
             peakRSSBaselineBytes: outcome.baselineRSSBytes,
-            peakRSSDeltaBytes: max(0, summary.peakRSSBytes - outcome.baselineRSSBytes))
+            peakRSSDeltaBytes: max(0, summary.peakRSSBytes - outcome.baselineRSSBytes),
+            peakMemoryBytes: summary.peakMemoryBytes,
+            peakMemoryBaselineBytes: outcome.baselineMemoryBytes,
+            peakMemoryDeltaBytes: max(0, summary.peakMemoryBytes - outcome.baselineMemoryBytes),
+            peakFootprintBytes: outcome.memory?.footprintPeak,
+            peakNeuralBytes: outcome.memory?.neuralPeak)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes, .sortedKeys]
@@ -303,9 +343,20 @@ public enum Evaluator {
         markdown += row("Wall time", String(format: "%.1f s", summary.wallSeconds))
         markdown += row("RTFx", String(format: "%.1fx", summary.rtfx))
         markdown += row("Load time", String(format: "%.2f s", outcome.loadSeconds))
-        markdown += row("Peak RSS", SystemInfo.formatBytes(summary.peakRSSBytes))
-        markdown += row("Peak RSS above baseline",
-                        SystemInfo.formatBytes(document.peakRSSDeltaBytes))
+        markdown += row("Peak memory", SystemInfo.formatBytes(summary.peakMemoryBytes))
+        if let footprint = document.peakFootprintBytes, let neural = document.peakNeuralBytes {
+            markdown += row("  of which process footprint", SystemInfo.formatBytes(footprint))
+            markdown += row("  of which Neural Engine", SystemInfo.formatBytes(neural))
+        } else {
+            // Without the ledgers "peak memory" is the resident peak wearing a
+            // better name, and a reader comparing this report against another
+            // has to be told which one they are holding.
+            markdown += row("  measured how", "resident peak - this kernel reports no ledgers")
+        }
+        markdown += row("Peak memory above baseline",
+                        SystemInfo.formatBytes(document.peakMemoryDeltaBytes))
+        markdown += row("Peak RSS (not reproducible, see docs/protocol.md)",
+                        SystemInfo.formatBytes(summary.peakRSSBytes))
 
         if !summary.worst.isEmpty {
             markdown += "\n## Ten worst utterances\n\n"

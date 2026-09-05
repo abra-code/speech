@@ -30,7 +30,7 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
                   --limit <n>        Score the first n rows only
                   --report <dir>     Also write summary.json and report.md there
 
-                Reports WER, CER, RTFx and peak RSS. Corpus WER is total edits over
+                Reports WER, CER, RTFx and peak memory. Corpus WER is total edits over
                 total reference words, not the mean of the per-row rates.
                 """)
             return

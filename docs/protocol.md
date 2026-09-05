@@ -63,9 +63,9 @@ an older applet.
 | `segment.refined` | the Segment fields, flat, plus `refined_by` |
 | `warning` | `message`, `code` |
 | `error` | `message`, `code` |
-| `done` | `segments`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `output` |
+| `done` | `segments`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `output` |
 | `eval.row` | `index`, `path`, `reference`, `hypothesis`, `wer`, `cer`, `audio_seconds`, `wall_seconds` |
-| `eval.summary` | `model`, `language`, `rows`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `worst` |
+| `eval.summary` | `model`, `language`, `rows`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `worst` |
 
 `model.entry` is one row of `models list` or `models status`. Its `state` is one
 of:
@@ -142,7 +142,31 @@ Check `rows` before reading `wer`. A run in which every row was skipped reports
 excludes decoding and scoring, which is the right measure for comparing two
 engines and the wrong one for predicting how long a progress bar runs.
 
-`peak_rss_bytes` is the whole process's peak resident size, comparable with
-published figures for other tools. The report written by `--report` also carries
-`peak_rss_baseline_bytes` and `peak_rss_delta_bytes` for the narrower question
-of what the model itself cost.
+`peak_memory_bytes` is the memory number to compare two engines with: the
+process's peak physical footprint plus the model the Neural Engine is holding
+for it. Both halves come from one `TASK_VM_INFO` read, and both are stable -
+five identical runs of `fluid.parakeet-v3@int8` reported the same Neural Engine
+figure to the byte and footprints within 1 MB of each other.
+
+On a kernel that does not report those ledgers, `peak_memory_bytes` falls back
+to the resident peak and equals `peak_rss_bytes`. The event stream carries no
+separate flag for that; the signal is the `--report` JSON, where
+`peak_footprint_bytes` and `peak_neural_bytes` are absent together.
+
+`peak_rss_bytes` is the whole process's peak resident size, kept because
+published figures for other tools are RSS. **Do not rank engines by it.** It
+counts clean file-backed pages, and whether a CoreML model's weight pages are
+counted in our address space during the hand-off to the Neural Engine is the
+system's decision, not ours. Three identical runs of
+`fluid.parakeet-unified@fp16` measured 1.25 GB, 76 MB and 76 MB while
+`peak_memory_bytes` sat at 1.29 GB in all three. The high figure tends to come
+in the first run or two after a model goes cold, which is exactly the pattern
+that makes it look like a real measurement.
+
+The report written by `--report` carries the breakdown - `peak_footprint_bytes`
+and `peak_neural_bytes` - plus baselines and deltas for both totals
+(`peak_memory_baseline_bytes`, `peak_memory_delta_bytes`, and the `peak_rss_*`
+equivalents), for the narrower question of what the model itself cost. The two
+breakdown fields are absent together on a kernel that does not report the
+ledgers; when they are missing, `peak_memory_bytes` has fallen back to the
+resident peak and is subject to everything said about it above.

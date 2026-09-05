@@ -234,19 +234,33 @@ public struct SpeechEvent: Sendable, Equatable {
         /// Audio seconds per wall second. Reported rather than left to the
         /// reader because the applet shows it and the eval report compares it.
         public var rtfx: Double
+        /// Peak resident size. Kept because published figures for other tools
+        /// are RSS, and not the number to compare two engines with - see
+        /// `peakMemoryBytes`.
         public var peakRSSBytes: Int64
+        /// What the run actually cost: this process's peak footprint plus the
+        /// model the Neural Engine held for it. Unlike `peakRSSBytes` this is
+        /// reproducible run to run.
+        ///
+        /// Decoded strictly, so a log written before this field existed fails
+        /// to decode rather than being read with a substituted `peakRSSBytes`.
+        /// That substitution would put an unrepeatable number under the name
+        /// of the repeatable one, which is the bug this field was added to
+        /// fix. An old log has no measurement here, and should say so.
+        public var peakMemoryBytes: Int64
         /// Present only when the run wrote a file.
         public var output: String?
 
         public init(
             segments: Int, audioSeconds: Double, wallSeconds: Double,
-            peakRSSBytes: Int64, output: String? = nil
+            peakRSSBytes: Int64, peakMemoryBytes: Int64, output: String? = nil
         ) {
             self.segments = segments
             self.audioSeconds = audioSeconds
             self.wallSeconds = wallSeconds
             self.rtfx = wallSeconds > 0 ? audioSeconds / wallSeconds : 0
             self.peakRSSBytes = peakRSSBytes
+            self.peakMemoryBytes = peakMemoryBytes
             self.output = output
         }
 
@@ -255,6 +269,7 @@ public struct SpeechEvent: Sendable, Equatable {
             case audioSeconds = "audio_seconds"
             case wallSeconds = "wall_seconds"
             case peakRSSBytes = "peak_rss_bytes"
+            case peakMemoryBytes = "peak_memory_bytes"
         }
     }
 
@@ -315,12 +330,17 @@ public struct SpeechEvent: Sendable, Equatable {
         public var audioSeconds: Double
         public var wallSeconds: Double
         public var rtfx: Double
+        /// See `DoneEvent.peakRSSBytes`: comparable with published figures,
+        /// not reproducible enough to rank two engines by.
         public var peakRSSBytes: Int64
+        /// See `DoneEvent.peakMemoryBytes`: the reproducible one.
+        public var peakMemoryBytes: Int64
         public var worst: [WorstRow]
 
         public init(
             model: String, language: String?, rows: Int, wer: Double, cer: Double,
-            audioSeconds: Double, wallSeconds: Double, peakRSSBytes: Int64, worst: [WorstRow]
+            audioSeconds: Double, wallSeconds: Double, peakRSSBytes: Int64,
+            peakMemoryBytes: Int64, worst: [WorstRow]
         ) {
             self.model = model
             self.language = language
@@ -331,6 +351,7 @@ public struct SpeechEvent: Sendable, Equatable {
             self.wallSeconds = wallSeconds
             self.rtfx = wallSeconds > 0 ? audioSeconds / wallSeconds : 0
             self.peakRSSBytes = peakRSSBytes
+            self.peakMemoryBytes = peakMemoryBytes
             self.worst = worst
         }
 
@@ -339,6 +360,7 @@ public struct SpeechEvent: Sendable, Equatable {
             case audioSeconds = "audio_seconds"
             case wallSeconds = "wall_seconds"
             case peakRSSBytes = "peak_rss_bytes"
+            case peakMemoryBytes = "peak_memory_bytes"
         }
     }
 }
@@ -445,6 +467,7 @@ extension SpeechEvent.DoneEvent {
         wallSeconds = try c.decode(Double.self, forKey: .wallSeconds)
         rtfx = try c.decode(Double.self, forKey: .rtfx)
         peakRSSBytes = try c.decode(Int64.self, forKey: .peakRSSBytes)
+        peakMemoryBytes = try c.decode(Int64.self, forKey: .peakMemoryBytes)
         output = try c.decodeIfPresent(String.self, forKey: .output)
     }
 }
@@ -461,6 +484,7 @@ extension SpeechEvent.EvalSummary {
         wallSeconds = try c.decode(Double.self, forKey: .wallSeconds)
         rtfx = try c.decode(Double.self, forKey: .rtfx)
         peakRSSBytes = try c.decode(Int64.self, forKey: .peakRSSBytes)
+        peakMemoryBytes = try c.decode(Int64.self, forKey: .peakMemoryBytes)
         worst = try c.decode([SpeechEvent.WorstRow].self, forKey: .worst)
     }
 }

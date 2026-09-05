@@ -60,6 +60,7 @@ func runExport(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         sink.emit(.done(.init(
             segments: document.segments.count, audioSeconds: document.segments.last?.end ?? 0,
             wallSeconds: sink.elapsed, peakRSSBytes: SystemInfo.peakResidentBytes(),
+            peakMemoryBytes: SystemInfo.peakMemoryBytes(),
             output: output.path)))
     } else {
         sink.document(rendered)

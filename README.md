@@ -48,7 +48,7 @@ here, and 3 when a model is not installed.
 | `engines` | The engines in this build with their capability flags |
 | `models install-locale <bcp47>` | Install Apple's speech assets for a locale |
 | `transcribe <media>` | Transcribe an audio or video file to txt, srt, vtt or json |
-| `eval` | Score a model against a manifest: WER, CER, RTFx, peak RSS |
+| `eval` | Score a model against a manifest: WER, CER, RTFx, peak memory |
 | `export <json>` | Convert a saved transcript to another format without re-transcribing |
 | `decode <media>` | Write the 16 kHz mono wav every engine would receive |
 

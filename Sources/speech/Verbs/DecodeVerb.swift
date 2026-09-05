@@ -45,5 +45,6 @@ func runDecode(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
     let audioSeconds = Double(samples.count) / AudioDecoder.sampleRate
     sink.emit(.done(.init(
         segments: 0, audioSeconds: audioSeconds, wallSeconds: sink.elapsed,
-        peakRSSBytes: SystemInfo.peakResidentBytes(), output: output.path)))
+        peakRSSBytes: SystemInfo.peakResidentBytes(),
+        peakMemoryBytes: SystemInfo.peakMemoryBytes(), output: output.path)))
 }

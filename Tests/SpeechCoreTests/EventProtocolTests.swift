@@ -97,13 +97,13 @@ struct EventProtocolTests {
         _ = try roundTrip(.error(.init(SpeechError.modelMissing("fluid.parakeet-v3@int8"))))
         _ = try roundTrip(.done(.init(
             segments: 2, audioSeconds: 10, wallSeconds: 1,
-            peakRSSBytes: 1024, output: "/tmp/out.srt")))
+            peakRSSBytes: 1024, peakMemoryBytes: 4096, output: "/tmp/out.srt")))
         _ = try roundTrip(.evalRow(.init(
             index: 1, path: "/tmp/a.wav", reference: "a b", hypothesis: "a c",
             wer: 0.5, cer: 0.25, audioSeconds: 1, wallSeconds: 0.1)))
         _ = try roundTrip(.evalSummary(.init(
             model: "apple.dictation", language: "pl", rows: 2, wer: 0.1, cer: 0.05,
-            audioSeconds: 20, wallSeconds: 2, peakRSSBytes: 2048,
+            audioSeconds: 20, wallSeconds: 2, peakRSSBytes: 2048, peakMemoryBytes: 8192,
             worst: [.init(index: 1, wer: 0.5, reference: "a b", hypothesis: "a c")])))
     }
 
@@ -136,10 +136,10 @@ struct EventProtocolTests {
     @Test("rtfx is derived, not trusted from the caller")
     func derivedRates() {
         let done = SpeechEvent.DoneEvent(
-            segments: 1, audioSeconds: 60, wallSeconds: 2, peakRSSBytes: 0)
+            segments: 1, audioSeconds: 60, wallSeconds: 2, peakRSSBytes: 0, peakMemoryBytes: 0)
         #expect(done.rtfx == 30)
         let stalled = SpeechEvent.DoneEvent(
-            segments: 0, audioSeconds: 60, wallSeconds: 0, peakRSSBytes: 0)
+            segments: 0, audioSeconds: 60, wallSeconds: 0, peakRSSBytes: 0, peakMemoryBytes: 0)
         #expect(stalled.rtfx == 0)
     }
 
