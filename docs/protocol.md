@@ -8,10 +8,9 @@ and the applet.
 
 Two kinds of verb write to that stream, and they are not the same thing:
 
-- **Streaming verbs** - `transcribe`, `eval`, and later `stream` and
-  `models download` - emit a sequence of the events tabulated below, each with
-  `type` and `t`.
-- **Query verbs** - `info`, `engines`, and later `catalog` - emit exactly one
+- **Streaming verbs** - `transcribe`, `stream`, `eval` and `models download` -
+  emit a sequence of the events tabulated below, each with `type` and `t`.
+- **Query verbs** - `info`, `engines` and `catalog` - emit exactly one
   JSON object: a document, on a single line, with no `type` and no `t`. They are
   questions with an answer, not runs with a history. A reader that switches on
   `type` should treat their absence as "this is the answer", not as a

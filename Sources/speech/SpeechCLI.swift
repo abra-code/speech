@@ -26,6 +26,7 @@ let gVerbs: [VerbEntry] = [
     VerbEntry(name: "models", summary: "Install Apple locales; download and manage model files", run: runModels),
     VerbEntry(name: "catalog", summary: "List every way this build can run speech recognition", run: runCatalog),
     VerbEntry(name: "transcribe", summary: "Transcribe an audio or video file", run: runTranscribe),
+    VerbEntry(name: "stream", summary: "Transcribe the microphone live, with optional refinement", run: runStream),
     VerbEntry(name: "eval", summary: "Score a model against a manifest (WER, CER, RTFx, peak memory)", run: runEval),
     VerbEntry(name: "export", summary: "Convert a saved json transcript to txt, srt or vtt", run: runExport),
     VerbEntry(name: "decode", summary: "Write the decoded 16 kHz mono wav a model would receive", run: runDecode),
@@ -35,7 +36,6 @@ let gVerbs: [VerbEntry] = [
 /// tells the truth about where the tool is, rather than pretending they do not
 /// exist and then failing with "unknown verb".
 let gPlannedVerbs: [(name: String, stage: String)] = [
-    ("stream", "stage 4"),
     ("notices", "stage 6"),
 ]
 

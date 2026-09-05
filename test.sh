@@ -77,8 +77,8 @@ expect_grep "Usage: speech" "$SPEECH" --help
 expect_code 2 "$SPEECH" nonsense-verb
 expect_code 2 "$SPEECH" --nonsense-flag
 # A verb the plan defines but a later stage implements must say so, not 404.
-expect_grep_err "not implemented yet" "$SPEECH" stream
-expect_code 2 "$SPEECH" stream
+expect_grep_err "not implemented yet" "$SPEECH" notices
+expect_code 2 "$SPEECH" notices
 
 echo "== catalog =="
 expect_grep "ggml.canary-1b-v2@q8_0" "$SPEECH" catalog
@@ -265,6 +265,47 @@ if [ ! -s "$TMP/fox.wav" ]; then fail "decode produced no wav"; fi
 : > "$TMP/bogus.webm"
 expect_code 1 "$SPEECH" decode "$TMP/bogus.webm" --output "$TMP/bogus.wav"
 expect_grep_err "webm" "$SPEECH" decode "$TMP/bogus.webm" --output "$TMP/bogus.wav"
+
+echo "== stream =="
+# Everything here stops short of opening the microphone: the tap needs hardware,
+# a TCC grant, and somebody to speak into it. What is testable without all that
+# is the argument contract the applet depends on, and every one of these is a
+# refusal that must happen *before* a recording starts rather than after.
+expect_code 2 "$SPEECH" stream                                        # no --model
+expect_code 2 "$SPEECH" stream --model nope.model                     # unknown engine
+expect_code 2 "$SPEECH" stream --model ggml.parakeet-tdt-0.6b-v3@q8_0 # batch-only row
+expect_grep_err "no live mode" "$SPEECH" stream --model ggml.parakeet-tdt-0.6b-v3@q8_0
+# Refining with the model that produced the text would just run it twice.
+expect_code 2 "$SPEECH" stream --model apple.transcriber --refine apple.transcriber
+# The CTC spotter is a store row, not a transcriber, so it cannot refine either.
+expect_code 2 "$SPEECH" stream --model apple.transcriber --refine fluid.parakeet-ctc-110m
+expect_code 2 "$SPEECH" stream --model apple.transcriber --parent-pid 0
+expect_code 2 "$SPEECH" stream extra-argument --model apple.transcriber
+
+# --list-devices answers without touching the engine or the microphone, so it
+# works in a sandbox that blocks CoreAudio (where the list is simply empty).
+expect_ok "$SPEECH" stream --list-devices
+"$SPEECH" --json stream --list-devices > "$TMP/devices.json" 2>/dev/null
+expect_json_file "$TMP/devices.json"
+expect_grep '"devices"' cat "$TMP/devices.json"
+
+# The live rows have to be discoverable: the applet builds its live picker by
+# filtering `engines` on this flag, and a row that cannot stream must not carry
+# it. Pin the exact set rather than grepping for the word: a bare grep for
+# "live" would pass with the flag on a ggml row and off both Apple ones, and
+# `expect_nogrep` alone cannot tell "the flag is absent" from "the verb broke".
+#
+# When stage 4.2 turns live on for the fluid and ggml rows, this fails with a
+# message naming everything else that has to move with it.
+live_rows=$("$SPEECH" --json engines \
+    | tr ',' '\n' | grep -c '"live"' 2>/dev/null || true)
+live_ids=$("$SPEECH" engines | awk '/ live|,live/ {print $1}' | sort | tr '\n' ' ')
+if [ "$live_ids" != "apple.dictation apple.transcriber " ]; then
+    fail "the set of rows with the 'live' flag changed to [$live_ids].
+    If that is intended, update in the same commit: docs/models.catalog.tsv
+    (regenerate it), docs/live.md's 'What is not here yet' section, and this
+    assertion."
+fi
 
 echo "== transcribe =="
 expect_code 2 "$SPEECH" transcribe "$TMP/fox.aiff"                      # no --model

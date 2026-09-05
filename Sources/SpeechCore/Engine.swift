@@ -196,6 +196,27 @@ public enum LiveEvent: Sendable {
     case final(Segment)
 }
 
+/// A live session that failed while it still had a usable transcript.
+///
+/// It exists because the obvious alternative loses work. `finish()` is where a
+/// session both finalizes and reports, and a plain `throw` there discards
+/// everything the run produced: a twenty-minute dictation whose analyzer failed
+/// on the very last flush would come back as zero segments, and `done` would
+/// say `segments: 0` for a transcript the user had already watched appear.
+///
+/// So the failure travels *with* the work. A caller that only wants the error
+/// gets one; a caller that wants the transcript keeps it and reports the
+/// failure as a warning, which is what `speech stream` does.
+public struct LiveSessionFailure: Error, Sendable {
+    public var segments: [Segment]
+    public var message: String
+
+    public init(segments: [Segment], message: String) {
+        self.segments = segments
+        self.message = message
+    }
+}
+
 /// A backend. `id` and `capabilities` are `nonisolated` so an actor-based
 /// engine can answer them with stored `nonisolated let`s without a hop - the
 /// command layer asks for capabilities before it has anything to await on.
@@ -282,14 +303,51 @@ extension TranscriptionEngine {
 }
 
 public protocol LiveSession: Sendable {
-    /// Any format; the session resamples. `sending` because AVAudioPCMBuffer is
-    /// a non-Sendable class and the buffer is handed over, not shared - the
-    /// caller must not touch it again.
-    func feed(_ buffer: sending AVAudioPCMBuffer) async throws
+    /// Hand one capture buffer to the engine.
+    ///
+    /// The buffer arrives wrapped in `CapturedAudio` rather than as a `sending`
+    /// parameter, and the difference is not cosmetic. `sending` describes a
+    /// transfer the compiler can verify at one call site; this buffer is
+    /// transferred twice - out of the audio thread, then out of the pump actor
+    /// that converted it - and region isolation cannot follow it through an
+    /// actor's storage. The wrapper states the contract once instead: whoever
+    /// hands a `CapturedAudio` over holds no other reference to what is inside
+    /// and will not touch it again.
+    func feed(_ audio: CapturedAudio) async throws
     nonisolated var events: AsyncStream<LiveEvent> { get }
     /// Flush, close the stream, and return the final segment list.
     func finish() async throws -> [Segment]
     func cancel() async
+
+    /// Buffers this session could not keep up with, read after `finish`.
+    ///
+    /// A session that queues audio for an engine has to bound that queue, and a
+    /// bounded queue drops. Reporting it is the difference between a transcript
+    /// with a hole in it and a transcript with a hole in it that nobody
+    /// mentioned.
+    func droppedInputCount() async -> Int
+
+    /// The format this session wants `feed` to be handed, or nil for "whatever
+    /// the microphone produces".
+    ///
+    /// It exists because the three engine families disagree and none of them
+    /// can be talked out of it: Apple's analyzer insists on the format
+    /// `SpeechAnalyzer.bestAvailableAudioFormat` names for its modules, ggml
+    /// wants the project's canonical 16 kHz mono Float32, and FluidAudio's
+    /// streaming managers resample internally and are better off with the
+    /// hardware's own buffers than with audio resampled twice.
+    ///
+    /// Answering nil is not the same as answering `LiveAudioFormat.canonical`,
+    /// and the difference is a real resampling pass over every buffer.
+    nonisolated var preferredFormat: AVAudioFormat? { get }
+}
+
+extension LiveSession {
+    /// Most sessions have no opinion. The ones that do say so explicitly.
+    public nonisolated var preferredFormat: AVAudioFormat? { nil }
+
+    /// A session that cannot drop audio reports none.
+    public func droppedInputCount() async -> Int { 0 }
 }
 
 /// What the registry needs to build an engine: the catalog id split into its

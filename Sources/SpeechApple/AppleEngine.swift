@@ -85,10 +85,10 @@ public enum AppleEngineKind: Sendable {
         case .transcriber:
             return EngineCapabilities(
                 batch: true,
-                // Stage 4 turns this on together with makeLiveSession. Claiming
-                // it now would put the row in the catalog's `live` section and
-                // fail when the user picked it.
-                live: false,
+                // Live since stage 4: SpeechAnalyzer takes a push sequence of
+                // buffers and emits volatile results, which is what
+                // AppleLiveSession drives.
+                live: true,
                 wordTimestamps: true,
                 segmentTimestamps: true,
                 vocabulary: false,
@@ -100,7 +100,7 @@ public enum AppleEngineKind: Sendable {
         case .dictation:
             return EngineCapabilities(
                 batch: true,
-                live: false,
+                live: true,
                 wordTimestamps: true,
                 segmentTimestamps: true,
                 vocabulary: true,
@@ -223,8 +223,21 @@ actor AppleEngine: TranscriptionEngine {
     }
 
     func makeLiveSession(options: TranscribeOptions) async throws -> any LiveSession {
-        throw SpeechError.unavailable(
-            "live mode for \(id) is not implemented yet (stage 4 of the development plan)")
+        // Same locale resolution and the same asset install as the batch path,
+        // so `speech stream --language pl` downloads Polish once and both
+        // commands then find it installed.
+        let locale = try await ensureLocale(options.language)
+        let vocabulary = options.vocabulary.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let module = makeModule(locale: locale, live: true)
+
+        var context: AnalysisContext?
+        if !vocabulary.isEmpty, capabilities.vocabulary {
+            let made = AnalysisContext()
+            made.contextualStrings[.general] = vocabulary
+            context = made
+        }
+        return try await AppleLiveSession.make(
+            module: module, kind: kind, locale: locale, context: context)
     }
 
     func unload() async {
@@ -296,45 +309,10 @@ actor AppleEngine: TranscriptionEngine {
 
     // MARK: - Result mapping
 
+    /// Both the batch path and the live session map results the same way, and
+    /// the mapping lives in `AppleResults` so they cannot drift apart.
     private func makeSegment(id: Int, text: AttributedString, range: CMTimeRange, language: String) -> Segment {
-        var words: [Word] = []
-        var confidences: [Double] = []
-        for run in text.runs {
-            if let confidence = run.transcriptionConfidence {
-                confidences.append(confidence)
-            }
-            guard let timeRange = run.audioTimeRange else { continue }
-            let piece = String(text[run.range].characters)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !piece.isEmpty else { continue }
-            words.append(Word(
-                text: piece,
-                start: seconds(timeRange.start),
-                end: seconds(timeRange.end),
-                confidence: run.transcriptionConfidence.map { Float($0) }))
-        }
-
-        let plain = String(text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
-        let start = seconds(range.start)
-        let end = max(start, seconds(range.end))
-        return Segment(
-            id: id,
-            start: words.first?.start ?? start,
-            end: words.last?.end ?? end,
-            text: plain,
-            words: words.isEmpty ? nil : words,
-            confidence: confidences.isEmpty
-                ? nil
-                : Float(confidences.reduce(0, +) / Double(confidences.count)),
-            speaker: nil,
-            language: Language.primarySubtag(language))
-    }
-
-    /// CMTime arithmetic on an invalid or indefinite time yields NaN, which
-    /// would encode as invalid JSON and take the whole event stream with it.
-    private func seconds(_ time: CMTime) -> Double {
-        let value = CMTimeGetSeconds(time)
-        return value.isFinite ? max(0, value) : 0
+        AppleResults.segment(id: id, text: text, range: range, language: language)
     }
 
     // MARK: - Scratch audio

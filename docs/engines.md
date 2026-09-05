@@ -25,6 +25,10 @@ first dot selects the backend; a model name may contain dots of its own.
 `languages` lists BCP-47 primary subtags; an empty list means the engine takes
 any language. `minimum_macos` is the floor the engine runs on.
 
+`live` is what `speech stream` filters on, and today only the two Apple rows
+carry it. See `docs/live.md` for how a live session is driven, what format each
+family demands, and how a run stops.
+
 Options an engine cannot honor are a `warning` event and a transcript, not a
 failure: a transcript without hotword biasing still beats no transcript.
 
