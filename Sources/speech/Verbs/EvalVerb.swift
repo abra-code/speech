@@ -69,9 +69,16 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
         throw SpeechError.usage("\(model) cannot transcribe files, so it cannot be scored this way")
     }
 
-    let outcome = try await Evaluator.run(
-        engine: engine, catalogID: model, rows: rows, language: language,
-        sink: sink, reportDirectory: reportDirectory)
+    // Unloaded on the failure path too - see the note in TranscribeVerb.
+    let outcome: EvalOutcome
+    do {
+        outcome = try await Evaluator.run(
+            engine: engine, catalogID: model, rows: rows, language: language,
+            sink: sink, reportDirectory: reportDirectory)
+    } catch {
+        await engine.unload()
+        throw error
+    }
     await engine.unload()
 
     if let reportDirectory, !globals.json {

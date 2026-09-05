@@ -125,12 +125,24 @@ func runTranscribe(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [St
         engine: engine.id, model: model, capabilities: engine.capabilities,
         loadSeconds: elapsedSeconds(since: loadStart), locale: resolvedLocale)))
 
-    var segments = try await engine.transcribe(
-        samples: samples,
-        options: TranscribeOptions(
-            language: language,
-            vocabulary: vocabulary,
-            wantWordTimestamps: timestamps == .word))
+    // Unloaded on the failure path too, not only on the way out. `defer`
+    // cannot await, so this is the shape that gets it: an engine that throws
+    // still has to give its weights back, and for the ggml rows it is stronger
+    // than that - ggml asserts at process exit if a model still holds Metal
+    // buffers, so an un-unloaded engine turns a clean error message into a
+    // native backtrace printed over it.
+    var segments: [Segment]
+    do {
+        segments = try await engine.transcribe(
+            samples: samples,
+            options: TranscribeOptions(
+                language: language,
+                vocabulary: vocabulary,
+                wantWordTimestamps: timestamps == .word))
+    } catch {
+        await engine.unload()
+        throw error
+    }
     await engine.unload()
 
     if timestamps != .word {

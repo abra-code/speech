@@ -12,6 +12,7 @@ import Foundation
 import SpeechCore
 import SpeechApple
 import SpeechFluid
+import SpeechGGML
 
 struct VerbEntry: Sendable {
     let name: String
@@ -76,6 +77,7 @@ func makeRegistry() -> EngineRegistry {
     let registry = EngineRegistry()
     registry.register(prefix: "apple", factory: AppleEngineFactory.make)
     registry.register(prefix: "fluid", factory: FluidEngineFactory.make)
+    registry.register(prefix: "ggml", factory: GGMLEngineFactory.make)
     return registry
 }
 

@@ -39,8 +39,10 @@ let package = Package(
         .target(name: "SpeechCore"),
         .target(name: "SpeechApple", dependencies: ["SpeechCore"]),
         .target(name: "SpeechFluid", dependencies: ["SpeechCore", .product(name: "FluidAudio", package: "FluidAudio")]),
-        .executableTarget(name: "speech", dependencies: ["SpeechCore", "SpeechApple", "SpeechFluid"]),
+        .target(name: "SpeechGGML", dependencies: ["SpeechCore", "TranscribeCpp"]),
+        .executableTarget(name: "speech", dependencies: ["SpeechCore", "SpeechApple", "SpeechFluid", "SpeechGGML"]),
         .testTarget(name: "SpeechCoreTests", dependencies: ["SpeechCore"]),
         .testTarget(name: "SpeechFluidTests", dependencies: ["SpeechFluid", "SpeechCore"]),
+        .testTarget(name: "SpeechGGMLTests", dependencies: ["SpeechGGML", "SpeechCore"]),
     ]
 )

@@ -10,6 +10,7 @@ import Foundation
 import SpeechCore
 import SpeechApple
 import SpeechFluid
+import SpeechGGML
 
 struct KnownEngine {
     let id: String
@@ -71,7 +72,24 @@ func knownEngines() -> [KnownEngine] {
             reason: fluidReason)
     }
 
-    return apple + fluid
+    // The ggml rows. Same distinction as above: available means the engine can
+    // run here, not that the GGUF is downloaded. There is no architecture gate -
+    // transcribe.cpp ships an x86_64 slice and falls back to the CPU backend -
+    // but the binary is arm64-only for FluidAudio's sake, so the question never
+    // comes up in a shipped build.
+    let ggml: [KnownEngine] = GGMLEngineFactory.catalogRows.compactMap { model, variant in
+        guard let capabilities = GGMLEngineFactory.capabilities(for: model, variant: variant)
+        else { return nil }
+        let id = variant.map { "ggml.\(model)@\($0)" } ?? "ggml.\(model)"
+        guard capabilities.runsOnThisOS else {
+            return KnownEngine(
+                id: id, capabilities: capabilities, available: false,
+                reason: "needs macOS \(capabilities.minimumMacOS) or later")
+        }
+        return KnownEngine(id: id, capabilities: capabilities, available: true, reason: nil)
+    }
+
+    return apple + fluid + ggml
 }
 
 func capabilityFlags(_ capabilities: EngineCapabilities) -> [String] {

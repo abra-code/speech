@@ -73,6 +73,40 @@ strip -x build/speech.new
 
 codesign -s - build/speech.new
 
+# transcribe.cpp's xcframework is a *dynamic* library, unlike FluidAudio's
+# NemoTextProcessing, which links statically and leaves nothing to ship. So
+# `speech` carries `@rpath/CTranscribe.framework/...` and does not run without
+# it: a binary copied on its own dies at launch with a dyld error, which is how
+# this was found - every test in test.sh aborting with "Library not loaded".
+#
+# SwiftPM already writes `@loader_path` into the binary's rpaths, so the
+# framework only has to sit beside the binary. That also means whoever embeds
+# `speech` embeds them as a pair - for Speech.app, both go into
+# Contents/Support/ and the deep signing pass covers the framework too.
+#
+# Signed before the binary and separately: a nested framework carries its own
+# signature, and signing the binary does not seal it.
+fw="CTranscribe.framework"
+if [ -d "$bin_path/$fw" ]; then
+    rm -rf "build/$fw.new"
+    cp -R "$bin_path/$fw" "build/$fw.new"
+    # -f because SwiftPM already ad-hoc signed it and codesign refuses
+    # to re-sign otherwise, which under `set -e` aborts the build.
+    codesign -f -s - "build/$fw.new"
+    # The previous copy is moved aside rather than deleted first, so a failed
+    # rename leaves a working framework behind instead of none at all.
+    rm -rf "build/$fw.old"
+    [ -d "build/$fw" ] && mv "build/$fw" "build/$fw.old"
+    mv "build/$fw.new" "build/$fw"
+    rm -rf "build/$fw.old"
+else
+    # Not a warning: `speech` carries an @rpath reference to this framework, so
+    # a build that cannot find it produces a binary that dies at dyld. Failing
+    # here is the difference between a broken build and a broken release.
+    echo "error: $fw not found in $bin_path; build/speech would not launch" >&2
+    exit 1
+fi
+
 mv build/speech.new build/speech
 
 if [ -d "$bin_path/speech.dSYM" ]; then
