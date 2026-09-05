@@ -92,17 +92,10 @@ func knownEngines() -> [KnownEngine] {
     return apple + fluid + ggml
 }
 
+/// The published flag names live on `EngineCapabilities` so that this verb, the
+/// catalog file and the applet all spell them the same way.
 func capabilityFlags(_ capabilities: EngineCapabilities) -> [String] {
-    var flags: [String] = []
-    if capabilities.batch { flags.append("batch") }
-    if capabilities.live { flags.append("live") }
-    if capabilities.wordTimestamps { flags.append("word_ts") }
-    if capabilities.segmentTimestamps { flags.append("seg_ts") }
-    if capabilities.vocabulary { flags.append("vocab") }
-    if capabilities.diarization { flags.append("diarize") }
-    if capabilities.languageID { flags.append("lang_id") }
-    if capabilities.languageHint { flags.append("lang_hint") }
-    return flags
+    capabilities.allFlags
 }
 
 func runEngines(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String]) async throws {

@@ -6,6 +6,7 @@
 // cannot actually run.
 
 import Foundation
+import FluidAudio
 import SpeechCore
 
 public enum FluidEngineFactory {
@@ -17,7 +18,7 @@ public enum FluidEngineFactory {
         "parakeet-ctc-110m",
     ]
 
-    /// Every `(model, variant)` this build can construct, in catalog order.
+    /// Every `(model, variant)` this build can construct, in the order this factory builds them.
     ///
     /// Lives here rather than in the `engines` verb so that the list and the
     /// `make` switch below cannot drift: a variant listed and not buildable is
@@ -78,6 +79,22 @@ public enum FluidEngineFactory {
                 + " (have: \(implementedModels.joined(separator: ", ")))")
         }
         #endif
+    }
+
+    /// The Hugging Face repository a row's weights come from, as FluidAudio
+    /// itself names it. Exposed for the same reason `GGMLEngineFactory.weights`
+    /// is: so the inventory's copy can be checked against the library that will
+    /// actually do the download, rather than being a second spelling nothing
+    /// compares. `Repo`'s raw value is the full repository id.
+    public static func source(for model: String, variant: String?) -> String? {
+        switch model {
+        case "parakeet-v3": return Repo.parakeetV3.rawValue
+        case "parakeet-unified": return Repo.parakeetUnified.rawValue
+        case "canary-1b-v2": return Repo.canary1bV2.rawValue
+        case "nemotron-multilingual": return Repo.nemotronMultilingual.rawValue
+        case "parakeet-ctc-110m": return Repo.parakeetCtc110m.rawValue
+        default: return nil
+        }
     }
 
     /// Capabilities without building the engine. Returns nil for an id this

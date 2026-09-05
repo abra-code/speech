@@ -41,6 +41,17 @@ public enum GGMLEngineFactory {
         return GGMLEngine(spec: spec, row: row, quant: quant, segmenter: segmenter)
     }
 
+    /// Where a row's weights come from: the repository and the single file
+    /// inside it. Exposed so the catalog can be checked against the engine that
+    /// will actually do the download, rather than carrying a second copy of the
+    /// naming rule that nothing compares.
+    public static func weights(for model: String, variant: String?) -> (repo: String, file: String)? {
+        guard let row = GGMLCatalog.row(model: model),
+              let quant = try? GGMLCatalog.quant(for: row, variant: variant)
+        else { return nil }
+        return (row.repo, row.fileName(quant: quant))
+    }
+
     /// Capabilities without building the engine, for `speech engines`.
     public static func capabilities(for model: String, variant: String?) -> EngineCapabilities? {
         guard let spec = try? EngineSpec.parse(

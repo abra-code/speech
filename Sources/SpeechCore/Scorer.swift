@@ -1,6 +1,6 @@
 // Scorer.swift - the measuring instrument. Built before any engine, on purpose:
-// every catalog row, blurb and curation rule in this product is downstream of a
-// WER number, so a scorer with a quiet bug would invalidate the entire catalog.
+// every claim this project makes about a model is downstream of a WER number,
+// so a scorer with a quiet bug would invalidate every one of them at once.
 //
 // Normalization is the part that decides what counts as an error, and it is
 // stated here rather than left to a library so the numbers can be defended:

@@ -1,5 +1,5 @@
-// SystemInfo.swift - what `speech info` reports and what stage 3's curation
-// divides by: physical RAM, the chip, the OS version, and what this process's
+// SystemInfo.swift - what `speech info` and `speech catalog` report about the
+// machine: physical RAM, the chip, the OS version, and what this process's
 // memory cost.
 //
 // The memory readings are here rather than in the evaluator because several

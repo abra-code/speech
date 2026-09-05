@@ -96,6 +96,34 @@ public struct EngineCapabilities: Codable, Sendable, Equatable {
                 patchVersion: parts.count > 2 ? parts[2] : 0))
     }
 
+    /// The mode tokens for this row: which of `batch` and `live` it can do.
+    /// Split out from the feature flags because the catalog file gives "what it
+    /// can do" and "how you can drive it" separate columns.
+    public var modeFlags: [String] {
+        var flags: [String] = []
+        if batch { flags.append("batch") }
+        if live { flags.append("live") }
+        return flags
+    }
+
+    /// The feature tokens for this row, in the fixed order the docs list them.
+    /// These names are published - they appear in `speech engines --json`, in
+    /// the catalog file and in the applet's chooser - so adding one is an
+    /// additive change and renaming one is a breaking change.
+    public var featureFlags: [String] {
+        var flags: [String] = []
+        if wordTimestamps { flags.append("word_ts") }
+        if segmentTimestamps { flags.append("seg_ts") }
+        if vocabulary { flags.append("vocab") }
+        if diarization { flags.append("diarize") }
+        if languageID { flags.append("lang_id") }
+        if languageHint { flags.append("lang_hint") }
+        return flags
+    }
+
+    /// Modes and features together, which is what `speech engines` prints.
+    public var allFlags: [String] { modeFlags + featureFlags }
+
     /// True when this engine claims the language, by primary subtag. An empty
     /// `languages` list means the engine takes anything.
     public func supports(language: String?) -> Bool {

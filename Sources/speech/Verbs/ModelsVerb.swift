@@ -66,7 +66,7 @@ func runModels(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
 /// switches on `spec.model` and ignores `spec.variant`, so `apple.transcriber@bogus`
 /// still resolves - harmless, since Apple owns no files, but it is why this
 /// comment says "a misspelled variant" rather than "any misspelled id".
-private func completeness(for spec: EngineSpec) throws -> ModelCompletenessCheck? {
+func completeness(for spec: EngineSpec) throws -> ModelCompletenessCheck? {
     do {
         return try makeRegistry().make(spec).completenessCheck
     } catch let error as SpeechError {
@@ -75,7 +75,7 @@ private func completeness(for spec: EngineSpec) throws -> ModelCompletenessCheck
     }
 }
 
-private func entry(for spec: EngineSpec, store: ModelStore) throws -> ModelStoreEntry {
+func entry(for spec: EngineSpec, store: ModelStore) throws -> ModelStoreEntry {
     guard let check = try completeness(for: spec) else {
         // No engine here owns files for this id. Two different situations, and
         // they must not be conflated: an engine whose weights the OS owns

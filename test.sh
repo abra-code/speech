@@ -77,8 +77,36 @@ expect_grep "Usage: speech" "$SPEECH" --help
 expect_code 2 "$SPEECH" nonsense-verb
 expect_code 2 "$SPEECH" --nonsense-flag
 # A verb the plan defines but a later stage implements must say so, not 404.
-expect_grep_err "not implemented yet" "$SPEECH" catalog
-expect_code 2 "$SPEECH" catalog
+expect_grep_err "not implemented yet" "$SPEECH" stream
+expect_code 2 "$SPEECH" stream
+
+echo "== catalog =="
+expect_grep "ggml.canary-1b-v2@q8_0" "$SPEECH" catalog
+"$SPEECH" --json catalog > "$TMP/catalog.json"
+expect_json_file "$TMP/catalog.json"
+
+# The inventory reports what a caller needs to build a model list: provenance,
+# size, install state and what the loaded model says it can do. It does not
+# rank or recommend - that decision needs measurements from the machine it will
+# run on, and it belongs to Speech.app.
+expect_grep "handy-computer/canary-1b-v2-gguf" "$SPEECH" --json catalog
+expect_grep '"installed"' "$SPEECH" --json catalog
+expect_code 2 "$SPEECH" catalog --language pl
+
+if ! "$SPEECH" catalog --tsv > "$TMP/catalog.tsv"; then
+    # Do not go on to diff against a truncated file: the second failure is
+    # noisier than the first and buries the message that explains it.
+    fail "catalog --tsv failed"
+elif ! { grep -v '^#' docs/models.catalog.tsv > "$TMP/catalog.want"; \
+         grep -v '^#' "$TMP/catalog.tsv" > "$TMP/catalog.got"; \
+         diff -u "$TMP/catalog.want" "$TMP/catalog.got" > "$TMP/catalog.diff"; }; then
+    sed -n '1,20p' "$TMP/catalog.diff"
+    fail "docs/models.catalog.tsv is stale; regenerate it with: ./build.sh && build/speech catalog --tsv > docs/models.catalog.tsv"
+fi
+
+# --json promises stdout carries nothing but JSON. A TSV on the same stream
+# would break every applet script that parses it.
+expect_code 2 "$SPEECH" --json catalog --tsv
 
 echo "== info and engines =="
 expect_grep "apple.transcriber" "$SPEECH" engines

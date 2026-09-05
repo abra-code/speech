@@ -84,12 +84,53 @@ and the engine's own `supportedLocale(equivalentTo:)` gives the authoritative
 answer with a better message. `speech info` prints the live lists, which is how
 a drift gets noticed.
 
-## Planned
+## `fluid.*` - FluidAudio 0.15.6, CoreML on the Neural Engine
 
-| id prefix | backend | stage |
-| --- | --- | --- |
-| `fluid` | FluidAudio 0.15.6, CoreML on the ANE | 1 |
-| `ggml` | transcribe.cpp 0.2.3 xcframework, ggml with Metal | 2 |
+Shipped in stage 1. NVIDIA's Parakeet, Canary and Nemotron models as compiled
+CoreML packages, downloaded from FluidInference on Hugging Face into the tool's
+own model store.
+
+The distinguishing property is memory. These rows keep most of their cost on the
+Neural Engine rather than in process footprint, so peak RSS cannot see it and
+`speech eval` has to sum the footprint and the ANE ledger to report it at all.
+They are also the only rows that accept a custom vocabulary, which they
+implement by spotting terms with a separate small CTC model.
+
+Nine rows: two Parakeet v3 precisions, three Nemotron streaming chunk tiers, one
+Canary precision, two Parakeet Unified precisions, and the CTC spotter, which is
+a helper rather than a transcriber.
+
+## `ggml.*` - transcribe.cpp 0.2.3, ggml on Metal
+
+Shipped in stage 2. GGUF weights from handy-computer on Hugging Face, run
+through a vendored Swift wrapper over a binary xcframework.
+
+This engine is what put Whisper, Qwen3-ASR and an 8-bit Canary within reach. Its
+cost is memory of a different shape: every measured row reports a Neural Engine ledger
+of exactly zero, because ggml runs on Metal and never touches the ANE, so the
+whole cost is process footprint, which is the mirror image of the CoreML rows
+and means the two engines have to be sized differently for the same weights.
+
+Thirteen rows across six families, most at two quantizations.
+
+Any figure quoted on this page or in docs/models.catalog.tsv is a property of a
+build, not a score: sizes and capability flags are stable, but speed and
+accuracy belong to a machine, an OS and a set of dependency versions, and have
+to be measured where they are going to be used.
+
+Two things this engine does that no other does. It reads every capability fact
+out of the GGUF rather than from a model card, which corrected four assumptions
+in stage 2 - Canary has no timestamps and a 400 second ceiling, Nemotron does
+identify its own language, Qwen3-ASR caps a run at about 87 minutes, and
+Parakeet v3 reports 25 languages where the CoreML build advertises 28. And it
+cuts a long recording into pieces for the families with a hard ceiling, at local
+energy minima, stitching the transcripts back with offset timestamps.
+
+Its xcframework is dynamic, unlike FluidAudio's static dependency, so
+`CTranscribe.framework` ships beside `build/speech` and whoever embeds one
+embeds both.
+
+## Deployment floor
 
 Both libraries would run lower - FluidAudio declares macOS 14 and transcribe.cpp
 macOS 13 - but the binary's deployment target is macOS 15, set by
@@ -99,3 +140,17 @@ runtime and which has no other published precision.
 A build without those targets simply has no `fluid` or `ggml` entry in the
 engine registry and reports `unavailable` for those ids, rather than failing to
 link. That is what lets the stages land one engine at a time.
+
+## Choosing between them
+
+`speech engines` lists what a build carries and whether it can run here.
+`speech catalog` adds where each row's weights come from, how big they are and
+whether they are installed. Neither has an opinion about any of it, and that is
+deliberate: which row to use depends on the language, the recording and the
+machine, and the measurements that would settle it are only valid for the
+machine, the OS and the dependency versions they were taken on.
+
+Speech.app makes that choice, and can re-measure locally with `speech eval` -
+against the standard corpora or against the user's own recordings. See
+docs/catalog.md for what this tool reports and why the ranking is not part of
+it.
