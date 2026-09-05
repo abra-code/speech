@@ -65,11 +65,10 @@ actor GGMLEngine: TranscriptionEngine {
         self.check = GGMLCatalog.isComplete
         self.capabilities = EngineCapabilities(
             batch: true,
-            // Streaming families exist (Parakeet Unified, Nemotron, Voxtral
-            // Realtime, Moonshine) and `Session.stream` is right there, but live
-            // mode is stage 4 for every engine at once. Claiming it here would
-            // let the applet enable a Record button that throws.
-            live: false,
+            // Per row, from the GGUF's own `supportsStreaming`. Only two of the
+            // seven families here have a streaming decoder, and the gate is the
+            // loaded model rather than this flag - see `makeLiveSession`.
+            live: row.streaming,
             wordTimestamps: row.wordTimestamps,
             segmentTimestamps: row.segmentTimestamps,
             // transcribe.cpp has no hotword or biasing surface anywhere in its
@@ -230,6 +229,14 @@ actor GGMLEngine: TranscriptionEngine {
     func unload() async {
         // Order matters: the session holds a strong reference to the model, so
         // dropping the model first would free nothing.
+        //
+        // And a live session holds the same `GGMLSession`, so while one is
+        // alive this frees nothing at all - the model is released when the
+        // session is. That is fine for `speech stream`, which drops its session
+        // when the verb returns, moments later. A host that keeps a
+        // `LiveSession` alive past this call keeps the weights with it, and
+        // must drop the session before the process exits or ggml asserts on the
+        // Metal buffers it still holds.
         session = nil
         model = nil
         loaded = nil
@@ -268,7 +275,7 @@ actor GGMLEngine: TranscriptionEngine {
             do {
                 transcript = try await session.run(piece, options: runOptions)
             } catch let error as TranscribeError {
-                // A cancelled run is a cancellation, not a transcription
+                // A canceled run is a cancellation, not a transcription
                 // failure: the partial the library preserved is discarded on
                 // purpose, because a caller that pressed Ctrl-C is not asking
                 // for half a transcript to be written over the whole one.
@@ -290,8 +297,74 @@ actor GGMLEngine: TranscriptionEngine {
     }
 
     func makeLiveSession(options: TranscribeOptions) async throws -> any LiveSession {
-        throw SpeechError.unavailable(
-            "'\(id)' has no live mode in this build (arrives in stage 4)")
+        guard let session, let loaded, let model else {
+            throw SpeechError.runtime("'\(id)': prepare() was not called")
+        }
+        // The loaded model has the final word, exactly as it does for languages
+        // and timestamps. `row.streaming` is what the catalog can say before a
+        // download; this is what is actually true of these weights.
+        guard loaded.supportsStreaming else {
+            throw SpeechError.unavailable(
+                "'\(id)' has no streaming decoder;"
+                + " run 'speech engines' and pick a row with the 'live' flag")
+        }
+
+        let language = try resolveLanguage(options.language)
+        let kind = Self.timestampKind(
+            wantWords: options.wantWordTimestamps && row.wordTimestamps,
+            ceiling: loaded.maxTimestampKind)
+        let runOptions = RunOptions(timestamps: kind, language: language, specKDrafts: -1)
+
+        return try await GGMLLiveSession.make(
+            session: session,
+            catalogID: id,
+            language: language,
+            runOptions: runOptions,
+            streamExtension: Self.streamExtension(for: model))
+    }
+
+    /// The family-specific stream extension this model accepts, if any.
+    ///
+    /// Asked of the model rather than kept in a table beside the row. The
+    /// library exposes `accepts(_:)` for exactly this, and stage 2 spent a day
+    /// learning that a capability table written from model cards is a table of
+    /// guesses - four of its entries were wrong. A family this build has never
+    /// seen gets nil and the default stream parameters, which is the right
+    /// answer for "we do not know" and not a failure.
+    static func streamExtension(for model: Model) -> StreamExtension? {
+        let candidates: [StreamExtension] = [
+            .parakeetBuffered(ParakeetBufferedStreamOptions()),
+            // `attContextRight: 0` is not a tuning choice, it is the only value
+            // that works. Measured 2026-09-05 on
+            // `nemotron-3.5-asr-streaming-0.6b@q8_0`, the one row in this
+            // catalog that accepts this extension:
+            //
+            //   0            the transcript, correct
+            //   1, 2, 4, 8   the library throws
+            //   13           no error, no text, ever
+            //   nil          same as 13 - the library's own default
+            //
+            // The default is the dangerous one. It finalizes cleanly, reports
+            // `state == .finished`, `lastStatus == nil`, and commits every
+            // millisecond of audio, while returning an empty string - so a row
+            // driven this way looks like a working live session in front of a
+            // silent room. This is the fourth capability in this engine whose
+            // published or default behavior turned out not to match the
+            // weights; see the table in `GGMLCatalog.rows`.
+            //
+            // A future family that accepts the same extension may want a
+            // different value, and will need its own measurement rather than
+            // inheriting this one.
+            .parakeetStream(ParakeetStreamOptions(attContextRight: 0)),
+        ]
+        // Moonshine and Voxtral Realtime are deliberately absent. Neither has a
+        // row in this catalog, so listing them would be dead code - and worse
+        // than dead: they would be listed with default options, and the table
+        // above is a measurement of what default options do to a family nobody
+        // has checked. A new family gets nil and the library's defaults, which
+        // is honest about "we have not measured this" rather than a claim that
+        // it works.
+        return candidates.first { model.accepts($0) }
     }
 
     // MARK: - Mapping

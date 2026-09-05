@@ -22,6 +22,7 @@
 // either, and the upstream wrapper has the same shape.
 
 import Foundation
+import SpeechCore
 import TranscribeCpp
 
 /// Serialized owner of a `Session`, and the boundary the rest of the module
@@ -30,6 +31,15 @@ final class GGMLSession: @unchecked Sendable {
     private let session: Session
     /// Every access to `session` happens here, including the blocking decode.
     private let queue: DispatchQueue
+    /// The active streaming run, if any.
+    ///
+    /// It lives here rather than on the live session for the same reason
+    /// `Session` does: `Stream` is not `Sendable`, it drives the session's
+    /// state, and the C contract is one thread. Keeping it behind the same
+    /// queue is what makes the `@unchecked Sendable` on this class true for
+    /// streaming as well as for batch.
+    /// Qualified: Foundation has a `Stream` of its own.
+    private var stream: TranscribeCpp.Stream?
 
     private init(session: Session, queue: DispatchQueue) {
         self.session = session
@@ -65,7 +75,7 @@ final class GGMLSession: @unchecked Sendable {
     /// Transcribe one piece of audio, off the caller's thread.
     ///
     /// The cancellation token is installed per run rather than once, so a
-    /// cancelled run cannot leave a tripped flag behind that aborts the next
+    /// canceled run cannot leave a tripped flag behind that aborts the next
     /// one. Installing it inside the queue block is also what makes the
     /// `onCancel` race benign: if cancellation arrives first the token is
     /// already tripped when it is installed, and the native abort callback -
@@ -76,13 +86,117 @@ final class GGMLSession: @unchecked Sendable {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Transcript, Error>) in
                 queue.async {
                     self.session.setCancellationToken(token)
-                    let result = Result { try self.session.run(pcm, options: options) }
+                    let result = Result { () -> Transcript in
+                        // Symmetric with `beginStream`. Without it a batch call
+                        // during a live session meets the library's own
+                        // "a stream is active on this model" string, which the
+                        // doc on `beginStream` promises the caller never sees.
+                        guard self.stream == nil else {
+                            throw SpeechError.runtime(
+                                "a live stream is running on this model;"
+                                + " stop it before transcribing a file")
+                        }
+                        return try self.session.run(pcm, options: options)
+                    }
                     self.session.clearCancellationToken()
                     cont.resume(with: result)
                 }
             }
         } onCancel: {
             token.cancel()
+        }
+    }
+
+    // MARK: - Streaming
+
+    /// One feed's worth of change: what moved, and the text after it moved.
+    struct StreamStep: Sendable {
+        var update: StreamUpdate
+        var text: StreamText
+    }
+
+    /// Begin a streaming run, claiming the model's compute lease.
+    ///
+    /// The lease is why this cannot overlap with `run`: transcribe.cpp refuses
+    /// a second stream, or any offline run, on *any* session of the same model
+    /// until this one finalizes or resets. One engine instance therefore does
+    /// live or batch, not both at once, and the caller is told so rather than
+    /// meeting `.busy` from inside the library.
+    func beginStream(run: RunOptions, options: StreamOptions) async throws {
+        try await onQueue {
+            guard self.stream == nil else {
+                throw SpeechError.runtime("a live stream is already running on this model")
+            }
+            self.stream = try self.session.stream(run, options)
+        }
+    }
+
+    /// Feed 16 kHz mono Float32 and read back what changed.
+    func feedStream(_ pcm: [Float]) async throws -> StreamStep {
+        try await onQueue {
+            guard let stream = self.stream else {
+                throw SpeechError.runtime("no live stream is running")
+            }
+            let update = try stream.feed(pcm)
+            return StreamStep(update: update, text: stream.text)
+        }
+    }
+
+    /// Flush what is buffered and end the stream, releasing the compute lease.
+    func finalizeStream() async throws -> StreamStep {
+        try await onQueue {
+            guard let stream = self.stream else {
+                throw SpeechError.runtime("no live stream is running")
+            }
+            let update = try stream.finalize()
+            let text = stream.text
+            self.stream = nil
+            return StreamStep(update: update, text: text)
+        }
+    }
+
+    /// Abandon the stream. Idempotent, and never throws: it is the cleanup path.
+    ///
+    /// Explicit rather than left to `Stream.deinit`. Deinit does reset, but on
+    /// whatever thread ARC happens to be on, which is the one place this class
+    /// otherwise cannot promise queue discipline. Doing it here means the
+    /// common case is orderly and deinit is only the backstop.
+    func resetStream() async {
+        try? await onQueue(cancellable: false) {
+            guard let stream = self.stream else { return }
+            _ = stream.reset()
+            self.stream = nil
+        }
+    }
+
+    /// Run `body` on the owning queue and bridge it back to async, with the
+    /// same cancellation wiring `run` uses.
+    ///
+    /// Every streaming call has the same shape, and writing the continuation
+    /// dance four times is four chances to forget the queue.
+    ///
+    /// The cancellation token is not decoration. `transcribe_stream_finalize`
+    /// flushes the whole buffered tail, and a `feed` can trigger a decode; both
+    /// are native calls that ignore Swift task cancellation entirely. Without
+    /// the token a Stop button in Speech.app cannot interrupt either one, which
+    /// is exactly what `run` installs it for. Installed per call rather than
+    /// once, so a cancelled call cannot leave a tripped flag behind that aborts
+    /// the next one.
+    private func onQueue<T: Sendable>(
+        cancellable: Bool = true, _ body: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        let token = CancellationToken()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
+                queue.async {
+                    if cancellable { self.session.setCancellationToken(token) }
+                    let result = Result { try body() }
+                    if cancellable { self.session.clearCancellationToken() }
+                    cont.resume(with: result)
+                }
+            }
+        } onCancel: {
+            if cancellable { token.cancel() }
         }
     }
 }

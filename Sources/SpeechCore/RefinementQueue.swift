@@ -126,7 +126,7 @@ public actor RefinementQueue {
         let deadline = ContinuousClock().now.advanced(by: timeout)
         while worker != nil || !pending.isEmpty {
             // Cancellation first, and not only for tidiness: once this task is
-            // cancelled `Task.sleep` throws instantly, `try?` swallows it, and
+            // canceled `Task.sleep` throws instantly, `try?` swallows it, and
             // the loop becomes a pegged core for the rest of the timeout.
             if Task.isCancelled { break }
             if ContinuousClock().now >= deadline { break }

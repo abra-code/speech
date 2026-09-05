@@ -40,7 +40,8 @@ channels. Every engine wants something else:
 
 - Apple's modules accept only the format `SpeechAnalyzer.bestAvailableAudioFormat`
   names for the module set in use.
-- ggml streaming wants the project's canonical 16 kHz mono Float32.
+- ggml streaming wants the project's canonical 16 kHz mono Float32, which is
+  also what every batch measurement here was taken on.
 - FluidAudio's streaming managers resample internally and are better handed the
   hardware's own buffers than audio resampled twice.
 
@@ -244,14 +245,56 @@ rather than through `floatChannelData` and its siblings, so every PCM layout
 works - including the packed 24-bit integers some USB interfaces and virtual
 drivers present, for which all three typed accessors return nil.
 
+## The `ggml` rows
+
+transcribe.cpp's streaming shape is different from Apple's, and the difference
+drives the whole mapping. There is no result callback and no utterance boundary:
+there is one growing hypothesis split into `committed`, which is append-only, and
+`tentative`, the volatile suffix. Every `feed` returns the split plus how much
+audio has been committed.
+
+`tentative` maps onto `segment.partial` exactly. Nothing maps onto
+`segment.final`, because the library never says "that was an utterance", so this
+engine has to decide. Measured on `parakeet-unified-en-0.6b`, commits arrive
+about once a second in 8 to 20 character increments, and `tentative` is empty
+throughout - so a full stop is almost always in the *middle* of what just
+arrived. Commits therefore accumulate and a segment closes at each complete
+sentence inside the pending text, at a 15-second backstop, or at the end of the
+stream. Sentence end times are interpolated by character fraction across the
+committed span, which is an estimate and is named as one in the code. **Stage
+4.3's voice activity detection replaces all of this**: utterance boundaries
+belong to the audio, not to the text.
+
+Two of the seven ggml families have a streaming decoder, and which two matters:
+
+| row | streams | note |
+| --- | --- | --- |
+| `parakeet-unified-en-0.6b` | yes | English only |
+| `nemotron-3.5-asr-streaming-0.6b` | yes | lost to Apple in all three languages in spike 2 |
+| every other ggml row | no | including `parakeet-tdt-0.6b-v3`, the fast multilingual one |
+
+So live mode on this engine is currently either an English-only model or the
+weakest multilingual row in the catalog. The `fluid` rows are where multilingual
+live has to come from.
+
+**One measured trap.** `nemotron-3.5-asr-streaming-0.6b` accepts the parakeet
+stream extension, and with the library's default right-context it finalizes
+cleanly, reports `state == .finished` and `lastStatus == nil`, commits every
+millisecond of audio, and returns an empty string - a live session that looks
+like it is working in front of a silent room. Measured 2026-09-05: only
+`attContextRight: 0` produces a transcript; 1, 2, 4 and 8 throw; 13 and the
+default silently produce nothing. The value is pinned in
+`GGMLEngine.streamExtension(for:)` with the table.
+
 ## What is not here yet
 
 - **VAD-driven segmentation** (plan step 4.3). Utterance boundaries currently
-  come from the draft engine's own finals. Silero VAD marking speech start and
-  end - which would give every engine the same boundaries, and give refinement a
-  span chosen for the audio rather than for the model - is still to come.
-- **Live sessions for the `fluid` and `ggml` rows** (plan step 4.2). Only the
-  two Apple rows carry `live` today; the others report `unavailable` with a
-  reason when asked to stream.
+  come from the draft engine's own finals, or from the sentence rule above.
+  Silero VAD marking speech start and end - which would give every engine the
+  same boundaries, and give refinement a span chosen for the audio rather than
+  for the model - is still to come.
+- **Live sessions for the `fluid` rows** (the rest of plan step 4.2). The two
+  Apple rows and the two streaming `ggml` families work; `fluid.*` still reports
+  `unavailable` with a reason when asked to stream.
 - **Live measurement** (plan step 4.5): streaming WER through a paced source,
   time to first partial, and the dropped-trailing-words check.

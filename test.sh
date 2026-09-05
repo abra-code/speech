@@ -295,12 +295,11 @@ expect_grep '"devices"' cat "$TMP/devices.json"
 # "live" would pass with the flag on a ggml row and off both Apple ones, and
 # `expect_nogrep` alone cannot tell "the flag is absent" from "the verb broke".
 #
-# When stage 4.2 turns live on for the fluid and ggml rows, this fails with a
-# message naming everything else that has to move with it.
-live_rows=$("$SPEECH" --json engines \
-    | tr ',' '\n' | grep -c '"live"' 2>/dev/null || true)
+# When the remaining fluid rows gain live mode, this fails with a message
+# naming everything else that has to move with it.
 live_ids=$("$SPEECH" engines | awk '/ live|,live/ {print $1}' | sort | tr '\n' ' ')
-if [ "$live_ids" != "apple.dictation apple.transcriber " ]; then
+want_live="apple.dictation apple.transcriber ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m ggml.nemotron-3.5-asr-streaming-0.6b@q8_0 ggml.parakeet-unified-en-0.6b@q8_0 "
+if [ "$live_ids" != "$want_live" ]; then
     fail "the set of rows with the 'live' flag changed to [$live_ids].
     If that is intended, update in the same commit: docs/models.catalog.tsv
     (regenerate it), docs/live.md's 'What is not here yet' section, and this

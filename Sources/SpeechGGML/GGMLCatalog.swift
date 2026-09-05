@@ -39,6 +39,30 @@ struct GGMLRow: Sendable {
     /// and `prepare` refuses without one, rather than letting the library pick
     /// a default language and quietly transcribe Polish as English.
     let languageID: Bool
+    /// The model has a streaming decoder, so `speech stream` can drive it.
+    ///
+    /// Advisory, like `languages`: it is what the catalog can say about a row
+    /// that has not been downloaded. The gate is the loaded model's own
+    /// `supportsStreaming`, checked in `makeLiveSession`, because only that one
+    /// cannot be stale.
+    ///
+    /// Measured 2026-09-05 by loading the eight installed GGUFs and printing
+    /// `Model.capabilities`. Two of the seven families stream, and which two is
+    /// worth knowing before reading the flags below: the fast multilingual row
+    /// `parakeet-tdt-0.6b-v3` is **not** one of them, so on this engine live
+    /// mode means either an English-only model or the one row that lost to
+    /// Apple in all three languages in spike 2.
+    ///
+    /// **Per family, not per quantization**, and one variant inherits rather
+    /// than reports: `nemotron-3.5-asr-streaming-0.6b@q4_k_m` was not among the
+    /// eight on disk, so its `live` flag comes from the q8_0 measurement. That
+    /// is a reasonable assumption - streaming support is an architecture
+    /// property, not a quantization one - but it is an assumption, and it
+    /// matters here more than usual because a wrong stream configuration on
+    /// this exact family fails by returning an empty transcript while reporting
+    /// success. The gate is still the loaded model, so a q4_k_m that turns out
+    /// not to stream refuses in `makeLiveSession` rather than going silent.
+    let streaming: Bool
     /// Word-level timings are available. Whisper is segment-only; Qwen3-ASR and
     /// Moonshine have no timestamps at all.
     let wordTimestamps: Bool
@@ -86,6 +110,7 @@ enum GGMLCatalog {
                 "lv", "lt", "mt", "pl", "pt", "ro", "ru", "sk", "sl", "es", "sv", "uk",
             ],
             languageID: true,
+            streaming: false,
             wordTimestamps: true,
             segmentTimestamps: true),
         GGMLRow(
@@ -94,6 +119,7 @@ enum GGMLCatalog {
             quants: ["q8_0"],
             languages: ["en"],
             languageID: false,
+            streaming: true,
             wordTimestamps: true,
             segmentTimestamps: true),
         GGMLRow(
@@ -109,6 +135,7 @@ enum GGMLCatalog {
             // English prose about the same subject. `resolveLanguage` therefore
             // refuses to run this row without one.
             languageID: false,
+            streaming: false,
             wordTimestamps: false,
             segmentTimestamps: false),
         GGMLRow(
@@ -121,6 +148,7 @@ enum GGMLCatalog {
                 "el", "ro", "hu", "mk",
             ],
             languageID: true,
+            streaming: false,
             wordTimestamps: false,
             segmentTimestamps: false),
         GGMLRow(
@@ -133,6 +161,7 @@ enum GGMLCatalog {
                 "el", "ro", "hu", "mk",
             ],
             languageID: true,
+            streaming: false,
             wordTimestamps: false,
             segmentTimestamps: false),
         GGMLRow(
@@ -150,6 +179,7 @@ enum GGMLCatalog {
                 "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh",
             ],
             languageID: true,
+            streaming: false,
             wordTimestamps: false,
             segmentTimestamps: true),
         GGMLRow(
@@ -164,6 +194,7 @@ enum GGMLCatalog {
                 "sk-SK", "zh-CN", "hu-HU", "ro-RO", "et-EE",
             ],
             languageID: true,
+            streaming: true,
             wordTimestamps: true,
             segmentTimestamps: true),
     ]
