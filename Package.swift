@@ -14,6 +14,28 @@ let package = Package(
         .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.15.6"),
     ],
     targets: [
+        // transcribe.cpp v0.2.3, consumed as the published xcframework plus its
+        // own Swift wrapper vendored under Sources/TranscribeCpp (MIT). The
+        // checksum is of the release asset; `swift package compute-checksum`
+        // reproduces it.
+        .binaryTarget(
+            name: "CTranscribe",
+            url: "https://github.com/handy-computer/transcribe.cpp/releases/download/v0.2.3/TranscribeCpp.xcframework.zip",
+            checksum: "944be4d5232f39c99608f676a2ddda2516e0ed3c9fb6db50685ffa8d20a8b9c9"
+        ),
+        .target(
+            name: "TranscribeCpp",
+            dependencies: ["CTranscribe"],
+            exclude: ["LICENSE", "THIRD-PARTY-LICENSES.md"],
+            linkerSettings: [
+                .linkedLibrary("c++"),
+                .linkedLibrary("z"),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("Foundation"),
+                .linkedFramework("Metal"),
+                .linkedFramework("MetalKit"),
+            ]
+        ),
         .target(name: "SpeechCore"),
         .target(name: "SpeechApple", dependencies: ["SpeechCore"]),
         .target(name: "SpeechFluid", dependencies: ["SpeechCore", .product(name: "FluidAudio", package: "FluidAudio")]),
