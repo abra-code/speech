@@ -286,6 +286,43 @@ like it is working in front of a silent room. Measured 2026-09-05: only
 default silently produce nothing. The value is pinned in
 `GGMLEngine.streamExtension(for:)` with the table.
 
+## The `fluid` rows
+
+`fluid.parakeet-v3` streams through `SlidingWindowAsrManager`, and it is the row
+live mode needed: 25 languages including Polish, where the Apple rows and both
+streaming `ggml` families between them offer English plus one row that lost to
+Apple everywhere spike 2 measured.
+
+It is a third streaming shape again. The manager runs the *offline* encoder over
+overlapping windows rather than a cache-aware streaming one - FluidAudio's own
+documentation says so, which is why it deliberately does not conform to that
+library's `StreamingAsrManager` protocol. Three consequences, all measured:
+
+- **The update stream carries confirmed windows, not utterances.** Each
+  `isConfirmed` update becomes a `segment.final` with the token timings the
+  window reported, so word timings survive live. A window boundary can still cut
+  mid-sentence: one observed run produced a 165-character segment followed by a
+  3-character one.
+- **`finish()` returns what is still unconfirmed, not the whole transcript.**
+  Measured: a four-sentence dictation ended with `finish()` returning only
+  `"One to be sure."` while `confirmedTranscript` was empty, because confirmed
+  text is drained as it is emitted. Discarding that return value silently lost
+  the last thing the speaker said on every run.
+- **Volatile updates arrive with empty text.** The growing hypothesis lives only
+  in the `volatileTranscript` property, so partials are polled rather than
+  received - at four times a second, not per buffer. Polling per buffer put an
+  actor round trip between every 85 ms of audio and the encoder that was already
+  busy, and measurably starved the feed: a 20-second dictation delivered 8.6
+  seconds of audio and one segment.
+
+`transcriptionUpdates` is a computed property that builds a fresh `AsyncStream`
+and overwrites the manager's continuation on **every** read. Reading it twice
+orphans the first stream silently. It is read exactly once.
+
+Custom vocabulary is refused for live rather than ignored: the batch path boosts
+a finished transcript with a second CTC model, and there is no equivalent inside
+the sliding window.
+
 ## What is not here yet
 
 - **VAD-driven segmentation** (plan step 4.3). Utterance boundaries currently
@@ -293,8 +330,9 @@ default silently produce nothing. The value is pinned in
   Silero VAD marking speech start and end - which would give every engine the
   same boundaries, and give refinement a span chosen for the audio rather than
   for the model - is still to come.
-- **Live sessions for the `fluid` rows** (the rest of plan step 4.2). The two
-  Apple rows and the two streaming `ggml` families work; `fluid.*` still reports
-  `unavailable` with a reason when asked to stream.
+- **Live sessions for the remaining `fluid` rows** (the rest of plan step 4.2).
+  `fluid.parakeet-unified` and `fluid.nemotron-multilingual` still report
+  `unavailable` with a reason; both have a streaming manager, and each is shaped
+  differently again from the sliding window.
 - **Live measurement** (plan step 4.5): streaming WER through a paced source,
   time to first partial, and the dropped-trailing-words check.

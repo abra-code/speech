@@ -67,6 +67,10 @@ actor ParakeetEngine: TranscriptionEngine {
     /// calls, which is the difference between measuring the model and measuring
     /// CoreML's loader.
     private var manager: AsrManager?
+    /// The loaded CoreML bundles, kept so a live session can be handed the same
+    /// ones the batch manager holds. Loading them twice would mean a second ANE
+    /// compile - measured at 11.7 s on this model - and two copies resident.
+    private var models: AsrModels?
     /// The in-flight `prepare`, so two concurrent callers load once. The
     /// protocol requires idempotence and the CLI happens to be sequential, but
     /// a UI is not: without this both callers pass the `manager != nil` check,
@@ -100,9 +104,11 @@ actor ParakeetEngine: TranscriptionEngine {
         FluidNetwork.denyByDefault()
         self.capabilities = EngineCapabilities(
             batch: true,
-            // Live arrives in stage 4 through SlidingWindowAsrManager. Claiming
-            // it here would let the applet enable a Record button that throws.
-            live: false,
+            // Through `SlidingWindowAsrManager`, which runs the offline encoder
+            // over overlapping windows and reports each hypothesis as confirmed
+            // or not. This is the only live row in the catalog that covers the
+            // languages the product exists for.
+            live: true,
             wordTimestamps: true,
             segmentTimestamps: true,
             // Through the CTC spotter row (`fluid.parakeet-ctc-110m`), which is
@@ -183,6 +189,7 @@ actor ParakeetEngine: TranscriptionEngine {
             throw SpeechError.runtime("cannot initialize '\(id)': \(error.localizedDescription)")
         }
         self.manager = manager
+        self.models = models
     }
 
     /// Fetches the weights. Only `speech models download` calls this.
@@ -325,7 +332,21 @@ actor ParakeetEngine: TranscriptionEngine {
     }
 
     func makeLiveSession(options: TranscribeOptions) async throws -> any LiveSession {
-        throw SpeechError.unavailable(
-            "'\(id)' has no live mode in this build (arrives in stage 4)")
+        guard let models else {
+            throw SpeechError.runtime("'\(id)': prepare() was not called")
+        }
+        if !options.vocabulary.isEmpty {
+            // The batch path boosts a transcript after the fact with a second
+            // CTC model. There is no equivalent inside the sliding window, and
+            // pretending otherwise would silently drop the terms.
+            throw SpeechError.usage(
+                "'\(id)' cannot bias live recognition with a custom vocabulary;"
+                + " use it with 'speech transcribe' instead")
+        }
+        return try await ParakeetLiveSession.make(
+            models: models,
+            catalogID: id,
+            language: options.language,
+            wantWords: options.wantWordTimestamps)
     }
 }
