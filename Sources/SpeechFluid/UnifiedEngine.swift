@@ -88,9 +88,15 @@ actor UnifiedEngine: TranscriptionEngine {
         FluidNetwork.denyByDefault()
         self.capabilities = EngineCapabilities(
             batch: true,
-            // Stage 4, and the reason this row is worth having: the streaming
-            // encoder is in the same download, so live mode here is a wiring
-            // job rather than a second gigabyte.
+            // Stage 4, and not the wiring job this comment used to claim.
+            // FluidAudio's streaming encoder is a *different bundle* from the
+            // offline one loaded above - `streamingEncoderFile` against
+            // `offlineEncoderFile` - and the repo carries it in four
+            // [left, chunk, right] tiers, each with its attention mask baked
+            // in at conversion time. Checked against the download on this
+            // machine: only the offline encoder is there. So live mode here
+            // costs a second 563 MB (int8; 1.12 GB at fp16) and a choice of
+            // tier, which is why it is still false.
             live: false,
             wordTimestamps: true,
             segmentTimestamps: true,

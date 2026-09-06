@@ -1,5 +1,12 @@
-// StreamSegmentAccumulator.swift - the state machine that turns transcribe.cpp's
-// growing hypothesis into segments.
+// StreamSegmentAccumulator.swift - the state machine that turns a growing
+// hypothesis into segments.
+//
+// Two engine families produce that shape and neither produces utterance
+// boundaries: transcribe.cpp hands over a `committed` prefix plus a volatile
+// suffix, and FluidAudio's two cache-aware streaming managers hand over a
+// transcript that only ever grows. Both need the same decision made for them -
+// where does one segment end and the next begin - so the rule lives here, in
+// SpeechCore, rather than once per family.
 //
 // Extracted from `GGMLLiveSession` because it could not be tested there. The
 // session is an actor that cannot be constructed without a `GGMLSession`, which
@@ -10,26 +17,29 @@
 // lost at grapheme boundaries, punctuation-only segments, and decimals split at
 // a commit boundary. All three are pinned by tests here now.
 //
+// The same argument moved it into SpeechCore: a fluid live session cannot be
+// constructed without four compiled CoreML models, so a mapping that lived
+// inside one would be just as untestable as this one was.
+//
 // A plain struct, deliberately: no isolation, no dependencies, one method that
 // takes what a feed reported and returns what to emit. Stage 4.3's voice
 // activity detection replaces the boundary rule inside it, and this is the
 // shape that makes swapping it out a local change.
 
 import Foundation
-import SpeechCore
 
-struct StreamSegmentAccumulator {
+public struct StreamSegmentAccumulator {
     /// Close a segment after this much audio even with no punctuation in sight.
     ///
     /// A speaker who does not pause, a model that drops punctuation, or a
     /// language whose sentences run long would otherwise produce one segment
     /// covering the whole session - which reaches the transcript as a single
     /// unbreakable paragraph and gives refinement one enormous span to chew on.
-    var maxUtteranceSeconds: Double = 15
+    public var maxUtteranceSeconds: Double = 15
     /// Stamped on every segment, as a primary subtag.
-    var language: String?
+    public var language: String?
 
-    private(set) var finals: [SpeechCore.Segment] = []
+    public private(set) var finals: [Segment] = []
 
     /// Unicode scalars of `committed` already folded into a segment.
     ///
@@ -53,7 +63,7 @@ struct StreamSegmentAccumulator {
     private var lastPartialText = ""
     private var nextID = 0
 
-    init(maxUtteranceSeconds: Double = 15, language: String? = nil) {
+    public init(maxUtteranceSeconds: Double = 15, language: String? = nil) {
         self.maxUtteranceSeconds = maxUtteranceSeconds
         self.language = language
     }
@@ -64,7 +74,7 @@ struct StreamSegmentAccumulator {
     ///   whatever is pending and suppresses the partial, and it is also what
     ///   makes "a terminator at the end of the text" count as a sentence - see
     ///   `endOfFirstSentence`.
-    mutating func absorb(
+    public mutating func absorb(
         committed: String,
         tentative: String,
         committedMs: Int64,
@@ -101,7 +111,7 @@ struct StreamSegmentAccumulator {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !partial.isEmpty, partial != lastPartialText else { return events }
         lastPartialText = partial
-        events.append(.partial(SpeechCore.Segment(
+        events.append(.partial(Segment(
             id: nextID,
             start: pendingStart,
             // The same guard the final gets. An end before its start is
@@ -157,8 +167,8 @@ struct StreamSegmentAccumulator {
         return events
     }
 
-    private mutating func emitFinal(text: String, end: Double) -> SpeechCore.Segment {
-        let segment = SpeechCore.Segment(
+    private mutating func emitFinal(text: String, end: Double) -> Segment {
+        let segment = Segment(
             id: nextID,
             start: pendingStart,
             // A commit can land on the same millisecond the segment started;
@@ -197,7 +207,7 @@ struct StreamSegmentAccumulator {
     ///
     /// It does still split `Mr. Smith`. That is a known false positive whose
     /// cost is one short segment.
-    static func endOfFirstSentence(in text: String, atEnd: Bool) -> String.Index? {
+    public static func endOfFirstSentence(in text: String, atEnd: Bool) -> String.Index? {
         var index = text.startIndex
         while index < text.endIndex {
             defer { index = text.index(after: index) }

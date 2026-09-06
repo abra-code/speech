@@ -288,10 +288,15 @@ default silently produce nothing. The value is pinned in
 
 ## The `fluid` rows
 
-`fluid.parakeet-v3` streams through `SlidingWindowAsrManager`, and it is the row
-live mode needed: 25 languages including Polish, where the Apple rows have no
-Polish at all and the one `ggml` streaming row that does scored nearly twice its
-error rate (see the live measurements below).
+Two of them stream, and they answer the same question - a language Apple does
+not have - differently enough that both are worth keeping.
+
+### `fluid.parakeet-v3`, the row with the most languages
+
+It streams through `SlidingWindowAsrManager`, and it was the first row to give
+live mode a language Apple does not have: 25 of them including Polish, where the
+Apple rows have no Polish at all and the one `ggml` streaming row that does
+scored nearly twice its error rate (see the live measurements below).
 
 It is a third streaming shape again, and the shape is not the one the manager's
 name suggests. It runs the *offline* encoder over overlapping windows rather
@@ -346,6 +351,88 @@ orphans the first stream silently. It is read exactly once, and before
 Custom vocabulary is refused for live rather than ignored: the batch path boosts
 a finished transcript with a second CTC model, and there is no equivalent inside
 the sliding window.
+
+### `fluid.nemotron-multilingual`, the row that answers the same question faster
+
+The second `fluid` row to stream is the one whose manager was built for it. Its
+encoder carries its own cache forward chunk by chunk, so unlike the sliding
+window it decodes each piece of audio once, and unlike the sliding window it
+does not need thirteen seconds of it before it says anything. What it needs is
+one chunk, and the chunk is the row's variant: **`@2240`, `@1120` and `@560` are
+the same weights with a different latency**, and they are the row's only real
+choice.
+
+Measured here, six FLEURS rows a language, on an M5:
+
+| row | lang | live WER | batch WER | first partial | partial every | lag med/worst | tail |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `fluid.nemotron-multilingual@2240` | en-US | 2.42% | 2.42% | 2.31 s | 2.24 s | 1.40 / 2.14 s | 0.06 s |
+| `fluid.nemotron-multilingual@1120` | en-US | 4.03% | 4.03% | 2.29 s | 1.12 s | 1.38 / 2.12 s | 0.04 s |
+| `fluid.nemotron-multilingual@2240` | pl-PL | 22.61% | 22.61% | 2.31 s | 2.24 s | 0.09 / 1.36 s | 0.06 s |
+| `fluid.nemotron-multilingual@1120` | pl-PL | 22.61% | 22.61% | 2.29 s | 1.12 s | 0.61 / 1.34 s | 0.04 s |
+
+Three things in that table are worth reading carefully.
+
+**Live WER equals batch WER, to the digit, in all four.** The transcripts are not
+merely as good - they are byte-identical, checked row by row. This row decodes
+chunk-aligned windows in a fixed order whether the audio arrives all at once or
+in real time, so streaming it costs nothing at all. That is also the strongest
+statement available that the mapping here adds no artifact of its own: the text
+comes from the library's own tokenizer on both paths.
+
+**"First partial" is not the latency of the tier.** Both tiers show about 2.3 s,
+which for `@2240` is its first chunk and for `@1120` is its *second* - the first
+lands inside the moment of silence every FLEURS row opens with, and silence
+decodes to no text and therefore to no partial. The column that separates the
+tiers is the cadence: `@1120` produced 9 partials on a 12.6 s row where `@2240`
+produced 5. Time to first partial mixes the model's chunk with the speaker's
+first breath, and on this row the second one dominates.
+
+**The finer tier is not free.** English doubled its error rate from 2.42% to
+4.03% for half the wait; Polish did not move at all. Six rows rank nothing, but
+the direction is the one the model card would predict, and the dial is real.
+
+Against the other `fluid` row: this one puts text on screen every one to two
+seconds where `fluid.parakeet-v3` shows nothing for thirteen, and on the Polish
+sample it scored 22.61% against that row's 18.26%. Neither margin is a ranking
+on six rows. Both rows exist for the same reason - languages Apple does not have
+- and they answer it differently enough that the catalog should keep both until
+a real run says otherwise.
+
+Two limits of this row worth knowing before choosing it.
+
+**In the scripts that do not separate words, a "word" is a tokenizer artifact.**
+Word timings here come from grouping tokens on the SentencePiece word-boundary
+marker, and the mark is much rarer in those vocabularies: of this model's 13087
+pieces, 206 CJK pieces carry it against 6704 that do not, 157 Hangul against
+1885, and 48 kana against 169. So a Japanese or Chinese "word" in a
+`segment.final` is a run of characters between two marked pieces rather than
+anything a reader would call a word, and where a whole segment contains no
+marked piece it gets no word timings at all and falls back to the accumulator's
+estimated span. The text and the segmentation are unaffected either way, and the
+timings that are there are real - the detokenizer renders each mark as a space,
+so the words line up with the text exactly as they do in English.
+
+Read the word list in those languages as "where the tokenizer changed its mind",
+not as words. Stage 4.3's VAD is what will give those rows boundaries taken from
+the audio.
+
+**One live session at a time, per engine.** This row's session shares the
+manager the engine already loaded rather than building a second one - that
+sharing is the reason live mode here costs no extra 660 MB - so two concurrent
+sessions from one engine, or a `transcribe()` call during a session, would reset
+each other's decoder state. Nothing in the CLI can do either: the verbs are
+sequential and `--refine` refuses the draft engine's own id. It is a contract an
+embedded caller has to keep, not a guard the engine enforces.
+
+The traps in this manager are the same family as the sliding window's, and one
+is identical: **`finish()` returns the whole transcript, not a remainder**. That
+is now the third manager in this library to work that way, so it is a property
+of the library rather than an accident of one class, and a session that appends
+its return value duplicates everything it has already published.
+`getPartialTranscript()` is likewise the whole transcript rather than a delta,
+which is why the session polls it only when a chunk was actually consumed rather
+than on every 64 ms buffer.
 
 ## Measuring it: `eval --live`
 
@@ -438,7 +525,10 @@ one means nothing for thirteen seconds.
   Silero VAD marking speech start and end - which would give every engine the
   same boundaries, and give refinement a span chosen for the audio rather than
   for the model - is still to come.
-- **Live sessions for the remaining `fluid` rows** (the rest of plan step 4.2).
-  `fluid.parakeet-unified` and `fluid.nemotron-multilingual` still report
-  `unavailable` with a reason; both have a streaming manager, and each is shaped
-  differently again from the sliding window.
+- **A live session for `fluid.parakeet-unified`** (the rest of plan step 4.2).
+  It still reports `unavailable` with a reason, and unlike the row above it is
+  not a wiring job: FluidAudio ships the streaming encoder as a *separate*
+  CoreML bundle from the offline one this project already downloads - 563 MB at
+  int8, 1.12 GB at fp16 - in four latency tiers, one file each. So live mode
+  there is a second download rather than a second call, and which tier to ship
+  is a decision the instrument can now settle by measurement.

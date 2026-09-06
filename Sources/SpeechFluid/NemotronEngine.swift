@@ -91,7 +91,7 @@ actor NemotronEngine: TranscriptionEngine {
     private var languageChange: Task<String?, Error>?
     /// Same in-flight guard as ParakeetEngine, and the same two accepted
     /// limits: joining a load in progress does not deliver progress to the
-    /// second caller, and cancelling a caller does not cancel the load.
+    /// second caller, and canceling a caller does not cancel the load.
     private var loading: Task<Void, Error>?
 
     init(spec: EngineSpec, flavor: NemotronFlavor) {
@@ -103,11 +103,13 @@ actor NemotronEngine: TranscriptionEngine {
         FluidNetwork.denyByDefault()
         self.capabilities = EngineCapabilities(
             batch: true,
-            // Stage 4. The manager is already a streaming one - `appendAudio`
-            // plus a partial callback - so live is a wiring job here rather
-            // than a new model, but claiming it before it is wired would let
-            // the applet enable a Record button that throws.
-            live: false,
+            // The manager this engine already loads is a cache-aware streaming
+            // one, so live mode here is the same weights, the same ANE compile
+            // and the same two calls the batch path makes - see
+            // `NemotronStreamingBackend`. What it costs instead is latency: a
+            // chunk is decoded only when a whole one has arrived, so the row's
+            // variant IS its responsiveness (2240, 1120 or 560 ms).
+            live: true,
             wordTimestamps: true,
             segmentTimestamps: true,
             vocabulary: false,
@@ -421,7 +423,33 @@ actor NemotronEngine: TranscriptionEngine {
     }
 
     func makeLiveSession(options: TranscribeOptions) async throws -> any LiveSession {
-        throw SpeechError.unavailable(
-            "'\(id)' has no live mode in this build (arrives in stage 4)")
+        guard let manager else {
+            // "not loaded" rather than "prepare() was not called": after an
+            // `unload()` the second is simply wrong, and Speech.app reaches
+            // this state that way between jobs.
+            throw SpeechError.runtime(
+                "'\(id)' has no models loaded; call prepare() before starting a live session")
+        }
+        // The hint reaches the decoder as a prompt id, and it is the same
+        // setter the batch path uses. Applying it here rather than trusting
+        // `prepare`'s: a caller can prepare once and start sessions in
+        // different languages, which is what the applet's language menu does.
+        _ = try await applyLanguage(options.language)
+        // ONE LIVE SESSION AT A TIME, and it is a contract rather than a guard.
+        // The session shares this manager instead of loading a second one -
+        // that sharing is why live mode on this row costs no extra 660 MB and
+        // no second ANE compile - so two concurrent sessions, or a
+        // `transcribe()` during a session, would reset each other's decoder
+        // state and desynchronize the backend's chunk watermark.
+        // `ParakeetLiveSession` builds a fresh manager and has no such
+        // constraint; it also pays for one. Nothing in the CLI can break this
+        // (the verbs are sequential and `--refine` refuses the draft engine's
+        // own id), so enforcing it would mean a session-lifetime hook for a
+        // caller that does not exist yet. Stage 5 is when it does.
+        return FluidStreamingSession(
+            backend: await NemotronStreamingBackend.make(manager: manager),
+            catalogID: id,
+            language: options.language,
+            wantWords: options.wantWordTimestamps)
     }
 }
