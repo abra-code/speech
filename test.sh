@@ -249,6 +249,21 @@ expect_code 2 "$SPEECH" --models-dir "$MODELS" \
 expect_grep_err "not a transcription engine" "$SPEECH" --models-dir "$MODELS" \
     transcribe --model fluid.parakeet-ctc-110m "$TMP/fox.aiff"
 
+# The Silero detector is the second helper row, and the one whose files land
+# two components below the row rather than one: the loader appends `Models` to
+# what it is handed before the downloader appends the repo folder, so a check at
+# either wrong level would call an empty row installed.
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.silero-vad
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.silero-vad@v6
+VAD="$MODELS/fluid/silero-vad/Models/silero-vad"
+mkdir -p "$VAD/silero-vad-unified-256ms-v6.2.1.mlmodelc"
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.silero-vad
+: > "$VAD/silero-vad-unified-256ms-v6.2.1.mlmodelc/coremldata.bin"
+expect_grep "installed" "$SPEECH" --models-dir "$MODELS" models status fluid.silero-vad
+expect_grep_err "not a transcription engine" "$SPEECH" --models-dir "$MODELS" \
+    transcribe --model fluid.silero-vad "$TMP/fox.aiff"
+expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.silero-vad
+
 # An engine with no vocabulary support warns and continues, rather than
 # failing: the terms are a hint there, not a dependency. The opposite case -
 # an engine that *does* support them, with the spotter row absent - needs a

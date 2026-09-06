@@ -15,7 +15,7 @@ public enum FluidEngineFactory {
     /// `speech engines` never advertises one it would then reject.
     public static let implementedModels = [
         "parakeet-v3", "nemotron-multilingual", "canary-1b-v2", "parakeet-unified",
-        "parakeet-ctc-110m",
+        "parakeet-ctc-110m", "silero-vad",
     ]
 
     /// Every `(model, variant)` this build can construct, in the order this factory builds them.
@@ -46,9 +46,11 @@ public enum FluidEngineFactory {
         for tier in UnifiedStreamTier.all {
             rows.append((model: "parakeet-unified", variant: tier.variant))
         }
-        // The spotter has no variants and is not a transcriber, but it is a row
-        // a user downloads and deletes, so it belongs in the listing.
+        // Neither of these transcribes, and both are rows a user downloads and
+        // deletes, so both belong in the listing: the spotter behind custom
+        // vocabulary, and the detector behind '--segment vad'.
         rows.append((model: "parakeet-ctc-110m", variant: nil))
+        rows.append((model: "silero-vad", variant: nil))
         return rows
     }
 
@@ -86,6 +88,11 @@ public enum FluidEngineFactory {
                 throw SpeechError.usage("'\(spec.model)' has no variants")
             }
             return SpotterEngine(spec: spec)
+        case "silero-vad":
+            guard spec.variant == nil else {
+                throw SpeechError.usage("'\(spec.model)' has no variants")
+            }
+            return SileroVadEngine(spec: spec)
         default:
             throw SpeechError.usage(
                 "unknown FluidAudio model '\(spec.model)'"
@@ -106,6 +113,7 @@ public enum FluidEngineFactory {
         case "canary-1b-v2": return Repo.canary1bV2.rawValue
         case "nemotron-multilingual": return Repo.nemotronMultilingual.rawValue
         case "parakeet-ctc-110m": return Repo.parakeetCtc110m.rawValue
+        case "silero-vad": return Repo.vad.rawValue
         default: return nil
         }
     }

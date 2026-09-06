@@ -38,13 +38,14 @@ public enum CatalogFamily: String, Sendable, Codable, CaseIterable {
     case parakeet
     case parakeetUnified = "parakeet-unified"
     case qwen3ASR = "qwen3-asr"
+    case silero
     case whisper
 }
 
 /// Not every installable row transcribes. The CTC spotter is downloaded and
 /// managed like a model but only spots vocabulary terms for the Parakeet rows,
-/// so the distinction has to be data rather than something each caller
-/// rediscovers.
+/// and the Silero detector only says where speech starts and stops, so the
+/// distinction has to be data rather than something each caller rediscovers.
 public enum CatalogRole: String, Sendable, Codable {
     case transcriber
     case helper
@@ -66,7 +67,10 @@ public struct CatalogRow: Sendable, Equatable {
     /// Parameters in millions, for ordering and display. Nil where the number
     /// is not published (the Apple rows).
     public var parametersM: Int?
-    /// int8, int4, fp16, q8_0, q4_k_m, or "system" for a row the OS ships.
+    /// int8, int4, fp16, mixed, q8_0, q4_k_m, or "system" for a row the OS
+    /// ships. Taken from what the build actually is rather than from a
+    /// convention: the Silero export stores some tensors at Float16 and some at
+    /// Float32 and calls itself mixed, so this says mixed.
     public var precision: String
     /// Nominal download size: the bytes this tool actually fetches, which for a
     /// `fluid` row is a subset of its repository rather than the whole of it.
@@ -115,7 +119,7 @@ public enum Catalog {
     /// in the tests keeps it that way.
     public static let rows: [CatalogRow] = ordered(
         appleRows + canaryRows + nemotronRows + parakeetRows + parakeetUnifiedRows
-            + qwen3Rows + whisperRows)
+            + qwen3Rows + sileroRows + whisperRows)
 
     /// Families alphabetically; within a family, engine then largest build
     /// first, with an unknown size last and the id breaking any remaining tie.
@@ -358,6 +362,27 @@ public enum Catalog {
             precision: "q4_k_m",
             sizeBytes: 589_560_480,
             label: "Qwen3-ASR 0.6B (Q4_K_M)"),
+    ]
+
+    // MARK: - Silero
+
+    static let sileroRows: [CatalogRow] = [
+        // The only row here that produces no text at all. It is a catalog row
+        // because it is downloaded, measured, listed and deleted exactly like a
+        // model, and `--segment vad` cannot run until it is installed - which
+        // is a download instruction a user has to be able to find.
+        //
+        // No parameter count: Silero publishes none for this export, and the
+        // field is in millions, so the only number that could go here is a zero
+        // that would read as "unknown" anyway.
+        CatalogRow(
+            id: "fluid.silero-vad",
+            family: .silero,
+            role: .helper,
+            source: "FluidInference/silero-vad-coreml",
+            precision: "mixed",
+            sizeBytes: 1_063_427,
+            label: "Silero VAD 256 ms (v6.2.1)"),
     ]
 
     // MARK: - Nemotron

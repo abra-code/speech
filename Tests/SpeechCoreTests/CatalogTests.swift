@@ -176,10 +176,13 @@ struct CatalogTableTests {
         }
     }
 
-    @Test("the CTC spotter is the only helper row")
+    @Test("the helper rows are the two that produce no text")
     func helpers() {
+        // Spelled out rather than counted, because the role is what keeps a row
+        // that transcribes nothing out of a picker built from this table. A new
+        // row arriving here is a deliberate decision, not a drift.
         let helpers = Catalog.rows.filter { $0.role == .helper }.map(\.id)
-        #expect(helpers == ["fluid.parakeet-ctc-110m"])
+        #expect(helpers == ["fluid.parakeet-ctc-110m", "fluid.silero-vad"])
     }
 }
 

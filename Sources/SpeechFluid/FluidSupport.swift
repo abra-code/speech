@@ -378,6 +378,25 @@ enum FluidModelFiles {
         }
     }
 
+    /// The Silero VAD row: one compiled bundle and nothing else.
+    ///
+    /// FluidAudio ships no `modelsExist` for this family, so the name comes
+    /// from their `ModelNames.VAD` constants - the same set their loader asks
+    /// `ModelHub` for - and the bundle goes through `isCompiledBundle` for the
+    /// usual reason: the downloader creates the directory before it fills it.
+    ///
+    /// The repository holds five other exports of this model, including an
+    /// earlier v6.0.0 of the same 256 ms window. None of them is required and
+    /// none is downloaded; naming the one the loader opens is what keeps a row
+    /// holding the wrong megabyte from reading as installed.
+    static var vad: ModelCompletenessCheck {
+        { rowDirectory in
+            isCompiledBundle(
+                FluidPaths.vadRepo(in: rowDirectory)
+                    .appendingPathComponent(ModelNames.VAD.sileroVadFile))
+        }
+    }
+
     /// A loadable compiled CoreML bundle: a directory with `coremldata.bin` in
     /// it and no `.partial` staging file left anywhere underneath.
     ///
@@ -466,6 +485,27 @@ enum FluidPaths {
     static func unifiedRepo(in rowDirectory: URL) -> URL {
         rowDirectory.appendingPathComponent(
             Repo.parakeetUnified.folderName, isDirectory: true)
+    }
+
+    /// Where `VadManager(modelDirectory:)` looks, which is one component below
+    /// the directory it is handed.
+    ///
+    /// This family uses a third convention: the argument is a FluidAudio *base*
+    /// directory, and the loader appends `Models` to it before `ModelHub`
+    /// appends the repo folder. So the row directory is the base, the download
+    /// target is `<row>/Models`, and the bundle lands at
+    /// `<row>/Models/silero-vad/`. The extra component buys something worth
+    /// having: the download path and the load path are then derived from one
+    /// convention, both of them FluidAudio's, rather than from two spellings
+    /// that agree until a pin bump.
+    static func vadModels(in rowDirectory: URL) -> URL {
+        rowDirectory.appendingPathComponent("Models", isDirectory: true)
+    }
+
+    /// The directory the Silero bundle itself sits in.
+    static func vadRepo(in rowDirectory: URL) -> URL {
+        vadModels(in: rowDirectory)
+            .appendingPathComponent(Repo.vad.folderName, isDirectory: true)
     }
 
     /// The language code every Nemotron download in this program uses.

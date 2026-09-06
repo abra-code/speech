@@ -100,10 +100,30 @@ Neural Engine rather than in process footprint, so peak RSS cannot see it and
 They are also the only rows that accept a custom vocabulary, which they
 implement by spotting terms with a separate small CTC model.
 
-Thirteen rows: two Parakeet v3 precisions, three Nemotron streaming chunk tiers,
+Fourteen rows: two Parakeet v3 precisions, three Nemotron streaming chunk tiers,
 one Canary precision, two Parakeet Unified precisions, four Parakeet Unified
-streaming latency tiers, and the CTC spotter, which is a helper rather than a
-transcriber.
+streaming latency tiers, and two helpers that transcribe nothing - the CTC
+spotter behind custom vocabulary, and the Silero detector below.
+
+### `fluid.silero-vad`, the row that produces no text
+
+One compiled CoreML bundle, 1.1 MB, an LSTM over a 256 ms window: it answers
+"is someone speaking" and nothing else. It is a catalog row rather than an
+implementation detail because it is downloaded, measured, listed and deleted
+exactly like a model, and because the live path that will consume its
+boundaries cannot run until it is installed - which is a download instruction a
+user has to be able to find.
+
+Its capability record is every flag false and no language at all, which for this
+model is the literal truth rather than a shrug: it hears speech as an acoustic
+event, so it carries no vocabulary and no language. Measured here, detection
+costs about 0.1 percent of real time - 0.36 s of compute for 470 s of audio -
+so it can run beside any draft engine without competing with it.
+
+Why it exists: every live row in this catalog decides utterance boundaries its
+own way and none of them decides from the audio, so the same recording is cut
+differently by every row and `--refine` re-transcribes a span the model chose.
+See docs/live.md for what the boundaries are used for.
 
 ### Parakeet Unified has two encoders, and they are separate downloads
 
