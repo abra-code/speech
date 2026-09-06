@@ -525,10 +525,10 @@ one means nothing for thirteen seconds.
   Silero VAD marking speech start and end - which would give every engine the
   same boundaries, and give refinement a span chosen for the audio rather than
   for the model - is still to come.
-- **A live session for `fluid.parakeet-unified`** (the rest of plan step 4.2).
-  It still reports `unavailable` with a reason, and unlike the row above it is
-  not a wiring job: FluidAudio ships the streaming encoder as a *separate*
-  CoreML bundle from the offline one this project already downloads - 563 MB at
-  int8, 1.12 GB at fp16 - in four latency tiers, one file each. So live mode
-  there is a second download rather than a second call, and which tier to ship
-  is a decision the instrument can now settle by measurement.
+- **A live session for the Parakeet Unified streaming rows** (the rest of plan
+  step 4.2). The download half is done: `fluid.parakeet-unified@stream-2080`,
+  `@stream-1120`, `@stream-640` and `@stream-320` are catalog rows that fetch
+  the streaming encoder - a *separate* CoreML bundle from the offline one, 609
+  MB per latency tier - and transcribe files with it. What they still report
+  `unavailable` for is the live session itself, which is now an adapter rather
+  than a download.

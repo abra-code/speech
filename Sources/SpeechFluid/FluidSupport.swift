@@ -6,6 +6,7 @@
 // out of the engine classes means the four engine families share one answer
 // each instead of drifting apart.
 
+import AVFoundation
 import Foundation
 import FluidAudio
 import SpeechCore
@@ -339,6 +340,44 @@ enum FluidModelFiles {
         }
     }
 
+    /// Parakeet Unified, streaming export.
+    ///
+    /// Same repository, same decoder, same joint, same vocabulary, and a
+    /// different encoder: `parakeet_unified_encoder_streaming_<L>_<C>_<R>_int8`
+    /// rather than `parakeet_unified_encoder_int8`. The list is again
+    /// FluidAudio's own - the `requiredFiles` set `StreamingUnifiedAsrManager`
+    /// hands to `loadWithRecovery` - so a pin bump that renames a bundle moves
+    /// this with it.
+    ///
+    /// **The tier is in the encoder's file name, and that is what keeps the
+    /// rows apart.** The four tiers share a repository folder name and every
+    /// file but one, so without naming the tier's own encoder a `@stream-320`
+    /// download would report `@stream-2080` as installed and `prepare` would
+    /// then fail to open a bundle the store had just called complete.
+    ///
+    /// int8 only, with no precision parameter, because only int8 tiers are
+    /// catalog rows - see `UnifiedStreamingEngine`. A parameter no caller can
+    /// vary is a branch no test can reach.
+    static func unifiedStreaming(tier: UnifiedStreamTier) -> ModelCompletenessCheck {
+        { rowDirectory in
+            let directory = FluidPaths.unifiedRepo(in: rowDirectory)
+            let names = ModelNames.ParakeetUnified.self
+            let required = [
+                names.streamingEncoderFile(precision: .int8, contextSuffix: tier.contextSuffix),
+                names.decoderFile,
+                names.jointDecisionFile,
+                names.vocab,
+            ]
+            return required.allSatisfy { name in
+                let path = directory.appendingPathComponent(name)
+                guard name.hasSuffix(".mlmodelc") else {
+                    return FileManager.default.fileExists(atPath: path.path)
+                }
+                return isCompiledBundle(path)
+            }
+        }
+    }
+
     /// A loadable compiled CoreML bundle: a directory with `coremldata.bin` in
     /// it and no `.partial` staging file left anywhere underneath.
     ///
@@ -534,5 +573,38 @@ enum FluidNetwork {
     /// restore on every exit path, including a thrown error.
     static func allowDownloads() {
         ModelHub.offlineMode = false
+    }
+}
+
+// MARK: - Buffers
+
+/// The one place `[Float]` becomes an `AVAudioPCMBuffer` for FluidAudio.
+///
+/// Two of its managers take a buffer rather than an array, and both then run it
+/// through their own `AudioConverter.resampleBuffer`, which has an explicit
+/// pass-through for a format that already matches. So the format here is not a
+/// preference: handing over anything but the canonical 16 kHz mono Float32
+/// costs a real resample of audio this program already decoded to exactly that.
+enum FluidBuffers {
+    /// A non-interleaved mono buffer at 16 kHz over a copy of `samples`.
+    ///
+    /// Force-unwrapped, and the two unwraps are different claims.
+    /// `LiveAudioFormat.canonical` is documented as non-failing for its
+    /// arguments and is already unwrapped there. The allocation fails only for
+    /// a zero frame capacity or an out-of-memory condition, so the caller's
+    /// job is to not ask for an empty buffer - every one of them already
+    /// guards on empty samples, because an empty transcription request is a
+    /// separate answer rather than a degenerate buffer.
+    static func canonical(_ samples: [Float]) -> AVAudioPCMBuffer {
+        let format = LiveAudioFormat.canonical
+        let buffer = AVAudioPCMBuffer(
+            pcmFormat: format, frameCapacity: AVAudioFrameCount(max(1, samples.count)))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        if !samples.isEmpty {
+            samples.withUnsafeBufferPointer { source in
+                buffer.floatChannelData![0].update(from: source.baseAddress!, count: samples.count)
+            }
+        }
+        return buffer
     }
 }

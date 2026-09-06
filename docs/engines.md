@@ -100,9 +100,44 @@ Neural Engine rather than in process footprint, so peak RSS cannot see it and
 They are also the only rows that accept a custom vocabulary, which they
 implement by spotting terms with a separate small CTC model.
 
-Nine rows: two Parakeet v3 precisions, three Nemotron streaming chunk tiers, one
-Canary precision, two Parakeet Unified precisions, and the CTC spotter, which is
-a helper rather than a transcriber.
+Thirteen rows: two Parakeet v3 precisions, three Nemotron streaming chunk tiers,
+one Canary precision, two Parakeet Unified precisions, four Parakeet Unified
+streaming latency tiers, and the CTC spotter, which is a helper rather than a
+transcriber.
+
+### Parakeet Unified has two encoders, and they are separate downloads
+
+`fluid.parakeet-unified@int8` and `@fp16` are the *offline* encoder: full
+attention over a 15 second window, the better accuracy, no live mode.
+`fluid.parakeet-unified@stream-<ms>` is the *streaming* encoder from the same
+checkpoint: chunked attention with the `[left, chunk, right]` mask baked in at
+conversion time.
+
+Because the mask is baked in, each latency tier is a physically different
+encoder bundle, so the tier is part of the row id rather than a runtime option,
+and installing one tier does not install another. The number is the theoretical
+latency in milliseconds - chunk plus look-ahead, the delay before the encoder
+can see a whole word:
+
+| Row | context | latency | download |
+|---|---|---|---|
+| `@stream-2080` | 70, 13, 13 | 2.08 s | 609 MB |
+| `@stream-1120` | 70, 7, 7 | 1.12 s | 609 MB |
+| `@stream-640` | 70, 7, 1 | 0.64 s | 609 MB |
+| `@stream-320` | 70, 2, 2 | 0.32 s | 608 MB |
+
+int8 only. FluidAudio publishes each tier in both precisions and measures the
+two at 2.14% and 2.15% on LibriSpeech test-clean streaming, so fp16 would double
+the download for a difference smaller than any corpus here can resolve. That
+published figure names no context, and the library's default is `70_13_13`, so
+take it as covering the top tier rather than all four. Note also that `@fp16` is
+*not* the fp16 build of these rows - it is the offline encoder, and it does not
+stream.
+
+Batch on a `@stream-` row means the streaming encoder run over a whole file.
+That is deliberate: `speech eval --live` scores a row against that same row's
+batch WER, and a batch number taken from the offline encoder would be comparing
+two different models.
 
 ## `ggml.*` - transcribe.cpp 0.2.3, ggml on Metal
 

@@ -278,6 +278,45 @@ public enum Catalog {
             precision: "fp16",
             sizeBytes: 1_205_620_423,
             label: "Parakeet Unified EN (fp16)"),
+        // The streaming export of the same checkpoint, one row per published
+        // [left, chunk, right] attention context. The mask is baked into the
+        // encoder at conversion time, so the tier is a different 591 MB bundle
+        // rather than a setting - which is why these are rows and not a mode of
+        // the two above, and why installing one does not install another. The
+        // number in the id is the theoretical latency in milliseconds: chunk
+        // plus look-ahead, the delay before the encoder can see a whole word.
+        CatalogRow(
+            id: "fluid.parakeet-unified@stream-2080",
+            family: .parakeetUnified,
+            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
+            parametersM: 600,
+            precision: "int8",
+            sizeBytes: 609_440_571,
+            label: "Parakeet Unified EN streaming 2.08 s (int8)"),
+        CatalogRow(
+            id: "fluid.parakeet-unified@stream-1120",
+            family: .parakeetUnified,
+            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
+            parametersM: 600,
+            precision: "int8",
+            sizeBytes: 608_834_659,
+            label: "Parakeet Unified EN streaming 1.12 s (int8)"),
+        CatalogRow(
+            id: "fluid.parakeet-unified@stream-640",
+            family: .parakeetUnified,
+            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
+            parametersM: 600,
+            precision: "int8",
+            sizeBytes: 608_531_778,
+            label: "Parakeet Unified EN streaming 0.64 s (int8)"),
+        CatalogRow(
+            id: "fluid.parakeet-unified@stream-320",
+            family: .parakeetUnified,
+            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
+            parametersM: 600,
+            precision: "int8",
+            sizeBytes: 608_330_968,
+            label: "Parakeet Unified EN streaming 0.32 s (int8)"),
     ]
 
     // MARK: - Qwen3-ASR

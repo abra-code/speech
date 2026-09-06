@@ -41,6 +41,11 @@ public enum FluidEngineFactory {
         for variant in ["int8", "fp16"] {
             rows.append((model: "parakeet-unified", variant: variant))
         }
+        // The streaming encoder is a second download of the same checkpoint,
+        // so these are rows of their own rather than a mode of the two above.
+        for tier in UnifiedStreamTier.all {
+            rows.append((model: "parakeet-unified", variant: tier.variant))
+        }
         // The spotter has no variants and is not a transcriber, but it is a row
         // a user downloads and deletes, so it belongs in the listing.
         rows.append((model: "parakeet-ctc-110m", variant: nil))
@@ -66,8 +71,16 @@ public enum FluidEngineFactory {
             return CanaryEngine(spec: spec, flavor: try CanaryFlavor.parse(
                 model: spec.model, variant: spec.variant))
         case "parakeet-unified":
-            return UnifiedEngine(spec: spec, flavor: try UnifiedFlavor.parse(
-                model: spec.model, variant: spec.variant))
+            // One grammar in `UnifiedFlavor.parse`, two engines: the offline
+            // encoder and the streaming one are different bundles with
+            // different capabilities, and putting both managers inside one
+            // actor would give every field a "which half am I" qualifier.
+            switch try UnifiedFlavor.parse(model: spec.model, variant: spec.variant) {
+            case .offline(let precision):
+                return UnifiedEngine(spec: spec, precision: precision)
+            case .streaming(let tier):
+                return UnifiedStreamingEngine(spec: spec, tier: tier)
+            }
         case "parakeet-ctc-110m":
             guard spec.variant == nil else {
                 throw SpeechError.usage("'\(spec.model)' has no variants")

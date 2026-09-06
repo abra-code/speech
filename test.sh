@@ -160,6 +160,15 @@ expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-mult
 expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-multilingual@2240
 # A bare id is the default tier, not a rejection.
 expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.nemotron-multilingual
+# Parakeet Unified carries two axes in one variant: the encoder export and,
+# for the streaming one, its latency tier. A tier that does not exist and a
+# second spelling of one that does must both be refused - the variant is a
+# directory name in the store, so two spellings of one tier would be two
+# half-downloads of the same 609 MB.
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@stream-641
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@stream-0640
+expect_code 2 "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@stream
+expect_grep "missing" "$SPEECH" --models-dir "$MODELS" models status fluid.parakeet-unified@stream-640
 # Deleting what was never installed is a no-op, not an error.
 expect_ok "$SPEECH" --models-dir "$MODELS" models delete fluid.parakeet-v3@int8
 

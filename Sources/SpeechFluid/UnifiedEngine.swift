@@ -1,10 +1,13 @@
 // UnifiedEngine.swift - `fluid.parakeet-unified@int8` and `@fp16`, the
 // English-only row, and the last of stage 1's four FluidAudio families.
 //
-// Parakeet Unified is one set of weights serving both a 15 s full-attention
-// offline encoder and a chunked streaming encoder, which is what makes it
-// interesting for stage 4: the live path will be the same download, not a
-// second model. This file wires the offline half.
+// Parakeet Unified is one checkpoint with two encoder exports: a 15 s
+// full-attention offline encoder and a chunked-attention streaming one. This
+// file wires the offline half. The streaming half is a separate ~591 MB bundle
+// per latency tier and a separate set of catalog rows - see
+// `UnifiedStreamingEngine`, which also records that the sentence this comment
+// used to carry ("the live path will be the same download, not a second
+// model") was wrong.
 //
 // It is the best-behaved family in the package. Its downloader validates what
 // it fetched instead of testing for paths, purges and re-fetches a cache that
@@ -18,10 +21,18 @@ import Foundation
 import FluidAudio
 import SpeechCore
 
-/// The encoder precisions the catalog exposes.
+/// The whole `@` grammar for `parakeet-unified`, in one place.
 ///
-/// Both are published, which is worth stating because the last family's second
-/// precision was not: `FluidInference/parakeet-unified-en-0.6b-coreml` ships
+/// One checkpoint, two encoder exports, and the variant is which export plus
+/// which build of it. `.offline` is this file: a 15 s full-attention encoder,
+/// the better accuracy, and no live mode. `.streaming` is
+/// `UnifiedStreamingEngine`: a chunked-attention encoder in four latency tiers,
+/// a second download of its own, and the row that can answer while somebody is
+/// still talking.
+///
+/// Both precisions of the offline encoder are published, which is worth stating
+/// because the previous family's second precision was not:
+/// `FluidInference/parakeet-unified-en-0.6b-coreml` ships
 /// `parakeet_unified_encoder_int8.mlmodelc` and `parakeet_unified_encoder.mlmodelc`
 /// side by side, verified against the repository listing rather than inferred
 /// from the enum.
@@ -30,14 +41,16 @@ import SpeechCore
 /// the size - LibriSpeech test-clean 1.83% against fp16's 1.82% - so `@fp16`
 /// exists for the machines where the int8 encoder cannot build an execution
 /// plan (their issue #828, seen on A-series) rather than as the quality option.
-enum UnifiedFlavor: Sendable {
-    case int8
-    case fp16
+enum UnifiedFlavor: Sendable, Equatable {
+    case offline(UnifiedEncoderPrecision)
+    case streaming(UnifiedStreamTier)
 
+    /// The encoder precision the row downloads. Streaming rows are int8 only -
+    /// see `UnifiedStreamingEngine` for why the fp16 tiers are not offered.
     var precision: UnifiedEncoderPrecision {
         switch self {
-        case .int8: return .int8
-        case .fp16: return .fp16
+        case .offline(let precision): return precision
+        case .streaming: return .int8
         }
     }
 
@@ -46,11 +59,19 @@ enum UnifiedFlavor: Sendable {
             throw SpeechError.usage("unknown FluidAudio model '\(model)'")
         }
         switch variant {
-        case nil, "int8": return .int8
-        case "fp16": return .fp16
+        case nil, "int8": return .offline(.int8)
+        case "fp16": return .offline(.fp16)
         default:
+            // Checked before the error is built, so `@stream-640` resolves and
+            // `@stream-641` is refused by the same sentence that lists what
+            // does exist. One grammar, one message: a variant this rejects is a
+            // row the factory cannot build, and the two must not drift.
+            if let variant, let tier = UnifiedStreamTier.tier(forVariant: variant) {
+                return .streaming(tier)
+            }
             throw SpeechError.usage(
-                "unknown variant '@\(variant ?? "")' for parakeet-unified (want @int8 or @fp16)")
+                "unknown variant '@\(variant ?? "")' for parakeet-unified"
+                + " (want @int8, @fp16, or @\(UnifiedStreamTier.variants.joined(separator: ", @")))")
         }
     }
 }
@@ -62,7 +83,7 @@ actor UnifiedEngine: TranscriptionEngine {
     nonisolated var completenessCheck: ModelCompletenessCheck? { check }
 
     private let spec: EngineSpec
-    private let flavor: UnifiedFlavor
+    private let precision: UnifiedEncoderPrecision
     private let store: ModelStore
 
     private var manager: UnifiedAsrManager?
@@ -79,24 +100,25 @@ actor UnifiedEngine: TranscriptionEngine {
     /// Bumped by `unload()`, so a booster load that outlives it is not cached.
     private var boosterEpoch = 0
 
-    init(spec: EngineSpec, flavor: UnifiedFlavor) {
+    /// The precision rather than the flavor: this engine is the offline half,
+    /// and a `.streaming` case reaching it would be a routing bug that the
+    /// type system can simply not allow.
+    init(spec: EngineSpec, precision: UnifiedEncoderPrecision) {
         self.spec = spec
-        self.flavor = flavor
+        self.precision = precision
         self.id = spec.catalogID
         self.store = ModelStore(root: spec.modelsDirectory)
-        self.check = FluidModelFiles.unified(precision: flavor.precision)
+        self.check = FluidModelFiles.unified(precision: precision)
         FluidNetwork.denyByDefault()
         self.capabilities = EngineCapabilities(
             batch: true,
-            // Stage 4, and not the wiring job this comment used to claim.
-            // FluidAudio's streaming encoder is a *different bundle* from the
-            // offline one loaded above - `streamingEncoderFile` against
-            // `offlineEncoderFile` - and the repo carries it in four
-            // [left, chunk, right] tiers, each with its attention mask baked
-            // in at conversion time. Checked against the download on this
-            // machine: only the offline encoder is there. So live mode here
-            // costs a second 563 MB (int8; 1.12 GB at fp16) and a choice of
-            // tier, which is why it is still false.
+            // False here forever, not "not yet". FluidAudio's streaming
+            // encoder is a *different bundle* from the offline one loaded
+            // above - `streamingEncoderFile` against `offlineEncoderFile` -
+            // carried in four [left, chunk, right] tiers with the attention
+            // mask baked in at conversion time. It is a second ~591 MB
+            // download and its own row: `fluid.parakeet-unified@stream-<ms>`.
+            // Nothing this row could download would make this true.
             live: false,
             wordTimestamps: true,
             segmentTimestamps: true,
@@ -184,7 +206,7 @@ actor UnifiedEngine: TranscriptionEngine {
         // Three CoreML bundles with no progress callback of their own.
         progress(LoadProgress(phase: .compiling))
         let started = epoch
-        let manager = UnifiedAsrManager(encoderPrecision: flavor.precision)
+        let manager = UnifiedAsrManager(encoderPrecision: precision)
         do {
             // `loadModels(from:)`, never `loadModels(to:)`. The `to:` overload
             // is the download path - it can fetch, and on a load failure it
@@ -242,7 +264,7 @@ actor UnifiedEngine: TranscriptionEngine {
         FluidNetwork.allowDownloads()
         defer { FluidNetwork.denyByDefault() }
 
-        let installer = UnifiedAsrManager(encoderPrecision: flavor.precision)
+        let installer = UnifiedAsrManager(encoderPrecision: precision)
         do {
             if check(directory) {
                 // Everything is on disk already - a retry after a load failure,
@@ -260,7 +282,8 @@ actor UnifiedEngine: TranscriptionEngine {
             throw CancellationError()
         } catch {
             await installer.cleanup()
-            throw Self.installFailure(error, id: id, downloaded: check(directory), flavor: flavor)
+            throw Self.installFailure(
+                error, id: id, downloaded: check(directory), precision: precision)
         }
         await installer.cleanup()
         try store.finishInstall(spec, isComplete: check)
@@ -269,14 +292,14 @@ actor UnifiedEngine: TranscriptionEngine {
     /// Tells a download failure from a load failure, because the fix differs
     /// and only one of them is worth retrying.
     private static func installFailure(
-        _ error: Error, id: String, downloaded: Bool, flavor: UnifiedFlavor
+        _ error: Error, id: String, downloaded: Bool, precision: UnifiedEncoderPrecision
     ) -> SpeechError {
         guard downloaded else {
             return .runtime("downloading '\(id)' failed: \(error.localizedDescription)")
         }
         var message = "'\(id)' downloaded but its models could not be loaded on this Mac:"
             + " \(error.localizedDescription)"
-        if flavor.precision == .int8 {
+        if precision == .int8 {
             // FluidAudio logs this hint and then throws; nobody reading our
             // error would ever see it.
             message += ". Some chips cannot build an execution plan for the int8"
