@@ -435,6 +435,81 @@ else
     echo "         asset service."
 fi
 
+# The MLX helper, only if it has been built. `speech` runs without it and
+# `build.sh` does not produce it, so its absence is the normal case rather than
+# a skipped test worth warning about. What is checked here is the process
+# boundary and nothing else: no model is loaded, because a model is half a
+# gigabyte and this suite needs neither the network nor the store.
+if [ -x build/speech-mlx ]; then
+    echo "== speech-mlx =="
+
+    # The handshake, which is also the proof that this build can reach the GPU:
+    # a helper that lost its Metal bundle dies here rather than mid-measurement.
+    printf '{"op":"bye"}\n' | ./build/speech-mlx \
+        > "$TMP/mlx-hello.jsonl" 2> "$TMP/mlx-hello.err"
+    mlx_status=$?
+
+    # An MLX process with no GPU access - a restrictive sandbox, some CI
+    # containers - dies before it can say anything, with an NSRangeException
+    # from MTLCopyAllDevices() returning an empty array. That is a property of
+    # where this is running and not of the build, so it is reported and skipped
+    # the way the Apple engines are, rather than counted as a failure. Any
+    # other non-zero exit is a real one.
+    # Both the exception name and the crash site, because the name alone is a
+    # substring anything could contain: a real regression that happened to
+    # raise an NSRangeException elsewhere would silently skip this whole block
+    # instead of failing it.
+    if [ "$mlx_status" != 0 ] && grep -q 'NSRangeException' "$TMP/mlx-hello.err" \
+        && grep -qE 'MTLCopyAllDevices|mlx4core5metal6Device' "$TMP/mlx-hello.err"; then
+        echo "WARNING: this process cannot reach the GPU (MTLCopyAllDevices returned"
+        echo "         nothing), so speech-mlx cannot start - skipping its tests."
+    elif [ "$mlx_status" != 0 ]; then
+        fail "speech-mlx did not exit cleanly on bye (exit $mlx_status)"
+    else
+        expect_grep '"event":"ready"' head -1 "$TMP/mlx-hello.jsonl"
+        expect_grep '"mlx_swift"' head -1 "$TMP/mlx-hello.jsonl"
+
+        # The response stream carries JSON and nothing else. This is the check
+        # that earns its keep: MLX Audio prints to stdout while loading a model,
+        # and without the descriptor rescue in the helper those lines land here.
+        while IFS= read -r line; do
+            printf '%s' "$line" | json_ok || fail "speech-mlx wrote a non-JSON line: $line"
+        done < "$TMP/mlx-hello.jsonl"
+
+        # Every request gets exactly one terminal reply, including the ones with
+        # nothing to report.
+        printf '{"op":"unload"}\n{"op":"bye"}\n' \
+            | ./build/speech-mlx > "$TMP/mlx-unload.jsonl" 2>/dev/null
+        expect_grep '"event":"ok"' cat "$TMP/mlx-unload.jsonl"
+
+        # A transcribe whose byte count is not a whole number of samples is
+        # refused, rather than transcribed with every sample after the first one
+        # shifted. The frame here is complete - eight bytes really do follow - so
+        # this exercises the arithmetic check and not the framing.
+        printf '{"op":"transcribe","id":1,"samples":4,"bytes":8}\n12345678{"op":"bye"}\n' \
+            | ./build/speech-mlx > "$TMP/mlx-short.jsonl" 2>/dev/null \
+            || fail "speech-mlx exited non-zero on a well-framed bad request"
+        expect_grep '"event":"error"' cat "$TMP/mlx-short.jsonl"
+        expect_grep 'not 4 Float32 samples' cat "$TMP/mlx-short.jsonl"
+
+        # And the same check with a sample count that cannot be multiplied.
+        # A signed overflow is a trap in Swift, not a wrong answer, so
+        # `samples * 4` written plainly would take the process down before any
+        # guard could refuse the request.
+        printf '{"op":"transcribe","id":9,"samples":9223372036854775807,"bytes":8}\n12345678{"op":"bye"}\n' \
+            | ./build/speech-mlx > "$TMP/mlx-huge.jsonl" 2>/dev/null \
+            || fail "speech-mlx died on an oversized sample count"
+        expect_grep '"event":"error"' cat "$TMP/mlx-huge.jsonl"
+
+        # A stream cut off inside a payload is reported, not treated as the end
+        # of a conversation. Sixteen bytes are promised and six arrive.
+        printf '{"op":"transcribe","id":2,"samples":4,"bytes":16}\nshort\n' \
+            | ./build/speech-mlx > "$TMP/mlx-cut.jsonl" 2>/dev/null \
+            && fail "speech-mlx exited 0 on a truncated frame"
+        expect_grep 'ended mid-frame' cat "$TMP/mlx-cut.jsonl"
+    fi
+fi
+
 FAILURES=$(wc -l < "$FAILLOG" | tr -d ' ')
 if [ "$FAILURES" -gt 0 ]; then
     echo "$FAILURES test(s) failed." >&2

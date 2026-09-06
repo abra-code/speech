@@ -1,0 +1,515 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0385F252689E09299C82AA9F /* Frames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F32FDC5B00A0A91DB7B9E4 /* Frames.swift */; };
+		0821E134176832A33822AC8C /* libSpeechMLXProtocol.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 7371E6A3BFA5D8F711560AFB /* libSpeechMLXProtocol.a */; };
+		11F7D0657FC92CE02D0DC83C /* MLXAudioCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1845A89AA944D7AA86E6E481 /* MLXAudioCore */; };
+		244E13508267D9CD5DCA8D58 /* Version.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA8DD8392C677236EE2C0AB /* Version.swift */; };
+		34C8D4E3C1B3B3AE4C5428F1 /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = 059C11EDC0A4DF1A81F6493A /* MLXAudioSTT */; };
+		3901F2852284B6D634E43A18 /* ModelSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C853722C81D04EDF1A069E /* ModelSession.swift */; };
+		66E93AF21E1E96344AD24C61 /* ProtocolIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C476B643C7C5DB4EF4B27F /* ProtocolIO.swift */; };
+		6BCCC365ECC11758E01E6315 /* Helper.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA64409D3CD8E2F63F66C79 /* Helper.swift */; };
+		971B3E50254465386B95F7D8 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = A36E6CF436EF3E871F3CA9CA /* MLX */; };
+		9B4429642FE57F6E16822A1B /* Wire.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A35FF9137A153F2B515468 /* Wire.swift */; };
+		C10349630E0D021D8CDD3CC1 /* Coding.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD88C9C8D46780A8DC2AA9F5 /* Coding.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		63EB48FBB7C7C0447C58789B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CF11FE70336E4F314635A34 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2159246783C31B7048AF64E7;
+			remoteInfo = SpeechMLXProtocol;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		09D860CBBE98E2954437D41A /* speech-mlx */ = {isa = PBXFileReference; includeInIndex = 0; path = "speech-mlx"; sourceTree = BUILT_PRODUCTS_DIR; };
+		18F32FDC5B00A0A91DB7B9E4 /* Frames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Frames.swift; sourceTree = "<group>"; };
+		49C853722C81D04EDF1A069E /* ModelSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSession.swift; sourceTree = "<group>"; };
+		5EA8DD8392C677236EE2C0AB /* Version.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Version.swift; sourceTree = "<group>"; };
+		7371E6A3BFA5D8F711560AFB /* libSpeechMLXProtocol.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libSpeechMLXProtocol.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		ACA64409D3CD8E2F63F66C79 /* Helper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Helper.swift; sourceTree = "<group>"; };
+		BD88C9C8D46780A8DC2AA9F5 /* Coding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Coding.swift; sourceTree = "<group>"; };
+		C7A35FF9137A153F2B515468 /* Wire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wire.swift; sourceTree = "<group>"; };
+		E7C476B643C7C5DB4EF4B27F /* ProtocolIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolIO.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6F3F89204322F31C3E0E5980 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0821E134176832A33822AC8C /* libSpeechMLXProtocol.a in Frameworks */,
+				34C8D4E3C1B3B3AE4C5428F1 /* MLXAudioSTT in Frameworks */,
+				11F7D0657FC92CE02D0DC83C /* MLXAudioCore in Frameworks */,
+				971B3E50254465386B95F7D8 /* MLX in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		118C2F0A6B1662C211CD8791 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7371E6A3BFA5D8F711560AFB /* libSpeechMLXProtocol.a */,
+				09D860CBBE98E2954437D41A /* speech-mlx */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		436B3D97BC56591ECFCA3E89 /* speech-mlx */ = {
+			isa = PBXGroup;
+			children = (
+				ACA64409D3CD8E2F63F66C79 /* Helper.swift */,
+				49C853722C81D04EDF1A069E /* ModelSession.swift */,
+				E7C476B643C7C5DB4EF4B27F /* ProtocolIO.swift */,
+				5EA8DD8392C677236EE2C0AB /* Version.swift */,
+				8E84426A862B79DEA54A6313 /* .claude */,
+			);
+			path = "speech-mlx";
+			sourceTree = "<group>";
+		};
+		6B3DF662DB5A39F9FD23AE15 = {
+			isa = PBXGroup;
+			children = (
+				993E631B7B9990B018EBEE1D /* Sources */,
+				77C44A2024AD58B5469E0E2E /* speech */,
+				118C2F0A6B1662C211CD8791 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		77C44A2024AD58B5469E0E2E /* speech */ = {
+			isa = PBXGroup;
+			children = (
+				F7AD1891D2230804835EC84E /* Sources */,
+			);
+			name = speech;
+			path = ../..;
+			sourceTree = "<group>";
+		};
+		8E84426A862B79DEA54A6313 /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
+			sourceTree = "<group>";
+		};
+		993E631B7B9990B018EBEE1D /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				436B3D97BC56591ECFCA3E89 /* speech-mlx */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		B93B937B858275C17F581137 /* SpeechMLXProtocol */ = {
+			isa = PBXGroup;
+			children = (
+				BD88C9C8D46780A8DC2AA9F5 /* Coding.swift */,
+				18F32FDC5B00A0A91DB7B9E4 /* Frames.swift */,
+				C7A35FF9137A153F2B515468 /* Wire.swift */,
+			);
+			name = SpeechMLXProtocol;
+			path = SpeechMLXProtocol;
+			sourceTree = "<group>";
+		};
+		F7AD1891D2230804835EC84E /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B93B937B858275C17F581137 /* SpeechMLXProtocol */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2159246783C31B7048AF64E7 /* SpeechMLXProtocol */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 775FEE81059D93AB2FD0274A /* Build configuration list for PBXNativeTarget "SpeechMLXProtocol" */;
+			buildPhases = (
+				914ED685D5D08C2F6D36B9FF /* Sources */,
+				DB3FBE526FCD0B11DED1CA90 /* Copy Swift Objective-C Interface Header */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpeechMLXProtocol;
+			packageProductDependencies = (
+			);
+			productName = SpeechMLXProtocol;
+			productReference = 7371E6A3BFA5D8F711560AFB /* libSpeechMLXProtocol.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		DE5B683FD5D0E47C5AA2E2B4 /* speech-mlx */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 90F401D94CFC31130204205E /* Build configuration list for PBXNativeTarget "speech-mlx" */;
+			buildPhases = (
+				F56FCD1CED9132A16F8097C4 /* Sources */,
+				6F3F89204322F31C3E0E5980 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1CF5F66060D4CB20C2195F14 /* PBXTargetDependency */,
+			);
+			name = "speech-mlx";
+			packageProductDependencies = (
+				059C11EDC0A4DF1A81F6493A /* MLXAudioSTT */,
+				1845A89AA944D7AA86E6E481 /* MLXAudioCore */,
+				A36E6CF436EF3E871F3CA9CA /* MLX */,
+			);
+			productName = "speech-mlx";
+			productReference = 09D860CBBE98E2954437D41A /* speech-mlx */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8CF11FE70336E4F314635A34 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 621BBBC404D79FDA43373DC5 /* Build configuration list for PBXProject "speech-mlx" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6B3DF662DB5A39F9FD23AE15;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0F5D6C9599FB6FF4CCB526EE /* XCRemoteSwiftPackageReference "mlx-audio-swift" */,
+				71512A68DD1C88D96630A5C5 /* XCRemoteSwiftPackageReference "mlx-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 118C2F0A6B1662C211CD8791 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2159246783C31B7048AF64E7 /* SpeechMLXProtocol */,
+				DE5B683FD5D0E47C5AA2E2B4 /* speech-mlx */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		DB3FBE526FCD0B11DED1CA90 /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		914ED685D5D08C2F6D36B9FF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10349630E0D021D8CDD3CC1 /* Coding.swift in Sources */,
+				0385F252689E09299C82AA9F /* Frames.swift in Sources */,
+				9B4429642FE57F6E16822A1B /* Wire.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F56FCD1CED9132A16F8097C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6BCCC365ECC11758E01E6315 /* Helper.swift in Sources */,
+				3901F2852284B6D634E43A18 /* ModelSession.swift in Sources */,
+				66E93AF21E1E96344AD24C61 /* ProtocolIO.swift in Sources */,
+				244E13508267D9CD5DCA8D58 /* Version.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1CF5F66060D4CB20C2195F14 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2159246783C31B7048AF64E7 /* SpeechMLXProtocol */;
+			targetProxy = 63EB48FBB7C7C0447C58789B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		338685EFC62CE3C4108444F1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		4B4F4429E0B52FBA0E50BBE3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		6C1F6BC8C10B3B606CAE10A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		7B63111F7CFC95E4DFA8EBB8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		A43C70030C3FCF9475B012DA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		E3D87C63F6A972A07B9D8D1B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		621BBBC404D79FDA43373DC5 /* Build configuration list for PBXProject "speech-mlx" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A43C70030C3FCF9475B012DA /* Debug */,
+				E3D87C63F6A972A07B9D8D1B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		775FEE81059D93AB2FD0274A /* Build configuration list for PBXNativeTarget "SpeechMLXProtocol" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4B4F4429E0B52FBA0E50BBE3 /* Debug */,
+				6C1F6BC8C10B3B606CAE10A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		90F401D94CFC31130204205E /* Build configuration list for PBXNativeTarget "speech-mlx" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B63111F7CFC95E4DFA8EBB8 /* Debug */,
+				338685EFC62CE3C4108444F1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0F5D6C9599FB6FF4CCB526EE /* XCRemoteSwiftPackageReference "mlx-audio-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Blaizzy/mlx-audio-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 0.1.3;
+			};
+		};
+		71512A68DD1C88D96630A5C5 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 0.31.6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		059C11EDC0A4DF1A81F6493A /* MLXAudioSTT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F5D6C9599FB6FF4CCB526EE /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
+			productName = MLXAudioSTT;
+		};
+		1845A89AA944D7AA86E6E481 /* MLXAudioCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F5D6C9599FB6FF4CCB526EE /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
+			productName = MLXAudioCore;
+		};
+		A36E6CF436EF3E871F3CA9CA /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 71512A68DD1C88D96630A5C5 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 8CF11FE70336E4F314635A34 /* Project object */;
+}

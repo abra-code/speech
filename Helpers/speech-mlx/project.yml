@@ -1,0 +1,92 @@
+# speech-mlx - XcodeGen manifest. Regenerate with: xcodegen generate
+#
+# THIS IS NOT A SwiftPM PACKAGE, AND THE REASON IS MEASURED RATHER THAN
+# INHERITED. `swift build` links an MLX binary that then dies on its first array
+# operation: SwiftPM's command line has no rule for compiling mlx-swift's Metal
+# kernels, so no `mlx-swift_Cmlx.bundle` is produced. Measured here:
+#
+#   MLX error: Failed to load the default metallib. library not found
+#   library not found library not found library not found
+#   at .../Cmlx/mlx-c/mlx/c/array.cpp:232        (exit 255)
+#
+# Only xcodebuild builds the shaders, so the build has to go through it, and a
+# package plus a project would mean two dependency graphs that can drift.
+#
+# It is also why the helper lives here rather than as a product of the root
+# Package.swift: SwiftPM resolves every declared dependency whether or not the
+# product using it is being built, so a `speech-mlx` product there would put
+# mlx-swift, mlx-swift-lm, swift-transformers and swift-huggingface into the
+# graph of `swift build` for the main binary. Stage 4B's whole premise is that
+# MLX is optional; a dependency you clone in order not to use it is not.
+#
+# Sources/SpeechMLXProtocol is compiled from the main repository rather than
+# copied. One definition of the wire format, two binaries.
+name: speech-mlx
+
+options:
+  minimumXcodeGenVersion: "2.45.0"
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # arm64 only, matching build.sh: MLX is Metal and has nothing to run on
+    # anywhere else.
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+
+packages:
+  # Exact pins, like every other dependency in this project. mlx-audio-swift
+  # asks for mlx-swift 0.30.6 and up; naming the resolved version here is what
+  # makes a measurement reproducible, since a floating minor would otherwise
+  # change the runtime under a recorded number.
+  mlx-audio-swift:
+    url: https://github.com/Blaizzy/mlx-audio-swift
+    exactVersion: 0.1.3
+  mlx-swift:
+    url: https://github.com/ml-explore/mlx-swift
+    exactVersion: 0.31.6
+
+targets:
+  # The wire format, compiled from the main repository rather than copied. A
+  # static library rather than a source directory folded into the tool, so that
+  # the module boundary here is the same one SwiftPM builds on the other side:
+  # `import SpeechMLXProtocol` means the same thing in both binaries, and an
+  # access level that is wrong is wrong in both builds rather than only in the
+  # one nobody runs by default. Static, so it leaves nothing to ship.
+  SpeechMLXProtocol:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: ../../Sources/SpeechMLXProtocol
+        name: SpeechMLXProtocol
+
+  speech-mlx:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/speech-mlx
+    dependencies:
+      - target: SpeechMLXProtocol
+      - package: mlx-audio-swift
+        product: MLXAudioSTT
+      - package: mlx-audio-swift
+        product: MLXAudioCore
+      - package: mlx-swift
+        product: MLX
+
+schemes:
+  speech-mlx:
+    build:
+      targets:
+        speech-mlx: all
+        SpeechMLXProtocol: all
+    run:
+      config: Release
+    profile:
+      config: Release
+    archive:
+      config: Release
