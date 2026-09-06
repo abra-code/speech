@@ -136,4 +136,47 @@ struct AudioDecoderTests {
             #expect(error.message.contains("webm"))
         }
     }
+
+    @Test(
+        "many decodes at once do not park the cooperative pool",
+        .timeLimit(.minutes(1)))
+    func concurrentDecodes() async throws {
+        let directory = try Fixtures.makeDirectory()
+        defer { Fixtures.cleanUp(directory) }
+
+        // `copyNextSampleBuffer()` blocks its caller. Called straight from an
+        // `async` function it blocks a thread of the Swift cooperative pool,
+        // which is only as wide as the machine has cores - so enough decodes at
+        // once park the whole pool and nothing in the process runs again, not
+        // just the decodes. That is exactly what happened: the test suite hung
+        // once enough tests decoded concurrently, and the tests it hung were
+        // mostly ones that touch no audio at all.
+        //
+        // The count is deliberately far above any core count. The failure mode
+        // is a hang rather than a wrong answer. The time limit is best effort
+        // and was measured NOT to fire against the real regression: enforcing
+        // it needs a thread too, and by then there are none. It is kept for the
+        // milder variants it can still catch, but what this test really offers
+        // is a run that stops dead at a named place instead of a suite that
+        // freezes somewhere in the middle with no clue which change did it.
+        let count = 32
+        var urls: [URL] = []
+        for index in 0..<count {
+            urls.append(try Fixtures.makeWAV(
+                in: directory, seconds: 1, name: "tone-\(index).wav"))
+        }
+
+        let expected = Int(AudioDecoder.sampleRate)
+        try await withThrowingTaskGroup(of: Int.self) { group in
+            for url in urls {
+                group.addTask { try await AudioDecoder.decode(url: url).count }
+            }
+            var decoded = 0
+            for try await samples in group {
+                #expect(samples == expected)
+                decoded += 1
+            }
+            #expect(decoded == count)
+        }
+    }
 }

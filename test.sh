@@ -282,6 +282,23 @@ expect_code 2 "$SPEECH" stream --model apple.transcriber --refine fluid.parakeet
 expect_code 2 "$SPEECH" stream --model apple.transcriber --parent-pid 0
 expect_code 2 "$SPEECH" stream extra-argument --model apple.transcriber
 
+# eval --live refuses the same way, before any model is loaded. The manifest
+# has to exist for the run to reach the engine at all, so it is a throwaway one
+# rather than the scored manifest built later inside the Apple block.
+printf '%s\t%s\n' "nowhere.wav" "unused" > "$TMP/usage-manifest.tsv"
+expect_code 2 "$SPEECH" eval --model ggml.parakeet-tdt-0.6b-v3@q8_0 \
+    --manifest "$TMP/usage-manifest.tsv" --live
+expect_grep_err "no live mode" "$SPEECH" eval --model ggml.parakeet-tdt-0.6b-v3@q8_0 \
+    --manifest "$TMP/usage-manifest.tsv" --live
+# --pace without --live is a typo, not a request: a batch eval has no clock to
+# pace, so silently ignoring it would hide the mistake.
+expect_code 2 "$SPEECH" eval --model apple.transcriber \
+    --manifest "$TMP/usage-manifest.tsv" --pace 2
+expect_code 2 "$SPEECH" eval --model apple.transcriber \
+    --manifest "$TMP/usage-manifest.tsv" --live --pace 0
+expect_code 2 "$SPEECH" eval --model apple.transcriber \
+    --manifest "$TMP/usage-manifest.tsv" --live --pace nonsense
+
 # --list-devices answers without touching the engine or the microphone, so it
 # works in a sandbox that blocks CoreAudio (where the list is simply empty).
 expect_ok "$SPEECH" stream --list-devices
@@ -360,6 +377,21 @@ if "$SPEECH" engines | grep -qE "apple\.transcriber +available" \
     if [ ! -s "$TMP/report/summary.json" ]; then fail "eval wrote no summary.json"; fi
     if [ ! -s "$TMP/report/report.md" ]; then fail "eval wrote no report.md"; fi
     expect_grep '"wer"' cat "$TMP/report/summary.json"
+    # A batch report must stay free of live keys: the applet and every
+    # summary.json already on disk were written before live mode existed.
+    expect_nogrep '"live"' cat "$TMP/report/summary.json"
+
+    # The same manifest through the live path. --pace 1 because a latency
+    # measured at any other speed is not one, and this file is only a few
+    # seconds long.
+    expect_ok "$SPEECH" eval --model apple.transcriber --manifest "$TMP/manifest.tsv" \
+        --language en-US --live --report "$TMP/report-live"
+    expect_grep '"trailing_words_lost"' cat "$TMP/report-live/summary.json"
+    expect_grep "## Live" cat "$TMP/report-live/report.md"
+    expect_grep "Time to first partial" cat "$TMP/report-live/report.md"
+    # RTFx under pacing measures the harness, so the report must refuse to
+    # print it as a number rather than invite the comparison.
+    expect_nogrep "| RTFx | [0-9]" cat "$TMP/report-live/report.md"
 else
     echo "WARNING: the Apple engines are unavailable or report no locales on this"
     echo "         machine - skipping the engine tests. They need macOS 26 or later,"

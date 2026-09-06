@@ -45,29 +45,28 @@ public struct EvalOutcome: Sendable {
 }
 
 public enum Evaluator {
-    public static func run(
+    /// Load the engine for every language the run will ask for, before the
+    /// clock starts on any row, and announce it.
+    ///
+    /// Shared with `LiveEvaluator`, which has to do exactly the same thing for
+    /// the same reasons. A first run on an uninstalled locale downloads
+    /// assets, and letting that land inside a row would put a multi-minute
+    /// download into one utterance's wall time and corrupt RTFx for the whole
+    /// run.
+    ///
+    /// Preparing only the run-level --language is not enough: manifest rows
+    /// carry their own language column, which is the entire point of a
+    /// mixed-language corpus, and the row's language would then download
+    /// inside row 1. Preparing them in row order also turns a language the
+    /// engine cannot do into an immediate error rather than a row skipped
+    /// forty minutes in, which for a measuring run is the better failure.
+    static func prepare(
         engine: any TranscriptionEngine,
         catalogID: String,
         rows: [ManifestRow],
         language: String?,
-        sink: EventSink,
-        reportDirectory: URL? = nil
-    ) async throws -> EvalOutcome {
-        let baselineRSS = SystemInfo.peakResidentBytes()
-        let baselineMemory = SystemInfo.peakMemoryBytes()
-
-        // Prepare for every language this run will ask for, before the clock
-        // starts on any row. A first run on an uninstalled locale downloads
-        // assets, and letting that land inside a row would put a multi-minute
-        // download into one utterance's wall time and corrupt RTFx for the
-        // whole run.
-        //
-        // Preparing only the run-level --language is not enough: manifest rows
-        // carry their own language column, which is the entire point of a
-        // mixed-language corpus, and the row's language would then download
-        // inside row 1. Preparing them in row order also turns a language the
-        // engine cannot do into an immediate error rather than a row skipped
-        // forty minutes in, which for a measuring run is the better failure.
+        sink: EventSink
+    ) async throws -> (loadSeconds: Double, resolvedLocales: [String]) {
         var languagesToPrepare: [String?] = []
         for row in rows {
             let rowLanguage = row.language ?? language
@@ -76,11 +75,6 @@ public enum Evaluator {
             }
         }
         if languagesToPrepare.isEmpty { languagesToPrepare = [language] }
-
-        // Same pre-flight the transcribe path does, and it matters more here:
-        // a measuring run that discovers a missing dependency on row 200 has
-        // wasted far more than one file.
-        try await engine.validate(TranscribeOptions(language: language, wantWordTimestamps: false))
 
         let loadStart = ContinuousClock().now
         var resolvedLocales: [String] = []
@@ -110,6 +104,29 @@ public enum Evaluator {
             engine: engine.id, model: catalogID,
             capabilities: engine.capabilities, loadSeconds: loadSeconds,
             locale: resolvedLocales.isEmpty ? nil : resolvedLocales.joined(separator: ","))))
+        return (loadSeconds, resolvedLocales)
+    }
+
+    public static func run(
+        engine: any TranscriptionEngine,
+        catalogID: String,
+        rows: [ManifestRow],
+        language: String?,
+        sink: EventSink,
+        reportDirectory: URL? = nil
+    ) async throws -> EvalOutcome {
+        let baselineRSS = SystemInfo.peakResidentBytes()
+        let baselineMemory = SystemInfo.peakMemoryBytes()
+
+        // Same pre-flight the transcribe path does, and it matters more here:
+        // a measuring run that discovers a missing dependency on row 200 has
+        // wasted far more than one file.
+        try await engine.validate(TranscribeOptions(language: language, wantWordTimestamps: false))
+
+        let prepared = try await prepare(
+            engine: engine, catalogID: catalogID, rows: rows, language: language, sink: sink)
+        let loadSeconds = prepared.loadSeconds
+        let resolvedLocales = prepared.resolvedLocales
 
         var wordCounts: [ScoreCounts] = []
         var characterCounts: [ScoreCounts] = []
@@ -256,9 +273,12 @@ public enum Evaluator {
         /// that does not report the ledgers.
         var peakFootprintBytes: Int64?
         var peakNeuralBytes: Int64?
+        /// Present only for `eval --live`. Its absence is how a reader tells a
+        /// batch report from a live one at a glance.
+        var live: SpeechEvent.LiveSummary?
 
         private enum CodingKeys: String, CodingKey {
-            case model, engine, language, date, machine, os, rows, skipped, wer, cer
+            case model, engine, language, date, machine, os, rows, skipped, wer, cer, live
             case resolvedLocales = "resolved_locales"
             case substitutions, deletions, insertions, rtfx
             case physicalMemoryBytes = "physical_memory_bytes"
@@ -279,7 +299,7 @@ public enum Evaluator {
         }
     }
 
-    private static func writeReport(
+    static func writeReport(
         _ outcome: EvalOutcome,
         counts: (word: ScoreCounts, character: ScoreCounts),
         to directory: URL
@@ -318,7 +338,8 @@ public enum Evaluator {
             peakMemoryBaselineBytes: outcome.baselineMemoryBytes,
             peakMemoryDeltaBytes: max(0, summary.peakMemoryBytes - outcome.baselineMemoryBytes),
             peakFootprintBytes: outcome.memory?.footprintPeak,
-            peakNeuralBytes: outcome.memory?.neuralPeak)
+            peakNeuralBytes: outcome.memory?.neuralPeak,
+            live: summary.live)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes, .sortedKeys]
@@ -341,7 +362,16 @@ public enum Evaluator {
         markdown += row("Reference words", "\(counts.word.referenceCount)")
         markdown += row("Audio", String(format: "%.1f s", summary.audioSeconds))
         markdown += row("Wall time", String(format: "%.1f s", summary.wallSeconds))
-        markdown += row("RTFx", String(format: "%.1fx", summary.rtfx))
+        if summary.live == nil {
+            markdown += row("RTFx", String(format: "%.1fx", summary.rtfx))
+        } else {
+            // RTFx under live pacing measures the harness, not the engine: the
+            // audio was played at a fixed speed, so the ratio is that speed
+            // plus whatever `finish()` added. Printing it next to a batch
+            // report's RTFx would invite exactly the comparison it cannot
+            // support.
+            markdown += row("RTFx", "not applicable - the audio was paced, see Live below")
+        }
         markdown += row("Load time", String(format: "%.2f s", outcome.loadSeconds))
         markdown += row("Peak memory", SystemInfo.formatBytes(summary.peakMemoryBytes))
         if let footprint = document.peakFootprintBytes, let neural = document.peakNeuralBytes {
@@ -357,6 +387,40 @@ public enum Evaluator {
                         SystemInfo.formatBytes(document.peakMemoryDeltaBytes))
         markdown += row("Peak RSS (not reproducible, see docs/protocol.md)",
                         SystemInfo.formatBytes(summary.peakRSSBytes))
+
+        if let live = summary.live {
+            markdown += "\n## Live\n\n"
+            markdown += "Audio was played to a live session at "
+            markdown += String(format: "%.2fx", live.pace)
+            markdown += " real time through the same pump, session and bounded"
+            markdown += " capture queue `speech stream` uses.\n\n"
+            if live.pace != 1 {
+                markdown += "**These latencies are not quotable.** They were taken at "
+                markdown += String(format: "%.2fx", live.pace)
+                markdown += " rather than 1x, which changes both what the engine has time"
+                markdown += " to do and what gets dropped.\n\n"
+            }
+            markdown += "| Metric | Median | Worst |\n| --- | --- | --- |\n"
+            markdown += liveRow(
+                "Time to first partial", live.medianFirstPartialSeconds,
+                live.worstFirstPartialSeconds)
+            markdown += liveRow(
+                "Final behind the audio", live.medianFinalLagSeconds, live.worstFinalLagSeconds)
+            markdown += liveRow(
+                "Wait after the audio ended", live.medianFinishSeconds, live.worstFinishSeconds)
+            markdown += "\n| Count | Value |\n| --- | --- |\n"
+            markdown += row("Trailing reference words lost", "\(live.trailingWordsLost)")
+            markdown += row("Rows that stopped short of the end", "\(live.rowsEndingEarly)")
+            markdown += row("Rows that produced no text at all", "\(live.rowsWithNoText)")
+            markdown += row("Rows with no partial before the final", "\(live.rowsWithoutPartials)")
+            markdown += row("Capture buffers dropped", "\(live.droppedBuffers)")
+            markdown += row("Rows affected by a drop", "\(live.rowsWithDrops)")
+            if live.droppedBuffers > 0 {
+                markdown += "\nBuffers were dropped, so the WER above is partly a"
+                markdown += " measurement of this machine rather than of the model. A row that"
+                markdown += " loses audio loses the words in it.\n"
+            }
+        }
 
         if !summary.worst.isEmpty {
             markdown += "\n## Ten worst utterances\n\n"
@@ -383,6 +447,16 @@ public enum Evaluator {
         "| \(name) | \(value) |\n"
     }
 
+    /// A median/worst pair, with "none" rather than a zero when the engine
+    /// never produced the thing being timed. Zero would read as instant.
+    private static func liveRow(_ name: String, _ median: Double?, _ worst: Double?) -> String {
+        func format(_ value: Double?) -> String {
+            guard let value else { return "none" }
+            return String(format: "%.2f s", value)
+        }
+        return "| \(name) | \(format(median)) | \(format(worst)) |\n"
+    }
+
     private static func percent(_ value: Double) -> String {
         String(format: "%.2f%%", value * 100)
     }
@@ -394,7 +468,7 @@ public enum Evaluator {
             .replacingOccurrences(of: "\n", with: " ")
     }
 
-    private static func seconds(since start: ContinuousClock.Instant) -> Double {
+    static func seconds(since start: ContinuousClock.Instant) -> Double {
         Double((ContinuousClock().now - start) / .milliseconds(1)) / 1000.0
     }
 }

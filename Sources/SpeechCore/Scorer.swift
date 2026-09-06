@@ -173,6 +173,76 @@ public enum Scorer {
             character: align(reference: referenceCharacters, hypothesis: hypothesisCharacters))
     }
 
+    /// Reference words the hypothesis never reached, counted from the end.
+    ///
+    /// This is the number the live measurement exists to produce. A streaming
+    /// session that stops transcribing before the speaker stops - FluidAudio
+    /// #855, and the same shape of defect found in this project's own
+    /// `finish()` handling - produces a hypothesis that tracks the reference
+    /// and then simply ends. WER sees that as deletions and mixes them in with
+    /// every substitution in the row, so a transcript missing its last six
+    /// words and one missing six words scattered through the middle score the
+    /// same. They are not the same failure: one is a recognition error, the
+    /// other is text the user said and the tool threw away.
+    ///
+    /// Computed as a free-end-gap alignment. The hypothesis is aligned against
+    /// every prefix of the reference, the prefix that fits best wins, and what
+    /// is left over after it is the loss. On a tie the LONGEST prefix wins, so
+    /// the answer is the smallest count consistent with the best alignment: an
+    /// instrument that reports a defect should err toward not reporting one.
+    ///
+    /// An empty hypothesis therefore loses the whole reference. That is
+    /// literally true and still worth separating from a tail drop when reading
+    /// a report, which is why the live report counts empty rows on their own
+    /// line rather than letting them hide inside this total.
+    public static func trailingReferenceLoss(
+        reference: String, hypothesis: String, language: String? = nil
+    ) -> Int {
+        trailingLoss(
+            reference: tokens(reference, language: language),
+            hypothesis: tokens(hypothesis, language: language))
+    }
+
+    /// The generic half, so the rule can be tested on sequences that are not
+    /// text and read at a glance.
+    static func trailingLoss<T: Equatable>(reference: [T], hypothesis: [T]) -> Int {
+        let n = reference.count
+        let m = hypothesis.count
+        if n == 0 { return 0 }
+        if m == 0 { return n }
+
+        // Plain edit distance, two rows, and one extra thing recorded: the
+        // last column of every row. `column[i]` is the cost of aligning the
+        // whole hypothesis against the first i reference words, which is
+        // exactly the "the speaker got this far" question.
+        var previous = Array(0...m)
+        var current = [Int](repeating: 0, count: m + 1)
+        var column = [Int](repeating: 0, count: n + 1)
+        column[0] = m
+
+        for i in 1...n {
+            current[0] = i
+            for j in 1...m {
+                if reference[i - 1] == hypothesis[j - 1] {
+                    current[j] = previous[j - 1]
+                    continue
+                }
+                current[j] = min(previous[j - 1], min(previous[j], current[j - 1])) + 1
+            }
+            column[i] = current[m]
+            swap(&previous, &current)
+        }
+
+        var best = column[0]
+        var bestPrefix = 0
+        for i in 0...n where column[i] <= best {
+            // `<=` rather than `<`: ties go to the longest prefix.
+            best = column[i]
+            bestPrefix = i
+        }
+        return n - bestPrefix
+    }
+
     /// Levenshtein alignment carrying the operation breakdown, two rows at a
     /// time. On a tie the order below prefers substitution, then deletion, then
     /// insertion, which is the conventional choice and keeps the breakdown

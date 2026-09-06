@@ -86,7 +86,7 @@ Four rules the queue enforces:
   oldest-first with a warning. A refine engine at 12x against a speaker who does
   not pause cannot keep up, and a queue holding every utterance of a
   forty-minute meeting is a memory leak wearing a feature's clothes.
-- **Single-use.** Draining or cancelling closes the queue, and a later `submit`
+- **Single-use.** Draining or canceling closes the queue, and a later `submit`
   is refused with a `refine_closed` warning rather than accepted. Ending a run
   cancels the worker without waiting for the inference inside it, because that
   inference is not interruptible; if a later submission could start a second
@@ -106,7 +106,7 @@ On stop, the queue gets ten seconds to finish. Whatever is still outstanding is
 abandoned and **reported** - a transcript missing three refinements is a
 different artifact from a complete one.
 
-That cap bounds the *queue*, not the engine. Cancelling the worker stops it
+That cap bounds the *queue*, not the engine. Canceling the worker stops it
 taking new work; it does not reach inside an inference already running, and
 every engine here is an actor, so releasing the refine engine's weights queues
 behind that inference for however long it takes. The tool says so
@@ -323,6 +323,50 @@ Custom vocabulary is refused for live rather than ignored: the batch path boosts
 a finished transcript with a second CTC model, and there is no equivalent inside
 the sliding window.
 
+## Measuring it: `eval --live`
+
+```
+speech eval --model fluid.parakeet-v3@int8 --manifest corpus.tsv --live \
+    --language en-US --report out/
+```
+
+The same manifest, the same scorer and the same report as a batch `eval`, with
+the audio played to a live session in real time instead of handed over whole. A
+row's samples are decoded, cut into 64 ms buffers and released on a wall clock,
+so the engine sees them the way a microphone would deliver them. Everything
+downstream is the production path: the same `LivePump`, the same `LiveSession`,
+the same bounded capture queue that drops buffers when the engine falls behind.
+
+That last part is deliberate. A row where the engine could not keep up loses
+audio here exactly as it would from a microphone, and the report says how many
+buffers and which rows. A WER measured over dropped audio is a fact about the
+machine, not about the model, and it must never be quoted as the second thing.
+
+What it adds over a batch score:
+
+- **Time to first partial.** How long the screen stays empty after you speak.
+- **Final lag.** How far behind the audio the committed text runs.
+- **The wait after you stop.** Time inside the session's flush.
+- **Trailing words lost.** Reference words the transcript never reached,
+  counted from the end.
+
+The last one is why this exists. A streaming session that stops transcribing
+before the speaker stops produces a transcript that tracks the reference and
+then simply ends, with no error anywhere - and plain WER buries that among the
+substitutions, scoring a transcript missing its last six words the same as one
+missing six words scattered through the middle. They are not the same failure
+and they are not fixed in the same place. The number is computed as a
+free-end-gap alignment: the hypothesis is aligned against every prefix of the
+reference, the best-fitting prefix wins, ties go to the longest, and what is
+left over is the loss. A wrong last word is therefore a substitution, not a
+loss.
+
+Two things this harness does not simulate: a file has no room noise, no
+automatic gain control and no device resampling, so a WER from here is a floor
+rather than a promise. And `--pace` exists for smoke tests only - at anything
+other than 1x the latencies describe no session anyone could have, which is why
+the value is warned about on the terminal and stamped into the report.
+
 ## What is not here yet
 
 - **VAD-driven segmentation** (plan step 4.3). Utterance boundaries currently
@@ -334,5 +378,3 @@ the sliding window.
   `fluid.parakeet-unified` and `fluid.nemotron-multilingual` still report
   `unavailable` with a reason; both have a streaming manager, and each is shaped
   differently again from the sliding window.
-- **Live measurement** (plan step 4.5): streaming WER through a paced source,
-  time to first partial, and the dropped-trailing-words check.

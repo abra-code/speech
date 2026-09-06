@@ -282,10 +282,17 @@ public struct SpeechEvent: Sendable, Equatable {
         public var cer: Double
         public var audioSeconds: Double
         public var wallSeconds: Double
+        /// Present only under `eval --live`, and absent rather than zero when
+        /// the run was a batch one - a `first_partial_seconds` of 0 on a batch
+        /// row would read as an instant partial rather than as no live mode at
+        /// all. Synthesized `encode` uses `encodeIfPresent`, so a batch row's
+        /// JSON is byte for byte what it was before these existed.
+        public var live: LiveRow?
 
         public init(
             index: Int, path: String, reference: String, hypothesis: String,
-            wer: Double, cer: Double, audioSeconds: Double, wallSeconds: Double
+            wer: Double, cer: Double, audioSeconds: Double, wallSeconds: Double,
+            live: LiveRow? = nil
         ) {
             self.index = index
             self.path = path
@@ -295,12 +302,70 @@ public struct SpeechEvent: Sendable, Equatable {
             self.cer = cer
             self.audioSeconds = audioSeconds
             self.wallSeconds = wallSeconds
+            self.live = live
         }
 
         private enum CodingKeys: String, CodingKey {
-            case index, path, reference, hypothesis, wer, cer
+            case index, path, reference, hypothesis, wer, cer, live
             case audioSeconds = "audio_seconds"
             case wallSeconds = "wall_seconds"
+        }
+    }
+
+    /// What one utterance cost when it was played to a live session in real
+    /// time. Every duration is wall seconds measured from the moment the first
+    /// buffer was handed over, which under 1x pacing is also the position in
+    /// the audio - that equivalence is what makes these numbers latencies
+    /// rather than just timings.
+    public struct LiveRow: Codable, Sendable, Equatable {
+        /// Time to the first `segment.partial`. Nil when the engine emitted
+        /// none, which is a real answer about an engine and not a missing
+        /// measurement: a live mode with no partials is a recorder with a lag.
+        public var firstPartialSeconds: Double?
+        /// Time to the first `segment.final`.
+        public var firstFinalSeconds: Double?
+        /// Wall time inside `finish()` after the audio ran out: how long the
+        /// speaker waits, having stopped talking, for the rest of their words.
+        public var finishSeconds: Double
+        /// The worst distance between when a final arrived and the audio
+        /// position it claims to end at. Negative is possible and is left
+        /// signed on purpose: it means the engine dated a segment past the
+        /// audio it had been given, which is a defect worth seeing rather than
+        /// a zero worth hiding.
+        public var maxFinalLagSeconds: Double?
+        /// Reference words the transcript never reached, counted from the end.
+        /// See `Scorer.trailingReferenceLoss`.
+        public var trailingWordsLost: Int
+        /// Capture buffers the session could not keep up with, so they were
+        /// dropped exactly as the microphone path drops them. Any row with a
+        /// nonzero count has a WER that is partly a measure of this machine.
+        public var droppedBuffers: Int
+        public var partials: Int
+        public var finals: Int
+
+        public init(
+            firstPartialSeconds: Double?, firstFinalSeconds: Double?,
+            finishSeconds: Double, maxFinalLagSeconds: Double?,
+            trailingWordsLost: Int, droppedBuffers: Int, partials: Int, finals: Int
+        ) {
+            self.firstPartialSeconds = firstPartialSeconds
+            self.firstFinalSeconds = firstFinalSeconds
+            self.finishSeconds = finishSeconds
+            self.maxFinalLagSeconds = maxFinalLagSeconds
+            self.trailingWordsLost = trailingWordsLost
+            self.droppedBuffers = droppedBuffers
+            self.partials = partials
+            self.finals = finals
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case partials, finals
+            case firstPartialSeconds = "first_partial_seconds"
+            case firstFinalSeconds = "first_final_seconds"
+            case finishSeconds = "finish_seconds"
+            case maxFinalLagSeconds = "max_final_lag_seconds"
+            case trailingWordsLost = "trailing_words_lost"
+            case droppedBuffers = "dropped_buffers"
         }
     }
 
@@ -336,11 +401,13 @@ public struct SpeechEvent: Sendable, Equatable {
         /// See `DoneEvent.peakMemoryBytes`: the reproducible one.
         public var peakMemoryBytes: Int64
         public var worst: [WorstRow]
+        /// Present only under `eval --live`.
+        public var live: LiveSummary?
 
         public init(
             model: String, language: String?, rows: Int, wer: Double, cer: Double,
             audioSeconds: Double, wallSeconds: Double, peakRSSBytes: Int64,
-            peakMemoryBytes: Int64, worst: [WorstRow]
+            peakMemoryBytes: Int64, worst: [WorstRow], live: LiveSummary? = nil
         ) {
             self.model = model
             self.language = language
@@ -353,14 +420,84 @@ public struct SpeechEvent: Sendable, Equatable {
             self.peakRSSBytes = peakRSSBytes
             self.peakMemoryBytes = peakMemoryBytes
             self.worst = worst
+            self.live = live
         }
 
         private enum CodingKeys: String, CodingKey {
-            case model, language, rows, wer, cer, rtfx, worst
+            case model, language, rows, wer, cer, rtfx, worst, live
             case audioSeconds = "audio_seconds"
             case wallSeconds = "wall_seconds"
             case peakRSSBytes = "peak_rss_bytes"
             case peakMemoryBytes = "peak_memory_bytes"
+        }
+    }
+
+    /// The live half of a run, aggregated over its rows.
+    ///
+    /// Medians rather than means throughout. One row that hit a model reload
+    /// or a scheduler stall moves a mean by more than it moves the experience,
+    /// and the worst case is reported next to the median anyway, so nothing is
+    /// hidden by the choice.
+    public struct LiveSummary: Codable, Sendable, Equatable {
+        /// How fast the audio was played, as a multiple of real time. 1.0 is
+        /// the only value whose latencies mean anything; it is recorded so a
+        /// report taken at any other speed says so about itself.
+        public var pace: Double
+        public var medianFirstPartialSeconds: Double?
+        public var worstFirstPartialSeconds: Double?
+        public var medianFinishSeconds: Double
+        public var worstFinishSeconds: Double
+        public var medianFinalLagSeconds: Double?
+        public var worstFinalLagSeconds: Double?
+        /// Total across the corpus. See `Scorer.trailingReferenceLoss`.
+        public var trailingWordsLost: Int
+        /// Rows that produced text and still stopped short of the reference's
+        /// end. Separated from `rowsWithNoText` because they are different
+        /// failures wearing the same deletions.
+        public var rowsEndingEarly: Int
+        public var rowsWithNoText: Int
+        /// Rows where the engine never emitted a partial before its final.
+        public var rowsWithoutPartials: Int
+        public var droppedBuffers: Int
+        public var rowsWithDrops: Int
+
+        public init(
+            pace: Double,
+            medianFirstPartialSeconds: Double?, worstFirstPartialSeconds: Double?,
+            medianFinishSeconds: Double, worstFinishSeconds: Double,
+            medianFinalLagSeconds: Double?, worstFinalLagSeconds: Double?,
+            trailingWordsLost: Int, rowsEndingEarly: Int, rowsWithNoText: Int,
+            rowsWithoutPartials: Int, droppedBuffers: Int, rowsWithDrops: Int
+        ) {
+            self.pace = pace
+            self.medianFirstPartialSeconds = medianFirstPartialSeconds
+            self.worstFirstPartialSeconds = worstFirstPartialSeconds
+            self.medianFinishSeconds = medianFinishSeconds
+            self.worstFinishSeconds = worstFinishSeconds
+            self.medianFinalLagSeconds = medianFinalLagSeconds
+            self.worstFinalLagSeconds = worstFinalLagSeconds
+            self.trailingWordsLost = trailingWordsLost
+            self.rowsEndingEarly = rowsEndingEarly
+            self.rowsWithNoText = rowsWithNoText
+            self.rowsWithoutPartials = rowsWithoutPartials
+            self.droppedBuffers = droppedBuffers
+            self.rowsWithDrops = rowsWithDrops
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case pace
+            case medianFirstPartialSeconds = "median_first_partial_seconds"
+            case worstFirstPartialSeconds = "worst_first_partial_seconds"
+            case medianFinishSeconds = "median_finish_seconds"
+            case worstFinishSeconds = "worst_finish_seconds"
+            case medianFinalLagSeconds = "median_final_lag_seconds"
+            case worstFinalLagSeconds = "worst_final_lag_seconds"
+            case trailingWordsLost = "trailing_words_lost"
+            case rowsEndingEarly = "rows_ending_early"
+            case rowsWithNoText = "rows_with_no_text"
+            case rowsWithoutPartials = "rows_without_partials"
+            case droppedBuffers = "dropped_buffers"
+            case rowsWithDrops = "rows_with_drops"
         }
     }
 }

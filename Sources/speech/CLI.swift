@@ -113,6 +113,17 @@ struct ArgScanner {
         return number
     }
 
+    mutating func doubleValue(_ option: String) throws -> Double {
+        let raw = try value(option)
+        // `Double("nan")` and `Double("inf")` both succeed, and a pace of NaN
+        // would make every deadline in the live evaluator unorderable rather
+        // than wrong in any visible way.
+        guard let number = Double(raw), number.isFinite else {
+            throw SpeechError.usage("option '\(option)' requires a number (got '\(raw)')")
+        }
+        return number
+    }
+
     mutating func pathValue(_ option: String) throws -> URL {
         URL(fileURLWithPath: (try value(option) as NSString).expandingTildeInPath)
     }

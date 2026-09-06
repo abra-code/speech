@@ -122,16 +122,21 @@ public enum AudioDecoder {
                 "cannot decode \(url.lastPathComponent) to 16 kHz mono")
         }
         reader.add(output)
-        guard reader.startReading() else {
+        // Everything that blocks happens on this queue, and never on the
+        // cooperative pool. See `nextSampleBuffer`.
+        let queue = DispatchQueue(label: "speech.audio-decoder")
+        let box = ReaderBox(reader: reader, output: output)
+        guard await run(on: queue, { box.reader.startReading() }) else {
             throw unsupported(url, underlying: reader.error)
         }
-        defer { reader.cancelReading() }
+        defer { queue.async { box.reader.cancelReading() } }
 
         let windowSamples = windowSeconds > 0 ? Int(windowSeconds * sampleRate) : 0
         var pending: [Float] = []
         if windowSamples > 0 { pending.reserveCapacity(windowSamples) }
 
-        while let sampleBuffer = output.copyNextSampleBuffer() {
+        while true {
+            guard let sampleBuffer = await nextSampleBuffer(box, on: queue).buffer else { break }
             try Task.checkCancellation()
             guard let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
             let byteCount = CMBlockBufferGetDataLength(block)
@@ -163,6 +168,60 @@ public enum AudioDecoder {
         }
         if !pending.isEmpty {
             try await emit(pending)
+        }
+    }
+
+    /// The reader and its output, handed to the decode queue.
+    ///
+    /// `@unchecked Sendable` with an argument, not a shrug. Both objects are
+    /// created inside `readAll` and neither escapes it, and every use is
+    /// strictly one at a time: the caller awaits each hop onto the queue before
+    /// making the next, so there is a happens-before edge between every pair of
+    /// accesses even though they land on different threads.
+    private struct ReaderBox: @unchecked Sendable {
+        let reader: AVAssetReader
+        let output: AVAssetReaderOutput
+    }
+
+    /// One sample buffer in transit from the decode queue.
+    ///
+    /// `@unchecked Sendable` with an argument, not a shrug: the queue produces
+    /// this buffer and drops its own reference in the same statement, so
+    /// exactly one reference crosses back and nothing else can reach it.
+    private struct DecodedSampleBuffer: @unchecked Sendable {
+        let buffer: CMSampleBuffer?
+    }
+
+    /// Pull one decoded buffer, without blocking a cooperative thread.
+    ///
+    /// `copyNextSampleBuffer()` blocks its caller for as long as AVFoundation
+    /// needs to decode - and this is an `async` function, so its caller is a
+    /// thread from the Swift cooperative pool, which is only as wide as the
+    /// machine has cores. Several decodes at once therefore park the entire
+    /// pool, and everything else in the process stops: not just other decodes,
+    /// but every actor, every continuation, every unrelated task.
+    ///
+    /// That is not a theoretical hazard. It hung the test suite as soon as
+    /// enough tests decoded concurrently, and the tests it hung were mostly
+    /// tests that do no audio work at all - they were simply waiting for a
+    /// thread that no longer existed. The tell was that the same suite passed
+    /// with `--no-parallel` in five seconds.
+    ///
+    /// One serial queue per decode, so the reader is still only ever touched
+    /// from one place, and the loop's backpressure is unchanged: the caller
+    /// still awaits `emit` before asking for the next buffer.
+    private static func nextSampleBuffer(
+        _ box: ReaderBox, on queue: DispatchQueue
+    ) async -> DecodedSampleBuffer {
+        await run(on: queue) { DecodedSampleBuffer(buffer: box.output.copyNextSampleBuffer()) }
+    }
+
+    /// Run one blocking call on `queue` and suspend until it answers.
+    private static func run<T: Sendable>(
+        on queue: DispatchQueue, _ body: @escaping @Sendable () -> T
+    ) async -> T {
+        await withCheckedContinuation { continuation in
+            queue.async { continuation.resume(returning: body()) }
         }
     }
 

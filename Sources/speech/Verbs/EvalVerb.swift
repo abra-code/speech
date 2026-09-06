@@ -1,10 +1,15 @@
 // EvalVerb.swift - `speech eval --model <id> --manifest <tsv>`.
 //
 // The command the catalog is built out of. Everything interesting happens in
-// SpeechCore.Evaluator; this is argument handling and the --limit rule, which
-// is load-bearing: it takes the FIRST n rows, never a random n, so that a
-// 200-row run of one engine and a 200-row run of another are the same 200
-// utterances.
+// SpeechCore.Evaluator or SpeechCore.LiveEvaluator; this is argument handling
+// and the --limit rule, which is load-bearing: it takes the FIRST n rows,
+// never a random n, so that a 200-row run of one engine and a 200-row run of
+// another are the same 200 utterances.
+//
+// `--live` swaps the instrument, not the verb. The same manifest, the same
+// scorer, the same report - measured through the live path instead of the
+// batch one, so the two numbers for one model are directly comparable and the
+// difference between them is exactly the cost of streaming it.
 
 import Foundation
 import SpeechCore
@@ -15,6 +20,8 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
     var language: String?
     var limit: Int?
     var reportDirectory: URL?
+    var live = false
+    var pace = 1.0
 
     var scanner = ArgScanner(verb: "eval", arguments)
     while let token = scanner.nextToken() {
@@ -29,9 +36,20 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
                   --language <tag>   Language for rows that do not name one
                   --limit <n>        Score the first n rows only
                   --report <dir>     Also write summary.json and report.md there
+                  --live             Measure the live path: play each row to a live
+                                     session in real time, as if it were spoken into
+                                     the microphone
+                  --pace <x>         With --live, play the audio at x times real time.
+                                     The default, 1.0, is the only value whose
+                                     latencies mean anything; anything else is a smoke
+                                     test and is stamped into the report as one.
 
                 Reports WER, CER, RTFx and peak memory. Corpus WER is total edits over
                 total reference words, not the mean of the per-row rates.
+
+                --live also reports time to first partial, how far behind the audio
+                the committed text runs, the wait after the audio ends, and how many
+                reference words the transcript never reached.
                 """)
             return
         case "--model", "-m":
@@ -44,6 +62,10 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
             limit = try scanner.intValue(token)
         case "--report":
             reportDirectory = try scanner.pathValue(token)
+        case "--live":
+            live = true
+        case "--pace":
+            pace = try scanner.doubleValue(token)
         case "--":
             scanner.endOptions()
         default:
@@ -58,6 +80,12 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
     if let limit, limit <= 0 {
         throw SpeechError.usage("--limit wants a positive count (got \(limit))")
     }
+    guard live || pace == 1 else {
+        throw SpeechError.usage("--pace only means something with --live")
+    }
+    guard pace > 0 else {
+        throw SpeechError.usage("--pace wants a positive multiple of real time (got \(pace))")
+    }
 
     var rows = try Manifest.load(manifest)
     if let limit, rows.count > limit {
@@ -65,16 +93,41 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
     }
 
     let engine = try makeRegistry().make(catalogID: model, modelsDirectory: globals.modelsDirectory)
-    guard engine.capabilities.batch else {
-        throw SpeechError.usage("\(model) cannot transcribe files, so it cannot be scored this way")
+    if live {
+        guard engine.capabilities.live else {
+            throw SpeechError.usage(
+                "\(model) has no live mode, so there is nothing for --live to measure;"
+                + " run '\(kProgram) engines' and pick a row with the 'live' flag")
+        }
+        if pace != 1 {
+            // Said out loud as well as written into the report. A number taken
+            // at another speed is not a latency anyone will experience, and the
+            // person most likely to quote it is the person who typed --pace to
+            // make the run finish sooner.
+            sink.warning(
+                "the audio is being played at \(pace)x real time, so the latencies below"
+                + " describe no real session; only --pace 1 is quotable",
+                code: "pace_not_realtime")
+        }
+    } else {
+        guard engine.capabilities.batch else {
+            throw SpeechError.usage(
+                "\(model) cannot transcribe files, so it cannot be scored this way")
+        }
     }
 
     // Unloaded on the failure path too - see the note in TranscribeVerb.
     let outcome: EvalOutcome
     do {
-        outcome = try await Evaluator.run(
-            engine: engine, catalogID: model, rows: rows, language: language,
-            sink: sink, reportDirectory: reportDirectory)
+        if live {
+            outcome = try await LiveEvaluator.run(
+                engine: engine, catalogID: model, rows: rows, language: language,
+                pace: pace, sink: sink, reportDirectory: reportDirectory)
+        } else {
+            outcome = try await Evaluator.run(
+                engine: engine, catalogID: model, rows: rows, language: language,
+                sink: sink, reportDirectory: reportDirectory)
+        }
     } catch {
         await engine.unload()
         throw error

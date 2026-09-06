@@ -63,8 +63,8 @@ an older applet.
 | `warning` | `message`, `code` |
 | `error` | `message`, `code` |
 | `done` | `segments`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `output` |
-| `eval.row` | `index`, `path`, `reference`, `hypothesis`, `wer`, `cer`, `audio_seconds`, `wall_seconds` |
-| `eval.summary` | `model`, `language`, `rows`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `worst` |
+| `eval.row` | `index`, `path`, `reference`, `hypothesis`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `live` |
+| `eval.summary` | `model`, `language`, `rows`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `worst`, `live` |
 
 `model.entry` is one row of `models list` or `models status`. Its `state` is one
 of:
@@ -140,6 +140,47 @@ Check `rows` before reading `wer`. A run in which every row was skipped reports
 `wall_seconds` in `eval.row` and `eval.summary` covers transcription only. It
 excludes decoding and scoring, which is the right measure for comparing two
 engines and the wrong one for predicting how long a progress bar runs.
+
+## Reading the `live` object
+
+`eval --live` adds a `live` object to every `eval.row` and to `eval.summary`.
+Neither is present for a batch run, and their absence is how a consumer tells
+the two kinds of report apart.
+
+On a row:
+
+| field | meaning |
+| --- | --- |
+| `first_partial_seconds` | wall time from the first buffer to the first `segment.partial`. Omitted when the engine emitted none, which is a fact about the engine rather than a missing measurement |
+| `first_final_seconds` | the same for the first `segment.final` |
+| `finish_seconds` | time spent in the session's flush after the audio ran out: what a speaker waits, having stopped talking |
+| `max_final_lag_seconds` | the worst gap between a final arriving and the audio position it claims to end at. Signed: a negative value means the engine dated a segment past the audio it had been given |
+| `trailing_words_lost` | reference words the transcript never reached, counted from the end |
+| `dropped_buffers` | capture buffers the session could not keep up with, dropped exactly as the microphone path drops them |
+| `partials`, `finals` | how many of each the row produced |
+
+On the summary: `pace`, medians and worst cases of the three timings, and the
+totals `trailing_words_lost`, `rows_ending_early`, `rows_with_no_text`,
+`rows_without_partials`, `dropped_buffers`, `rows_with_drops`.
+
+Three rules for reading them:
+
+`pace` must be 1. Any other value means the audio was played faster or slower
+than real time for a smoke test, and no latency in that report describes a
+session anyone could have. The written report says so on its own front page.
+
+`dropped_buffers` above zero means the WER in the same report is partly a
+measurement of the machine it was taken on. Audio that was dropped is words
+that were never offered to the model.
+
+`trailing_words_lost` and `rows_with_no_text` are different failures. A row
+that produced nothing loses its whole reference and is counted in both; a row
+that produced text and stopped short is the one `rows_ending_early` counts, and
+it is the symptom of a session that stops before the speaker does.
+
+`rtfx` is meaningless under `--live` - the audio was paced, so the ratio
+describes the harness. The written report prints "not applicable" there rather
+than a number.
 
 `peak_memory_bytes` is the memory number to compare two engines with: the
 process's peak physical footprint plus the model the Neural Engine is holding
