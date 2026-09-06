@@ -76,14 +76,24 @@ actor ParakeetEngine: TranscriptionEngine {
     /// a UI is not: without this both callers pass the `manager != nil` check,
     /// both load, and one manager is orphaned holding its CoreML allocations.
     ///
-    /// Two consequences of using an unstructured Task, both accepted for now
-    /// and both worth fixing before live mode in stage 4. Cancelling the caller
-    /// no longer cancels the load - `await task.value` is not a cancellation
-    /// point - so Ctrl-C during the first ANE compile waits it out, which was
-    /// measured at 11.7 s on the real model. And a second caller that joins an
-    /// in-flight load never sees its own `progress:` closure fire, because only
-    /// the first caller's handler is wired to FluidAudio.
+    /// Two consequences of using an unstructured Task, both still accepted.
+    /// Canceling the caller does not cancel the load - `await task.value` is
+    /// not a cancellation point - so Ctrl-C during the first ANE compile waits
+    /// it out, which was measured at 11.7 s on the real model. And a second
+    /// caller that joins an in-flight load never sees its own `progress:`
+    /// closure fire, because only the first caller's handler is wired to
+    /// FluidAudio. (The third consequence this comment used to list, an
+    /// `unload()` being undone by a load still in flight, is fixed by the epoch
+    /// below.)
     private var loading: Task<Void, Error>?
+    /// Bumped by `unload()`, so a load already in flight can tell that the
+    /// engine it was loading for has since given its memory back. The booster
+    /// below has had one of these from the start; the model load did not, and
+    /// a review found the hole: `unload()` awaits `manager?.cleanup()`, which
+    /// returns immediately while `manager` is still nil, so it can run start to
+    /// finish inside the window `load()` spends suspended in `AsrModels.load`
+    /// and have both fields written back underneath it.
+    private var epoch = 0
     /// The vocabulary booster, built on first use and kept while the term list
     /// is unchanged. See `booster(for:)` for why it is guarded rather than
     /// simply assigned.
@@ -146,9 +156,15 @@ actor ParakeetEngine: TranscriptionEngine {
             try await loading.value
             return nil
         }
+        let started = epoch
         let task = Task { try await load(progress: progress) }
         loading = task
-        defer { loading = nil }
+        // Cleared only when this call's registration is still the current one.
+        // An `unload()` during the load clears `loading` itself and a later
+        // `prepare` registers a new task; without the check, this call's defer
+        // would deregister that newer task and the `prepare` after it would
+        // start a second concurrent load of the same gigabytes.
+        defer { if started == epoch { loading = nil } }
         try await task.value
         return nil
     }
@@ -170,6 +186,7 @@ actor ParakeetEngine: TranscriptionEngine {
                 "'\(id)' is not installed; run 'speech models download \(id)'")
         }
 
+        let started = epoch
         let models: AsrModels
         do {
             models = try await AsrModels.load(
@@ -187,6 +204,14 @@ actor ParakeetEngine: TranscriptionEngine {
             try await manager.loadModels(models)
         } catch {
             throw SpeechError.runtime("cannot initialize '\(id)': \(error.localizedDescription)")
+        }
+        // Assigning unconditionally would hand the engine four loaded CoreML
+        // models after `unload()` had already returned, having reported the
+        // memory freed - which is the one thing `unload` exists to do for
+        // Speech.app. `UnifiedEngine.load` guards the same way.
+        guard started == epoch else {
+            await manager.cleanup()
+            return
         }
         self.manager = manager
         self.models = models
@@ -272,6 +297,9 @@ actor ParakeetEngine: TranscriptionEngine {
         // weights rather than pay a second ANE compile - measured at 11.7 s -
         // but that sharing has to end when the caller says it is done.
         models = nil
+        epoch &+= 1
+        loading?.cancel()
+        loading = nil
         boosterEpoch &+= 1
         boosterTask = nil
         booster = nil

@@ -16,6 +16,12 @@
 // deduplicates each window's tokens against everything decoded so far and sends
 // only the new text, so an update is never revised and `isConfirmed` is a
 // statement about the update BEFORE it.
+//
+// `absorb` returns a `LiveEvent` rather than a `Segment` so that one line is
+// inside the tested surface. A review found the gap: while this returned a
+// segment, the partial-versus-final decision lived in the actor, and putting
+// `isConfirmed ? .final : .partial` back at the call site left all nine tests
+// green while restoring the exact defect they were written for.
 
 import FluidAudio
 import Foundation
@@ -23,11 +29,11 @@ import SpeechCore
 
 struct SlidingWindowSegments {
     /// Stamped on every segment, as a primary subtag.
-    var language: String?
+    let language: String?
     /// Whether to carry word timings in the segment. It does not affect the
     /// span, which is always taken from the timings when there are any - see
     /// the note in `absorb`.
-    var wantWords: Bool
+    let wantWords: Bool
 
     private(set) var finals: [Segment] = []
     private var nextID = 0
@@ -37,14 +43,19 @@ struct SlidingWindowSegments {
         self.wantWords = wantWords
     }
 
-    /// Fold one update in, and return the segment to publish - or nil when
-    /// there is nothing to say.
+    /// Fold one update in, and return the event to publish - or nil when there
+    /// is nothing to say.
+    ///
+    /// Always `.final`, never `.partial`, and that is the whole mapping: the
+    /// library deduplicates each window's tokens against everything decoded so
+    /// far and never re-sends a window, so there is no later version of this
+    /// text to wait for. `isConfirmed` describes the update before this one.
     ///
     /// An empty update is dropped rather than emitted. Windows over silence
     /// produce them, and a `segment.final` carrying no text is a real event on
     /// the wire that costs `--refine` a whole model inference to re-transcribe
     /// nothing.
-    mutating func absorb(_ update: SlidingWindowTranscriptionUpdate) -> Segment? {
+    mutating func absorb(_ update: SlidingWindowTranscriptionUpdate) -> LiveEvent? {
         let text = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
 
@@ -59,7 +70,19 @@ struct SlidingWindowSegments {
         // clock `Date` and says nothing about position in the audio, so it is
         // not a substitute: a window with no timings gets the previous
         // segment's end for both bounds rather than a fabricated range.
-        let start = timings.first?.startTime ?? finals.last?.end ?? 0
+        //
+        // Clamped forward, and not defensively: the library's final-window
+        // re-decode backs its emission cutoff off by
+        // `redecodeEmissionJitterFrames` (5 frames, 0.40 s at 0.08 s per
+        // encoder frame) because a re-decoded token can land a few frames from
+        // where it first emitted. A token that survives dedup with a timestamp
+        // inside that margin is new text whose audio genuinely overlaps the
+        // previous segment's tail - so the overlap is real, and what has to
+        // give is the wire format, which cannot express two segments covering
+        // the same instant. The words keep their true times; only the span the
+        // transcript is ordered and sliced by is moved forward.
+        let floor = finals.last?.end ?? 0
+        let start = max(timings.first?.startTime ?? floor, floor)
         let end = max(start, timings.last?.endTime ?? start)
         let words = wantWords && !timings.isEmpty
             ? timings.map { Word(text: $0.word, start: $0.startTime, end: $0.endTime) }
@@ -76,6 +99,6 @@ struct SlidingWindowSegments {
             language: language.map(Language.primarySubtag))
         finals.append(segment)
         nextID += 1
-        return segment
+        return .final(segment)
     }
 }

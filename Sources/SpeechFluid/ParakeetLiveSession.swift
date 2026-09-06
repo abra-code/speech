@@ -230,17 +230,14 @@ actor ParakeetLiveSession: LiveSession {
         }
     }
 
-    /// One update, one segment on the wire.
+    /// One update, one event on the wire.
     ///
-    /// Every update is final because the library never revises one: its tokens
-    /// were deduplicated against everything already decoded, and its text is
-    /// only the new part. `isConfirmed` describes the manager's own volatile
-    /// slot - whether the PREVIOUS piece has been settled - and holding this
-    /// piece back on the strength of it would mean waiting for a correction
-    /// that is never sent, and losing the last piece of every session outright.
+    /// Which event it is belongs to `SlidingWindowSegments` rather than to this
+    /// line, and deliberately: it is the whole mapping, it was wrong once, and
+    /// a decision made here is a decision no test can reach.
     private func absorb(_ update: SlidingWindowTranscriptionUpdate) {
-        guard let segment = segments.absorb(update) else { return }
-        continuation.yield(.final(segment))
+        guard let event = segments.absorb(update) else { return }
+        continuation.yield(event)
     }
 
     /// Waits for the update reader, but not forever.

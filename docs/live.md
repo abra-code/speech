@@ -391,7 +391,18 @@ rather than a promise. And `--pace` exists for smoke tests only - at anything
 other than 1x the latencies describe no session anyone could have, which is why
 the value is warned about on the terminal and stamped into the report.
 
-### What it said the first time
+The device resampling is worth one more sentence, because it is the part of a
+real microphone this harness comes closest to reaching and still misses. `eval
+--live` feeds the project's canonical 16 kHz mono, and both resamplers on the
+path - `LivePump`'s and FluidAudio's own - recognize that format and pass it
+through untouched. A microphone at 48 kHz does not: every 64 ms buffer is
+converted, and on the `fluid` rows, which ask for no particular format and
+resample internally, that conversion happens inside the engine on a converter
+built per buffer. So the numbers below are taken on the one path where the
+per-buffer conversion cost is zero. It is a small cost, but it is not the cost a
+microphone pays, and nothing in this table sees it.
+
+### The first sweep of every row
 
 Every live row, six FLEURS utterances each, on an M5. **Six rows is 124
 reference words: this table ranks nothing.** It is here because the shape of the
