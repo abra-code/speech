@@ -314,6 +314,18 @@ expect_code 2 "$SPEECH" eval --model ggml.parakeet-tdt-0.6b-v3@q8_0 \
     --manifest "$TMP/usage-manifest.tsv" --live
 expect_grep_err "no live mode" "$SPEECH" eval --model ggml.parakeet-tdt-0.6b-v3@q8_0 \
     --manifest "$TMP/usage-manifest.tsv" --live
+# --segment is the same shape of choice as --pace: live only, and a spelling
+# that is not one of the two modes is a typo rather than the default. The vad
+# mode needs a row on disk, so a machine without it gets a download instruction
+# (exit 3) before any model is loaded, rather than a run segmented the old way.
+expect_code 2 "$SPEECH" --models-dir "$MODELS" stream --model apple.transcriber --segment vader
+expect_code 2 "$SPEECH" --models-dir "$MODELS" eval --model apple.transcriber \
+    --manifest "$TMP/usage-manifest.tsv" --segment vad
+expect_code 3 "$SPEECH" --models-dir "$MODELS" eval --model fluid.parakeet-v3@int8 \
+    --manifest "$TMP/usage-manifest.tsv" --live --segment vad
+expect_grep_err "silero-vad" "$SPEECH" --models-dir "$MODELS" eval \
+    --model fluid.parakeet-v3@int8 --manifest "$TMP/usage-manifest.tsv" --live --segment vad
+
 # --pace without --live is a typo, not a request: a batch eval has no clock to
 # pace, so silently ignoring it would hide the mistake.
 expect_code 2 "$SPEECH" eval --model apple.transcriber \

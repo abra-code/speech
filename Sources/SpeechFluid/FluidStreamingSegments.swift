@@ -56,16 +56,31 @@ struct FluidStreamingSegments {
     /// every `--refine` slice came back empty.
     var wantWords: Bool
 
+    private let segmentation: LiveSegmentation
     private var accumulator: StreamSegmentAccumulator
     /// Every word decoded so far, replaced on each poll.
     private var words: [Word] = []
     /// How many of them are already inside a closed segment.
     private var consumed = 0
 
-    init(language: String?, wantWords: Bool, maxUtteranceSeconds: Double = 15) {
+    init(
+        language: String?,
+        wantWords: Bool,
+        maxUtteranceSeconds: Double = 15,
+        segmentation: LiveSegmentation = .engine
+    ) {
         self.wantWords = wantWords
+        self.segmentation = segmentation
         self.accumulator = StreamSegmentAccumulator(
-            maxUtteranceSeconds: maxUtteranceSeconds, language: language)
+            maxUtteranceSeconds: maxUtteranceSeconds, language: language,
+            segmentation: segmentation)
+    }
+
+    /// Where the audio said speech started or stopped. Straight through to the
+    /// accumulator, which owns every cut; nothing in this file has an opinion
+    /// about boundaries, only about the span and the words a cut piece gets.
+    mutating func mark(_ boundary: SpeechBoundary) {
+        accumulator.mark(boundary)
     }
 
     /// The segments that went out, carrying the spans this file corrected.
@@ -110,12 +125,56 @@ struct FluidStreamingSegments {
         // alternative reading of "no words" is that every segment sits at zero,
         // which would leave `--refine` slicing nothing at all.
         let committed = words.last?.end ?? receivedSeconds
+        // Copies rather than captures of `self`: the parameter is optional,
+        // which makes the closure escaping, and an escaping closure cannot
+        // capture a mutating `self` at all. Both copies are cheap - an array
+        // reference and an Int - and nothing mutates them while it runs.
+        let clock = words
+        let published = consumed
         let events = accumulator.absorb(
             committed: transcript,
             tentative: "",
             committedMs: Int64((committed * 1000).rounded()),
             receivedMs: Int64((max(committed, receivedSeconds) * 1000).rounded()),
-            isFinal: isFinal)
+            isFinal: isFinal,
+            // What the ggml rows cannot answer and these rows can: how much of
+            // the pending text was spoken before a boundary. Without it a cut
+            // takes the text as it stands, and on a real pause that is one
+            // decode step too much - the commit that carries the watermark past
+            // the boundary is the one carrying the next utterance's first
+            // words. `consumed` is where the pending text begins in this list,
+            // so the scan runs over exactly the words the accumulator holds.
+            //
+            // **Selected on `start`, not on `end`, and that is not a detail.**
+            // Sentence-final punctuation is decoded late: the RNN-T decoder
+            // emits `.` once it has evidence the sentence ended, which is at or
+            // after the next utterance's onset, and `buildWordTimings` glues a
+            // piece carrying no word-boundary marker onto the word before it.
+            // So `certainty.` starts at 9.84 s and ends at 13.20 on a pause
+            // that began around 10.2. Selecting on `end <= boundary` therefore
+            // drops the last word of every sentence, and measured on one
+            // recording it cut each segment three seconds early with the
+            // sentence's own ending leading the next one. Where a word starts
+            // is what says which side of a pause it was spoken on.
+            //
+            // The answer is in Characters rather than words because the scan
+            // is what locates it: matching the word texts against the pending
+            // text works in a script that separates words and in one that does
+            // not, while a count of words in Chinese would be a count of
+            // whitespace runs, of which there are none.
+            settledText: { boundary, pending in
+                let settled = clock[published...].prefix { $0.start < boundary }
+                guard !settled.isEmpty else { return 0 }
+                let located = Self.locate(settled, in: pending)
+                // Nothing matched from any starting point, with words that
+                // should have been there: the two lists disagree about the
+                // text itself. Say "I cannot tell" rather than "none of it",
+                // which would hold this utterance open until the backstop and
+                // every one after it; the accumulator then cuts the way a row
+                // with no word clock does.
+                guard located.scan.matched > 0 else { return nil }
+                return pending.distance(from: pending.startIndex, to: located.scan.end)
+            })
 
         // A loop rather than `map`: `close` mutates `self`, and mutating self
         // inside a closure reading `events` is an overlapping access.
@@ -135,10 +194,26 @@ struct FluidStreamingSegments {
     private mutating func close(_ segment: Segment) -> Segment {
         var segment = segment
         let floor = finals.last?.end ?? 0
-        let matched = Self.match(words[consumed...], to: segment.text)
+        // Where a boundary cut is authoritative and the word clock is not. The
+        // last word before a pause is the one carrying the sentence's final
+        // punctuation, and that piece is decoded at the next utterance's onset,
+        // so the word's end runs past the silence - the span would cover it and
+        // `--refine` would re-transcribe it. Under `.engine` the
+        // accumulator's end is a character-fraction estimate and the word clock
+        // really is the better answer, which is why this is not simply a `min`
+        // for both.
+        let ceiling = segmentation == .vad ? segment.end : Double.infinity
+        // `locate` rather than `match`, for the case where the cursor has
+        // drifted: a word whose text has already gone out sits at the front of
+        // the list, and an anchored scan cannot get past it. Skipping leading
+        // words is safe in a way that skipping *forward inside the text* is
+        // not - the anchor stays at the front of this segment's text, so a
+        // one-character word cannot be found in the middle of a later sentence.
+        let located = Self.locate(words[consumed...], in: segment.text)
+        let matched = Self.covering(located, of: segment.text, in: words[consumed...])
         if !matched.isEmpty {
             let first = matched[matched.startIndex].start
-            let last = matched[matched.index(before: matched.endIndex)].end
+            let last = min(matched[matched.index(before: matched.endIndex)].end, ceiling)
             // Clamped forward rather than monotonic by construction, which is
             // what this comment used to claim and what a review disproved.
             // Token times are a frame index times 0.08 s, and the decoder emits
@@ -150,7 +225,17 @@ struct FluidStreamingSegments {
             // audio had.
             segment.start = first
             segment.end = max(first, last)
-            if wantWords { segment.words = Array(matched) }
+            if wantWords {
+                var payload = Array(matched)
+                // The same clamp, applied to the one word it can reach: the
+                // last word of a segment cut at a pause is the one carrying the
+                // late-decoded full stop. Leaving it would publish a word that
+                // ends after the segment holding it.
+                if let index = payload.indices.last, payload[index].end > segment.end {
+                    payload[index].end = max(payload[index].start, segment.end)
+                }
+                segment.words = payload
+            }
         }
         // Outside the branch, because the branch is not where the overlap
         // comes from. A final whose words matched publishes an end taken from
@@ -160,15 +245,35 @@ struct FluidStreamingSegments {
         // The clamp belongs to every segment, not to the ones that matched.
         segment.start = max(segment.start, floor)
         segment.end = max(segment.start, segment.end)
-        consumed += matched.count
-        // Whether or not they matched. A word that ended before this segment
-        // did belongs to audio the segment already covered, and carrying it
-        // forward would put it inside the next segment's span.
-        //
-        // A word that straddles the boundary - it started inside this segment
-        // and ends after it - is deliberately kept for the next one, since it
-        // still has text nobody has published. What stops it opening that
-        // segment behind this one is the clamp above, not this loop.
+        // Past the words this segment published. On a match the count is exact.
+        // When the match failed - the text and the word list disagree, which
+        // this file's header says is reachable - nothing in the text says which
+        // words were published, so the resynchronization is on the clock
+        // instead: every word that started before this segment ended was inside
+        // it. Without that, `consumed` stayed one word behind for the rest of
+        // the session, because the word that straddles a boundary is exactly
+        // the one the end-time loop below cannot drop - so every later cut took
+        // one word too few and no later segment carried words at all.
+        if !matched.isEmpty {
+            consumed += located.skipped + matched.count
+        } else if located.scan.matched > 0 {
+            // A partial match: the text this segment published covers some of
+            // the words and then stops agreeing. Advancing by what was found is
+            // a better answer than either extreme, and it is what keeps the
+            // next cut anchored.
+            consumed += located.skipped + located.scan.matched
+        } else {
+            // Nothing matched from anywhere: the text cannot say which words
+            // went out, so the clock does - every word that started before this
+            // segment ended was inside it. The re-anchor above would recover
+            // without this on the next poll, and what this adds is a guarantee
+            // of *progress*: a session whose two lists never agree would
+            // otherwise leave the cursor at zero and rescan a growing list on
+            // every poll.
+            while consumed < words.count, words[consumed].start < segment.end {
+                consumed += 1
+            }
+        }
         while consumed < words.count, words[consumed].end <= segment.end {
             consumed += 1
         }
@@ -222,22 +327,82 @@ struct FluidStreamingSegments {
     /// point - is cut short with no signal that anything went wrong. Falling
     /// back to the accumulator's estimate is a worse span but an honest one.
     static func match(_ words: ArraySlice<Word>, to text: String) -> ArraySlice<Word> {
-        var index = text.startIndex
-        var matched = 0
-        for word in words {
-            while index < text.endIndex, text[index].isWhitespace {
-                index = text.index(after: index)
-            }
-            guard !word.text.isEmpty, text[index...].hasPrefix(word.text) else { break }
-            index = text.index(index, offsetBy: word.text.count)
-            matched += 1
-        }
+        let scan = Self.scan(words, into: text)
+        var index = scan.end
         // Trailing whitespace is not a word, and the accumulator trims it
         // anyway; anything else left over means these words are not this text.
         while index < text.endIndex, text[index].isWhitespace {
             index = text.index(after: index)
         }
         guard index == text.endIndex else { return words.prefix(0) }
-        return words.prefix(matched)
+        return words.prefix(scan.matched)
+    }
+
+    /// The best anchored match of `words` at the front of `text`, allowing for
+    /// a cursor that has drifted past words whose text already went out.
+    ///
+    /// Tries each starting point in order and stops at the first that matches
+    /// anything. The scan itself stays anchored at the front of the text, which
+    /// is the rule that matters: a search allowed to skip forward *inside* the
+    /// text will find a one-character word like `!` in the middle of the next
+    /// sentence and hand it that sentence's span. Skipping leading *words* has
+    /// no such hazard - it only asks "does this text begin with that word".
+    ///
+    /// It exists because one disagreement between the two lists used to be
+    /// permanent: with the cursor stuck on a word the text no longer contains,
+    /// every later scan failed at position 0, so every later cut fell back to
+    /// the no-clock rule and no later segment carried words at all.
+    static func locate(
+        _ words: ArraySlice<Word>, in text: String
+    ) -> (skipped: Int, scan: (matched: Int, end: String.Index)) {
+        for start in words.indices {
+            let scan = Self.scan(words[start...], into: text)
+            if scan.matched > 0 {
+                return (words.distance(from: words.startIndex, to: start), scan)
+            }
+        }
+        return (0, (0, text.startIndex))
+    }
+
+    /// The words a located scan covers, or nothing when they do not cover the
+    /// whole text - the all-or-nothing rule `match` documents, applied to a
+    /// scan that may have skipped a stale word first.
+    static func covering(
+        _ located: (skipped: Int, scan: (matched: Int, end: String.Index)),
+        of text: String,
+        in words: ArraySlice<Word>
+    ) -> ArraySlice<Word> {
+        guard located.scan.matched > 0 else { return words.prefix(0) }
+        var index = located.scan.end
+        while index < text.endIndex, text[index].isWhitespace {
+            index = text.index(after: index)
+        }
+        guard index == text.endIndex else { return words.prefix(0) }
+        let start = words.index(words.startIndex, offsetBy: located.skipped)
+        return words[start...].prefix(located.scan.matched)
+    }
+
+    /// How far the leading `words` reach into `text`, by the anchored scan.
+    ///
+    /// The shared half of three questions: which words make up a finished
+    /// segment (`match`, which additionally requires them to reach the end of
+    /// it), how many words a segment published when that check failed, and
+    /// where in the pending text a boundary falls. Answering all three with one
+    /// scan is what keeps them from disagreeing - a cut placed by one rule and
+    /// a payload matched by another would put a word in a segment whose span
+    /// does not contain it.
+    static func scan(_ words: ArraySlice<Word>, into text: String) -> (matched: Int, end: String.Index) {
+        var index = text.startIndex
+        var matched = 0
+        for word in words {
+            var cursor = index
+            while cursor < text.endIndex, text[cursor].isWhitespace {
+                cursor = text.index(after: cursor)
+            }
+            guard !word.text.isEmpty, text[cursor...].hasPrefix(word.text) else { break }
+            index = text.index(cursor, offsetBy: word.text.count)
+            matched += 1
+        }
+        return (matched, index)
     }
 }

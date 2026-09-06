@@ -7,6 +7,7 @@
 //   the tap             audio thread, allocates a copy per callback
 //   the pump            converts, feeds the session, keeps the refine buffer
 //   the session         the draft engine, emitting partials and finals
+//   the detector        under --segment vad, where the room goes quiet
 //   the refine queue    a second engine, one utterance at a time
 //   the stop controller signals, stdin, the parent watchdog
 //
@@ -15,11 +16,13 @@
 // engine at 12x real time and a model load that takes a second both sit off to
 // the side, and the audio keeps flowing past them.
 //
-// `--refine` is why the pump converts twice. The draft session wants whatever
-// format it named; refinement wants the project's canonical 16 kHz mono, which
-// is what every batch measurement in this project was taken on - handing the
-// refine engine anything else would make its output incomparable to its own
-// eval numbers.
+// `--refine` and `--segment vad` are why the pump converts twice. The draft
+// session wants whatever format it named; refinement wants the project's
+// canonical 16 kHz mono, which is what every batch measurement in this project
+// was taken on - handing the refine engine anything else would make its output
+// incomparable to its own eval numbers - and the detector wants the one rate
+// its model was trained at. The two share the conversion, so a run using both
+// pays for it once.
 
 import AVFoundation
 import Foundation
@@ -53,6 +56,7 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
     var language: String?
     var vocabulary: [String] = []
     var device: String?
+    var segmentation = LiveSegmentation.engine
     var listDevices = false
     var parentPID: pid_t?
     var watchStdin = true
@@ -72,6 +76,10 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
                   --refine <id>      Re-transcribe each finished utterance with a
                                      second, slower, better engine and emit
                                      segment.refined with the same id
+                  --segment <how>    Where utterance boundaries come from:
+                                     'engine' (default), or 'vad' to cut where
+                                     the room goes quiet. 'vad' first needs
+                                     \(kProgram) models download \(VoiceActivity.defaultRow)
                   --language <tag>   BCP-47 language hint, for example pl-PL
                   --vocab <file>     One term per line; engines without vocabulary
                                      support warn and continue
@@ -93,6 +101,15 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
             model = try scanner.value(token)
         case "--refine":
             refine = try scanner.value(token)
+        case "--segment":
+            let value = try scanner.value(token)
+            guard let parsed = LiveSegmentation(rawValue: value) else {
+                throw SpeechError.usage(
+                    "--segment wants "
+                    + LiveSegmentation.allCases.map(\.rawValue).joined(separator: " or ")
+                    + " (got '\(value)')")
+            }
+            segmentation = parsed
         case "--language", "-l":
             language = try scanner.value(token)
         case "--vocab":
@@ -135,7 +152,8 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
     }
 
     var options = TranscribeOptions(
-        language: language, vocabulary: vocabulary, wantWordTimestamps: true)
+        language: language, vocabulary: vocabulary, wantWordTimestamps: true,
+        segmentation: segmentation)
     try await engine.validate(options)
     if !engine.capabilities.supports(language: language) {
         sink.warning(
@@ -169,6 +187,38 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         refineEngine = candidate
     }
 
+    // The detector is resolved here too, and for the same reason: `--segment
+    // vad` on a machine that has not downloaded the row is a download
+    // instruction, not a recording that turns out to have been segmented the
+    // old way.
+    var vadEngine: (any VoiceActivityEngine)?
+    if segmentation == .vad {
+        let candidate = try registry.make(
+            catalogID: VoiceActivity.defaultRow, modelsDirectory: globals.modelsDirectory)
+        guard let detector = candidate as? any VoiceActivityEngine else {
+            throw SpeechError.unavailable(
+                "'\(VoiceActivity.defaultRow)' in this build cannot detect speech")
+        }
+        vadEngine = detector
+    }
+
+    // The detector first, before the microphone is even asked for, though it is
+    // the smallest model here. Its absence is a download instruction rather
+    // than a failure, and discovering that after a permission prompt and a
+    // gigabyte of draft weights is the same defect the refine engine's early
+    // validation exists to avoid. It costs a megabyte to find out.
+    var vad: (any VoiceActivityDetector)?
+    if let vadEngine {
+        let vadStart = ContinuousClock().now
+        vad = try await vadEngine.makeDetector { progress in
+            sink.modelProgress(model: VoiceActivity.defaultRow, progress)
+        }
+        sink.emit(.engineReady(.init(
+            engine: vadEngine.id, model: VoiceActivity.defaultRow,
+            capabilities: vadEngine.capabilities,
+            loadSeconds: elapsedSeconds(since: vadStart), locale: nil)))
+    }
+
     guard await Microphone.requestPermission() else {
         throw SpeechError.unavailable(
             "microphone access was refused. macOS grants it to the app that launched this"
@@ -197,6 +247,15 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
     }
 
     let session = try await engine.makeLiveSession(options: options)
+
+    // A row whose segmentation belongs to the model itself takes no boundaries,
+    // and saying so is the difference between a flag that did nothing and a
+    // flag that did nothing quietly.
+    if vad != nil, !session.honorsSpeechBoundaries {
+        sink.warning(
+            "\(model) decides its own utterance boundaries; --segment vad has no effect on it",
+            code: "segment_ignored")
+    }
 
     // MARK: Wiring
 
@@ -271,6 +330,7 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
             session: session,
             inputFormat: inputFormat,
             audio: queue == nil ? nil : audio,
+            vad: vad,
             // Silence was appended to keep the refinement clock aligned; say so
             // once, because the refinement covering that span will be wrong.
             onConversionFailure: {
@@ -297,6 +357,7 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         await session.cancel()
         await engine.unload()
         if let refineEngine { await refineEngine.unload() }
+        if let vadEngine { await vadEngine.unload() }
         throw error
     }
 
@@ -371,6 +432,7 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         }
     }
     await engine.unload()
+    if let vadEngine { await vadEngine.unload() }
     if let refineEngine {
         // Honest about what this can cost. Cancelling the queue stops it taking
         // new work; it does not reach inside an inference already running, and

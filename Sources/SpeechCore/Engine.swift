@@ -143,11 +143,26 @@ public struct TranscribeOptions: Sendable, Equatable {
     /// Hotwords. Engines with `vocabulary == false` warn and continue.
     public var vocabulary: [String]
     public var wantWordTimestamps: Bool
+    /// Where a live session's utterance boundaries come from.
+    ///
+    /// Live only. A batch `transcribe` ignores it, and that is not an oversight
+    /// worth designing around: the question is "when has this speaker finished
+    /// a thought", which only exists while audio is still arriving. It rides
+    /// here rather than on `makeLiveSession` because every engine already
+    /// receives these options and none of them has to grow a parameter for a
+    /// choice most of them pass straight through.
+    public var segmentation: LiveSegmentation
 
-    public init(language: String? = nil, vocabulary: [String] = [], wantWordTimestamps: Bool = true) {
+    public init(
+        language: String? = nil,
+        vocabulary: [String] = [],
+        wantWordTimestamps: Bool = true,
+        segmentation: LiveSegmentation = .engine
+    ) {
         self.language = language
         self.vocabulary = vocabulary
         self.wantWordTimestamps = wantWordTimestamps
+        self.segmentation = segmentation
     }
 }
 
@@ -189,6 +204,20 @@ public struct LoadProgress: Sendable, Equatable {
 }
 
 public typealias LoadProgressHandler = @Sendable (LoadProgress) -> Void
+
+/// Where a live session's utterance boundaries come from.
+///
+/// A run-level choice rather than a property of a row, because it is the same
+/// question for every engine: cut where the model thinks a sentence ended, or
+/// cut where the room went quiet. Batch transcription ignores it - a file is
+/// segmented by the engine's own decoder, and nothing here is on that path.
+public enum LiveSegmentation: String, Sendable, Equatable, CaseIterable {
+    /// Whatever the engine or the mapping over it decides. The default,
+    /// because it needs no second model on disk.
+    case engine
+    /// Boundaries marked by a voice activity detector, on the audio's clock.
+    case vad
+}
 
 public enum LiveEvent: Sendable {
     /// Volatile text that will be replaced. Same id as the final that follows.
@@ -319,6 +348,22 @@ public protocol LiveSession: Sendable {
     func finish() async throws -> [Segment]
     func cancel() async
 
+    /// Tell the session where the audio said speech started or stopped.
+    ///
+    /// Called from the pump, on the same task that feeds it, so a boundary can
+    /// never overtake the audio it was found in. It is a *report*, not a
+    /// command: the session decides what to do with it, and every session is
+    /// free to ignore it - which is what the default below does, and what the
+    /// two rows whose segmentation belongs to the model itself actually do.
+    ///
+    /// A session that acts on boundaries says so in `honorsSpeechBoundaries`,
+    /// so a run that asked for them and would get nothing is told rather than
+    /// left to wonder why nothing changed.
+    func mark(_ boundary: SpeechBoundary) async
+
+    /// Whether marked boundaries reach this session's segmentation.
+    nonisolated var honorsSpeechBoundaries: Bool { get }
+
     /// Buffers this session could not keep up with, read after `finish`.
     ///
     /// A session that queues audio for an engine has to bound that queue, and a
@@ -348,6 +393,13 @@ extension LiveSession {
 
     /// A session that cannot drop audio reports none.
     public func droppedInputCount() async -> Int { 0 }
+
+    /// Most sessions have their boundaries decided for them - by an analyzer
+    /// that finalizes on its own schedule, or by a manager that emits one
+    /// finished window at a time - and for those a boundary is information
+    /// with nowhere to go.
+    public func mark(_ boundary: SpeechBoundary) async {}
+    public nonisolated var honorsSpeechBoundaries: Bool { false }
 }
 
 /// What the registry needs to build an engine: the catalog id split into its

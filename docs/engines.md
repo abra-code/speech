@@ -110,9 +110,8 @@ spotter behind custom vocabulary, and the Silero detector below.
 One compiled CoreML bundle, 1.1 MB, an LSTM over a 256 ms window: it answers
 "is someone speaking" and nothing else. It is a catalog row rather than an
 implementation detail because it is downloaded, measured, listed and deleted
-exactly like a model, and because the live path that will consume its
-boundaries cannot run until it is installed - which is a download instruction a
-user has to be able to find.
+exactly like a model, and because `speech stream --segment vad` cannot run until
+it is installed - which is a download instruction a user has to be able to find.
 
 Its capability record is every flag false and no language at all, which for this
 model is the literal truth rather than a shrug: it hears speech as an acoustic

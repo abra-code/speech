@@ -197,13 +197,40 @@ struct StreamSegmentAccumulatorTests {
         #expect(Self.partials(closing).map(\.id) == [1])
     }
 
-    @Test("the backstop closes a segment nobody punctuated")
+    @Test("the backstop closes a segment nobody punctuated, without breaking a word")
     func backstop() {
         var accumulator = StreamSegmentAccumulator(maxUtteranceSeconds: 5)
         let early = Self.step(&accumulator, "one two three", at: 3)
         #expect(Self.finals(early).isEmpty)
+        // The last word is held back: mid-stream, "five" may be the whole word
+        // or the front of "fivefold", and nothing here can tell the difference.
+        // It leads the next segment instead of being cut in half.
         let late = Self.step(&accumulator, "one two three four five", at: 6)
-        #expect(Self.finals(late).map(\.text) == ["one two three four five"])
+        #expect(Self.finals(late).map(\.text) == ["one two three four"])
+        let end = Self.step(&accumulator, "one two three four five", at: 7, isFinal: true)
+        #expect(Self.finals(end).map(\.text) == ["five"])
+    }
+
+    @Test("a word is never cut in half, and text with no word boundary says so")
+    func splitAtLastWord() throws {
+        // The head keeps everything up to the last word boundary; the tail is
+        // the word that may still be growing.
+        var split = try #require(StreamSegmentAccumulator.splitAtLastWord("one two three"))
+        #expect(split.head == "one two")
+        #expect(split.tail == "three")
+        // Trailing whitespace means the last word is finished.
+        split = try #require(StreamSegmentAccumulator.splitAtLastWord("one two "))
+        #expect(split.head == "one two")
+        #expect(split.tail == "")
+        // One word, and one word behind a space: nothing can be held back that
+        // would leave anything to publish, so there is no cut to make here.
+        #expect(StreamSegmentAccumulator.splitAtLastWord("one") == nil)
+        #expect(StreamSegmentAccumulator.splitAtLastWord(" one") == nil)
+        // No whitespace anywhere is also the CJK case: the rows that stream
+        // Chinese and Japanese emit no spaces at all, so there is no boundary
+        // in the text to find. The caller is what stops that becoming a stall.
+        let chinese = "\u{4ECA}\u{5929}\u{5929}\u{6C14}\u{5F88}\u{597D}"
+        #expect(StreamSegmentAccumulator.splitAtLastWord(chinese) == nil)
     }
 
     @Test("the end of the stream closes whatever is pending")
@@ -227,6 +254,406 @@ struct StreamSegmentAccumulatorTests {
         for segment in Self.finals(events) + Self.partials(events) {
             #expect(segment.end >= segment.start, "\(segment.id): \(segment.start)..\(segment.end)")
             #expect(segment.start.isFinite && segment.end.isFinite)
+        }
+    }
+}
+
+@Suite("boundary-cut segmentation")
+struct BoundarySegmentationTests {
+    private func accumulator() -> StreamSegmentAccumulator {
+        StreamSegmentAccumulator(language: "en", segmentation: .vad)
+    }
+
+    private func step(
+        _ accumulator: inout StreamSegmentAccumulator,
+        _ committed: String, at seconds: Double, isFinal: Bool = false
+    ) -> [LiveEvent] {
+        StreamSegmentAccumulatorTests.step(&accumulator, committed, at: seconds, isFinal: isFinal)
+    }
+
+    private func finals(_ events: [LiveEvent]) -> [Segment] {
+        StreamSegmentAccumulatorTests.finals(events)
+    }
+
+    private func end(_ seconds: Double) -> SpeechBoundary {
+        SpeechBoundary(kind: .end, seconds: seconds)
+    }
+
+    private func start(_ seconds: Double) -> SpeechBoundary {
+        SpeechBoundary(kind: .start, seconds: seconds)
+    }
+
+    @Test("the cut is where the audio said, not where the text looks finished")
+    func cutsAtTheBoundary() {
+        var accumulator = self.accumulator()
+        // Two sentences' worth of text and a boundary that agrees with neither
+        // of the full stops: under this rule the sentence is not the unit, the
+        // pause is.
+        var events = step(&accumulator, "one. two. three", at: 3)
+        #expect(finals(events).isEmpty, "no boundary has been reached yet")
+
+        accumulator.mark(end(2.5))
+        events = step(&accumulator, "one. two. three and more", at: 4)
+        let cut = finals(events)
+        // Everything but the last word, which is held back because nothing here
+        // can tell a finished word from one the decoder is still extending -
+        // see `splitAtLastWord`.
+        #expect(cut.map(\.text) == ["one. two. three and"])
+        #expect(cut.first?.end == 2.5)
+    }
+
+    @Test("a boundary the engine has not decoded past waits for it")
+    func boundariesWaitForTheCommit() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(9))
+        // The detector is ahead of the decoder, which is the normal case: an
+        // ending is reported after 0.75 s of silence, and an engine can easily
+        // be further behind than that.
+        var events = step(&accumulator, "still going", at: 5)
+        #expect(finals(events).isEmpty)
+        events = step(&accumulator, "still going and now past it", at: 9.5)
+        #expect(finals(events).map(\.text) == ["still going and now past"])
+        #expect(finals(events).first?.end == 9)
+        // And the word held back leads the next segment rather than vanishing.
+        accumulator.mark(end(12))
+        events = step(&accumulator, "still going and now past it plus more words", at: 13)
+        #expect(finals(events).map(\.text) == ["it plus more"])
+    }
+
+    @Test("the sentence rule is off, and the backstop is not")
+    func sentencesDoNotCut() {
+        var accumulator = StreamSegmentAccumulator(
+            maxUtteranceSeconds: 10, language: "en", segmentation: .vad)
+        // Four sentences, no boundary: under `.engine` this is four segments.
+        var events = step(&accumulator, "One. Two. Three. Four. ", at: 4)
+        #expect(finals(events).isEmpty)
+        // The backstop still fires, because a speaker who never pauses would
+        // otherwise produce one segment covering the whole session. It holds
+        // the last word back for the same reason a boundary cut does.
+        events = step(&accumulator, "One. Two. Three. Four. Five.", at: 11)
+        #expect(finals(events).map(\.text) == ["One. Two. Three. Four."])
+    }
+
+    @Test("a burst covering several boundaries stays in one piece, cut at the last")
+    func burstsCollapseToTheLastBoundary() {
+        var accumulator = self.accumulator()
+        // The case that decides the rule: an engine that has been silent for
+        // twenty seconds hands over everything at once. The text cannot be
+        // split - there is no word clock here - so cutting at the first
+        // boundary would stamp three utterances with the first one's end time.
+        for boundary in [end(5), start(7), end(12), start(14), end(19)] {
+            accumulator.mark(boundary)
+        }
+        let events = step(&accumulator, "all three utterances in one commit", at: 20)
+        let cut = finals(events)
+        #expect(cut.map(\.text) == ["all three utterances in one"])
+        #expect(cut.first?.start == 0)
+        #expect(cut.first?.end == 19, "the last boundary the commit reached, not the first")
+    }
+
+    @Test("speech the engine transcribed nothing from moves the clock, not the transcript")
+    func emptySpansAdvanceTheClock() {
+        var accumulator = self.accumulator()
+        // A cough, or a word too quiet to decode: the detector heard something
+        // and the engine produced no text for it. The ending is the only thing
+        // that moves here - no start follows it - so this is what pins the
+        // clock advancing on an empty span rather than on the next start.
+        accumulator.mark(end(2))
+        var events = step(&accumulator, "", at: 3)
+        #expect(events.isEmpty, "nothing to publish, and no empty segment on the wire")
+
+        accumulator.mark(end(5))
+        events = step(&accumulator, "the first real words", at: 6)
+        var cut = finals(events)
+        #expect(cut.map(\.text) == ["the first real"])
+        #expect(cut.first?.start == 2, "the silence that produced no text is not in this segment")
+        #expect(cut.first?.end == 5)
+
+        // And a start honored while nothing is pending - the engine has
+        // committed everything it had - begins the next segment where speech
+        // did rather than in the pause before it.
+        accumulator.mark(start(8))
+        events = step(&accumulator, "the first real words", at: 9)
+        // The held-back word is still pending, so it is published as a partial
+        // rather than being honored as a start.
+        #expect(finals(events).isEmpty)
+        accumulator.mark(end(11))
+        events = step(&accumulator, "the first real words and the second lot", at: 12)
+        cut = finals(events)
+        #expect(cut.map(\.text) == ["words and the second"])
+        // Not 8: this segment already held "words" when the start arrived, so
+        // its beginning stays where the previous cut left it.
+        #expect(cut.first?.start == 5)
+    }
+
+    @Test("a start cannot move a segment that already has text")
+    func startsDoNotStealDecodedText() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(4))
+        var cut = finals(step(&accumulator, "alpha beta", at: 5))
+        #expect(cut.map(\.text) == ["alpha"], "the first utterance closes at its boundary")
+
+        // Now the case the guard exists for. The engine is running behind, so
+        // it commits text for audio *before* the next start - and that text
+        // belongs to the segment that was open when it arrived. A start honored
+        // on its own, with text already pending, must not move that segment's
+        // beginning past its own words.
+        _ = step(&accumulator, "alpha beta gamma", at: 5.5)
+        accumulator.mark(start(6))
+        _ = step(&accumulator, "alpha beta gamma", at: 7)
+        accumulator.mark(end(9))
+        cut = finals(step(&accumulator, "alpha beta gamma delta", at: 10))
+        #expect(cut.map(\.text) == ["beta gamma"])
+        #expect(cut.first?.start == 4, "not 6: the segment already held words decoded before it")
+        #expect(cut.first?.end == 9)
+    }
+
+    @Test("the flush honors a boundary before closing the rest")
+    func flushUsesTheLastBoundary() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(4))
+        let events = step(&accumulator, "everything that was said", at: 6, isFinal: true)
+        let cut = finals(events)
+        // Cut at the boundary rather than at the end of the audio - the
+        // trailing two seconds were silence - and then the flush takes the word
+        // the cut held back, because there is no next commit to finish it in.
+        #expect(cut.map(\.text) == ["everything that was", "said"])
+        #expect(cut.first?.end == 4)
+    }
+
+    @Test("a cut with nothing to cut waits for the next commit, at its own time")
+    func aCutWithNoWordBoundaryIsCarried() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(3))
+        // One unfinished word and no word clock: cutting here would either
+        // publish half a word or drop the boundary. It is carried instead.
+        var events = step(&accumulator, "Twent", at: 4)
+        #expect(finals(events).isEmpty)
+
+        events = step(&accumulator, "Twentieth century research", at: 5)
+        let cut = finals(events)
+        #expect(cut.map(\.text) == ["Twentieth century"])
+        #expect(cut.first?.end == 3, "the boundary the audio reported, not the commit that made it usable")
+    }
+
+    @Test("a carried cut waits one commit and no longer")
+    func aCarriedCutIsNotHeldForever() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(3))
+        // Text with no word boundary in it at all, which is what Chinese and
+        // Japanese look like here: the rows that stream them emit no spaces.
+        let chinese = "\u{4ECA}\u{5929}\u{5929}\u{6C14}\u{5F88}\u{597D}"
+        var events = step(&accumulator, chinese, at: 4)
+        #expect(finals(events).isEmpty, "one commit of grace")
+
+        events = step(&accumulator, chinese, at: 5)
+        let cut = finals(events)
+        #expect(cut.map(\.text) == [chinese], "and then it is cut rather than held to the backstop")
+        #expect(cut.first?.end == 3)
+    }
+
+    @Test("a cut carried past a backstop does not fire on the next commit's text")
+    func aCarriedCutDiesWithTheTextItDescribed() {
+        var accumulator = StreamSegmentAccumulator(
+            maxUtteranceSeconds: 15, language: "en", segmentation: .vad)
+        accumulator.mark(end(3))
+        // The boundary is carried because one unfinished word cannot be cut.
+        // Then the backstop fires in the same commit and publishes that word.
+        let events = step(&accumulator, "Twent", at: 16)
+        #expect(finals(events).map(\.text) == ["Twent"])
+
+        // The carried cut described text that has now gone out. Inheriting it
+        // would cut the next commit's unrelated text at a time the clock has
+        // already passed, which reaches the wire as a segment of zero length
+        // stamped before the audio it came from.
+        let next = finals(step(&accumulator, "Twentieth century research", at: 17))
+        #expect(next.isEmpty)
+    }
+
+    @Test("a start carried with a cut still opens the segment it belongs to")
+    func aCarriedCutKeepsItsStart() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(3))
+        accumulator.mark(start(5))
+        // Both are drained together and neither can be acted on: there is no
+        // word boundary in this text to cut at. The start has to travel with
+        // the cut, or the segment it eventually opens begins in the silence.
+        let chinese = "\u{4ECA}\u{5929}\u{5929}\u{6C14}\u{5F88}\u{597D}"
+        var events = step(&accumulator, chinese, at: 6)
+        #expect(finals(events).isEmpty)
+
+        events = step(&accumulator, chinese, at: 7)
+        #expect(finals(events).map(\.text) == [chinese])
+        // Nothing is pending now, so the carried start is what the next segment
+        // opens at - 5, where speech resumed, not 3 where the last one closed.
+        events = step(&accumulator, chinese + "\u{660E}\u{5929}", at: 8)
+        #expect(StreamSegmentAccumulatorTests.partials(events).first?.start == 5)
+    }
+
+    @Test("a newer boundary replaces a carried one rather than inheriting its grace")
+    func aNewerBoundaryIsAFirstAttempt() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(3))
+        _ = step(&accumulator, "Twent", at: 4)
+        // The word still has not finished, but this is a different boundary, so
+        // it gets its own commit of grace rather than cutting immediately.
+        accumulator.mark(end(6))
+        let events = step(&accumulator, "Twent", at: 7)
+        #expect(finals(events).isEmpty)
+        // And when it does cut, it cuts at the newer boundary.
+        let cut = finals(step(&accumulator, "Twentieth century", at: 8))
+        #expect(cut.map(\.text) == ["Twentieth"])
+        #expect(cut.first?.end == 6)
+    }
+
+    /// Drives `absorb` with a word clock, the way the two `fluid` streaming
+    /// families do. `clock` answers how many Characters of the pending text
+    /// were spoken before a given time.
+    private func step(
+        _ accumulator: inout StreamSegmentAccumulator,
+        _ committed: String, at seconds: Double,
+        clock: @escaping (Double, String) -> Int
+    ) -> [LiveEvent] {
+        accumulator.absorb(
+            committed: committed, tentative: "",
+            committedMs: Int64(seconds * 1000), receivedMs: Int64(seconds * 1000),
+            isFinal: false, settledText: clock)
+    }
+
+    @Test("a word clock cuts where it says, not at the last whitespace")
+    func theWordClockOwnsTheCut() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(2))
+        // Three words pending and the clock says two of them were spoken before
+        // the boundary. Without it the cut would keep two and hold one back,
+        // which is the same answer for the wrong reason - so the fixture says
+        // one, which nothing else here would produce.
+        let events = step(&accumulator, "one two three", at: 3, clock: { _, _ in 3 })
+        let cut = finals(events)
+        #expect(cut.map(\.text) == ["one"])
+        #expect(cut.first?.end == 2)
+    }
+
+    @Test("a word clock that names nothing moves the clock and publishes nothing")
+    func theWordClockCanSayNone() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(2))
+        // Everything pending was spoken after the boundary: the commit that
+        // carried the watermark past it is the one that decoded the next
+        // utterance. There is nothing to publish, and the next segment must not
+        // then claim the silence that went before it.
+        var events = step(&accumulator, "next utterance", at: 3, clock: { _, _ in 0 })
+        #expect(events.compactMap { if case .final = $0 { return true } else { return nil } }.isEmpty)
+
+        accumulator.mark(end(5))
+        events = step(&accumulator, "next utterance here", at: 6, clock: { _, text in text.count })
+        let cut = finals(events)
+        #expect(cut.map(\.text) == ["next utterance here"])
+        #expect(cut.first?.start == 2, "the boundary that published nothing still moved the clock")
+        #expect(cut.first?.end == 5)
+    }
+
+    @Test("a cut keeps the space the next word will arrive without")
+    func aCutKeepsItsTrailingSpace() {
+        // A commit is a growing string and the piece appended next carries a
+        // leading space only if the tokenizer put one there. Trimming it away
+        // at a cut glues two words into one - `two` and `three` becoming
+        // `twothree` - in the middle of a transcript, with nothing to say it
+        // happened.
+        var accumulator = self.accumulator()
+        accumulator.mark(end(2.5))
+        var events = step(&accumulator, "one two ", at: 3)
+        #expect(finals(events).map(\.text) == ["one"])
+        events = step(&accumulator, "one two three", at: 4, isFinal: true)
+        #expect(finals(events).map(\.text) == ["two three"])
+    }
+
+    @Test("a cut placed by the word clock keeps it as well")
+    func aWordClockCutKeepsItsTrailingSpace() {
+        var accumulator = self.accumulator()
+        accumulator.mark(end(2.5))
+        var events = step(&accumulator, "one two ", at: 3, clock: { _, _ in 3 })
+        #expect(finals(events).map(\.text) == ["one"])
+        events = step(&accumulator, "one two three", at: 4, clock: { _, _ in 0 })
+        #expect(StreamSegmentAccumulatorTests.partials(events).map(\.text) == ["two three"])
+    }
+
+    @Test("a cut that takes everything leaves nothing pending, not a space")
+    func aWholeCutLeavesNothingPending() {
+        // The difference is visible one boundary later: a pending buffer
+        // holding only whitespace is not empty, so the start that follows would
+        // be ignored and the next segment would open at the cut instead of
+        // where speech resumed.
+        var accumulator = self.accumulator()
+        accumulator.mark(end(2))
+        var events = step(&accumulator, "one two ", at: 3, clock: { _, text in text.count })
+        #expect(finals(events).map(\.text) == ["one two"])
+
+        // The start is honored on the next poll, which decoded nothing new -
+        // and only if the buffer it finds is genuinely empty.
+        accumulator.mark(start(5))
+        events = step(&accumulator, "one two ", at: 6, clock: { _, _ in 0 })
+        #expect(events.isEmpty)
+        events = step(&accumulator, "one two three", at: 7, clock: { _, _ in 0 })
+        #expect(StreamSegmentAccumulatorTests.partials(events).first?.start == 5)
+    }
+
+    @Test("the backstop keeps it too")
+    func theBackstopKeepsItsTrailingSpace() {
+        var accumulator = StreamSegmentAccumulator(maxUtteranceSeconds: 5, language: "en")
+        _ = step(&accumulator, "one two ", at: 3)
+        var events = step(&accumulator, "one two ", at: 6)
+        #expect(finals(events).map(\.text) == ["one"])
+        events = step(&accumulator, "one two three", at: 7, isFinal: true)
+        #expect(finals(events).map(\.text) == ["two three"])
+    }
+
+    @Test("boundaries do not reach a sentence-cutting accumulator")
+    func markIsInertUnderEngineSegmentation() {
+        var accumulator = StreamSegmentAccumulator(language: "en")
+        accumulator.mark(end(1))
+        accumulator.mark(end(2))
+        // Cut by the sentence rule, at its own estimated time, exactly as it
+        // would be with no boundary in sight.
+        let cut = finals(step(&accumulator, "One. Two", at: 4))
+        #expect(cut.map(\.text) == ["One."])
+        #expect(cut.first?.end != 1)
+        // What this does NOT check: that `mark` also drops the boundary rather
+        // than queueing one nothing will ever read. That is a memory property
+        // of a private field, invisible from out here, and it is guarded in the
+        // source rather than pinned here - see `mark`.
+    }
+
+    @Test("segments never overlap, even on a boundary that goes backwards")
+    func spansStayOrdered() {
+        var accumulator = self.accumulator()
+        // A boundary older than the previous cut, which this detector does not
+        // produce and the wire must survive anyway. Both cases are here: one
+        // that closes text, and one that lands on an empty pending buffer,
+        // because those take different paths through the clock.
+        accumulator.mark(end(8))
+        var events = step(&accumulator, "first", at: 9)
+        accumulator.mark(end(2))
+        events += step(&accumulator, "first", at: 10)
+        accumulator.mark(end(3))
+        events += step(&accumulator, "first second", at: 11)
+        // And a start that goes backwards, honored on an empty buffer, which is
+        // the other way a segment could be given a beginning inside the one
+        // before it.
+        accumulator.mark(start(3))
+        events += step(&accumulator, "first second", at: 11.5)
+        events += step(&accumulator, "first second third", at: 12, isFinal: true)
+
+        var previousEnd = 0.0
+        for segment in finals(events) {
+            #expect(segment.end >= segment.start, "\(segment.id): \(segment.start)..\(segment.end)")
+            #expect(
+                segment.start >= previousEnd,
+                "\(segment.id) starts at \(segment.start), inside a segment ending at \(previousEnd)")
+            previousEnd = segment.end
+        }
+        for segment in StreamSegmentAccumulatorTests.partials(events) {
+            #expect(segment.end >= segment.start)
         }
     }
 }

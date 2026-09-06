@@ -83,6 +83,288 @@ struct FluidStreamingSegmentsTests {
         #expect(partial?.start == 2.0)
     }
 
+    // MARK: - Boundary cuts
+
+    @Test("a boundary cuts the words spoken before it, not the text as it stands")
+    func boundaryCutsOnTheWordClock() {
+        var mapper = FluidStreamingSegments(
+            language: "en-US", wantWords: true, segmentation: .vad)
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 2.0))
+        // One poll carrying both sides of the pause, which is what a real one
+        // does: the commit that takes the watermark past the boundary is the
+        // one that decoded the next utterance's first words. Cutting "the text
+        // as it stands" would put "next up" in the first segment.
+        let events = mapper.absorb(
+            transcript: "hello there. next up",
+            words: Self.words([
+                ("hello", 0.5, 1.0), ("there.", 1.0, 2.0),
+                ("next", 3.0, 3.2), ("up", 3.2, 3.4),
+            ]),
+            receivedSeconds: 3.6,
+            isFinal: false)
+
+        let final = Self.finals(events).first
+        #expect(final?.text == "hello there.")
+        #expect(final?.start == 0.5)
+        #expect(final?.end == 2.0, "the boundary, not the last word's end")
+        #expect(Self.partials(events).first?.text == "next up")
+    }
+
+    @Test("the last word before a pause is counted by where it started")
+    func lastWordIsCountedByItsStart() {
+        // The trap this exists for, measured on a real recording: sentence-final
+        // punctuation is decoded late - the decoder emits "." once it has
+        // evidence the sentence ended, which is at or after the next
+        // utterance's onset - and the word grouping glues it onto the word
+        // before it. So "certainty." starts at 9.84 s and ends at 13.20 on a
+        // pause that began around 10.2, while a word carrying no punctuation
+        // ends 80 ms after its last piece was decoded. Selecting words whose end is before the
+        // boundary therefore drops the last word of every sentence, and each
+        // segment lands three seconds early with its own ending leading the
+        // next one.
+        var mapper = FluidStreamingSegments(
+            language: "en-US", wantWords: true, segmentation: .vad)
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 10.5))
+        let events = mapper.absorb(
+            transcript: "with 100% certainty. 20th century research",
+            words: Self.words([
+                ("with", 8.0, 8.2), ("100%", 8.2, 9.8), ("certainty.", 9.8, 13.4),
+                ("20th", 13.4, 13.6), ("century", 13.6, 14.0), ("research", 14.0, 14.4),
+            ]),
+            receivedSeconds: 14.6,
+            isFinal: false)
+
+        let final = Self.finals(events).first
+        #expect(final?.text == "with 100% certainty.")
+        // And the span stops at the pause rather than at the word's recorded
+        // end, which is a time inside the silence.
+        #expect(final?.end == 10.5)
+        #expect(final?.words?.last?.end == 10.5, "no word may end after the segment holding it")
+    }
+
+    @Test("a boundary the words have not reached leaves the text alone")
+    func boundaryWaitsForTheWords() {
+        var mapper = FluidStreamingSegments(
+            language: "en-US", wantWords: true, segmentation: .vad)
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 5.0))
+        // Nothing decoded past the boundary yet, so nothing can be cut at it:
+        // the words after it may still be coming.
+        var events = mapper.absorb(
+            transcript: "still going",
+            words: Self.words([("still", 3.0, 3.4), ("going", 3.4, 4.0)]),
+            receivedSeconds: 4.2,
+            isFinal: false)
+        #expect(Self.finals(events).isEmpty)
+
+        events = mapper.absorb(
+            transcript: "still going and then more",
+            words: Self.words([
+                ("still", 3.0, 3.4), ("going", 3.4, 4.0), ("and", 4.2, 4.6),
+                ("then", 6.0, 6.4), ("more", 6.4, 6.8),
+            ]),
+            receivedSeconds: 7.0,
+            isFinal: false)
+        #expect(Self.finals(events).map(\.text) == ["still going and"])
+        // The boundary is a ceiling, not a floor: the words stop at 4.6, and a
+        // span running on to 5.0 would be claiming 0.4 s of silence that the
+        // detector's own padding put there.
+        #expect(Self.finals(events).first?.end == 4.6)
+    }
+
+    @Test("a cut lands between words in a script that writes no spaces")
+    func boundaryCutsCJK() {
+        // The rows that stream here list zh-CN and ja-JP, and their text has no
+        // whitespace at all. A cut placed by counting words would have nothing
+        // to count and would take the whole pending text - including the
+        // utterance after the pause, whose word then starts after the segment
+        // holding it ends.
+        var mapper = FluidStreamingSegments(
+            language: "zh-CN", wantWords: true, segmentation: .vad)
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 2.1))
+        let first = "\u{4ECA}\u{5929}\u{5929}\u{6C14}\u{5F88}\u{597D}"
+        let second = "\u{660E}\u{5929}\u{4E5F}\u{4E0D}\u{9519}"
+        let events = mapper.absorb(
+            transcript: first + second,
+            words: [
+                Word(text: first, start: 0.5, end: 2.0),
+                Word(text: second, start: 3.0, end: 4.0),
+            ],
+            receivedSeconds: 4.2,
+            isFinal: false)
+
+        let final = Self.finals(events).first
+        #expect(final?.text == first)
+        #expect(final?.end == 2.0)
+        #expect(final?.words?.map(\.text) == [first])
+        // And the second utterance is still pending rather than published
+        // inside a segment that ended before it was spoken.
+        #expect(Self.partials(events).first?.text == second)
+    }
+
+    @Test("a segment whose words did not match does not strand one behind it")
+    func aFailedMatchResynchronizes() {
+        // The two lists are built by different code paths, so they can
+        // disagree - here the tokenizer's text ends a word with a comma where
+        // the word list has a period. The match fails and the segment keeps the
+        // accumulator's span, which is this file's documented fallback. What
+        // must not happen is the word list staying behind the text for the rest
+        // of the session: the word that straddles a boundary is exactly the one
+        // the end-time loop cannot drop, so every later cut would land by the
+        // no-clock rule and no later segment would carry words at all.
+        var mapper = FluidStreamingSegments(
+            language: "en-US", wantWords: true, segmentation: .vad)
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 3.0))
+        var events = mapper.absorb(
+            transcript: "alpha beta, gamma",
+            words: Self.words([
+                ("alpha", 0.5, 1.0), ("beta.", 1.0, 6.0), ("gamma", 5.6, 6.0),
+            ]),
+            receivedSeconds: 6.2,
+            isFinal: false)
+        #expect(Self.finals(events).map(\.text) == ["alpha"])
+
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 5.5))
+        events = mapper.absorb(
+            transcript: "alpha beta, gamma",
+            words: Self.words([
+                ("alpha", 0.5, 1.0), ("beta.", 1.0, 6.0), ("gamma", 5.6, 6.0),
+            ]),
+            receivedSeconds: 6.4,
+            isFinal: false)
+        // The cut still happens - "I cannot tell" falls back to the rule a row
+        // with no word clock gets, rather than holding the utterance open - and
+        // this segment carries no words, because the text won.
+        #expect(Self.finals(events).map(\.text) == ["beta,"])
+        #expect(Self.finals(events).first?.words == nil)
+
+        // And the session recovers even when the fallback cut published words
+        // from after the boundary - which is the normal shape, since the commit
+        // that carries the watermark past a pause carries the next utterance's
+        // opening. The cursor is re-anchored by matching text, not by dropping
+        // words whose start looks early: a rule keyed on time recovers only
+        // when exactly one post-boundary word was published, and chains the
+        // error forward on every other commit.
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 7.0))
+        events = mapper.absorb(
+            transcript: "alpha beta, gamma delta epsilon zeta",
+            words: Self.words([
+                ("alpha", 0.5, 1.0), ("beta.", 1.0, 6.0), ("gamma", 5.6, 6.0),
+                ("delta", 6.5, 6.9), ("epsilon", 7.5, 7.9), ("zeta", 8.2, 8.6),
+            ]),
+            receivedSeconds: 8.8,
+            isFinal: false)
+        #expect(Self.finals(events).map(\.text) == ["gamma delta"])
+        #expect(Self.finals(events).first?.words?.map(\.text) == ["gamma", "delta"])
+    }
+
+    @Test("a mismatch does not chain forward when the fallback published a late word")
+    func aMismatchDoesNotChainForward() {
+        // The shape a time-keyed resynchronization cannot handle. The fallback
+        // cut publishes everything but the last word, and on a real pause that
+        // includes words spoken *after* the boundary - which a rule that drops
+        // words by their start time will not drop, because their start is late.
+        // The cursor then points at a word whose text has gone out, every later
+        // anchored scan fails at position 0, and every later cut falls back
+        // again: a chain of segments taking the next utterance's opening word
+        // and carrying no payload at all.
+        var mapper = FluidStreamingSegments(
+            language: "en-US", wantWords: true, segmentation: .vad)
+        let words = Self.words([
+            ("alpha", 0.5, 1.0), ("beta.", 1.0, 6.0), ("gamma", 5.6, 6.0),
+            ("delta", 6.0, 6.4), ("epsilon", 7.5, 7.9), ("zeta", 8.2, 8.6),
+        ])
+
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 3.0))
+        var events = mapper.absorb(
+            transcript: "alpha beta, gamma",
+            words: Array(words.prefix(3)), receivedSeconds: 6.2, isFinal: false)
+        #expect(Self.finals(events).map(\.text) == ["alpha"])
+
+        // The disagreement: the text says `beta,` where the word list says
+        // `beta.`, so the scan cannot place this cut and the no-clock rule
+        // takes everything but the last word - publishing `gamma`, which was
+        // spoken at 5.6, after this boundary.
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 5.5))
+        events = mapper.absorb(
+            transcript: "alpha beta, gamma delta",
+            words: Array(words.prefix(4)), receivedSeconds: 6.6, isFinal: false)
+        #expect(Self.finals(events).map(\.text) == ["beta, gamma"])
+        #expect(Self.finals(events).first?.words == nil)
+
+        // And the next cut is anchored again, by finding where in the word list
+        // this text begins rather than by guessing from the clock.
+        // 8.5 rather than 9.0: a boundary is honored once the engine has
+        // decoded past it, and the last word here ends at 8.6.
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 8.5))
+        events = mapper.absorb(
+            transcript: "alpha beta, gamma delta epsilon zeta",
+            words: words, receivedSeconds: 9.2, isFinal: false)
+        #expect(Self.finals(events).map(\.text) == ["delta epsilon zeta"])
+        #expect(
+            Self.finals(events).first?.words?.map(\.text) == ["delta", "epsilon", "zeta"],
+            "the payload comes back too, which is what says the cursor recovered")
+
+        // And the cursor moved past the word the re-anchor skipped as well as
+        // the ones it matched: the next partial opens on the next word decoded,
+        // not on one already published.
+        events = mapper.absorb(
+            transcript: "alpha beta, gamma delta epsilon zeta eta",
+            words: words + Self.words([("eta", 9.5, 9.9)]),
+            receivedSeconds: 10.0,
+            isFinal: false)
+        #expect(Self.partials(events).first?.start == 9.5)
+    }
+
+    @Test("a boundary before any word publishes nothing and still moves the clock")
+    func aBoundaryBeforeTheFirstWord() {
+        // The detector heard speech the engine transcribed nothing from - room
+        // noise, or a word too quiet to decode. "No word started before this
+        // boundary" is a definite answer and not a disagreement, so the text
+        // stays whole for the next segment rather than being cut by the
+        // fallback rule.
+        var mapper = FluidStreamingSegments(
+            language: "en-US", wantWords: true, segmentation: .vad)
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 1.0))
+        var events = mapper.absorb(
+            transcript: "spoken after the noise",
+            words: Self.words([
+                ("spoken", 2.0, 2.4), ("after", 2.4, 2.8), ("the", 2.8, 3.0),
+                ("noise", 3.0, 3.4),
+            ]),
+            receivedSeconds: 3.6,
+            isFinal: false)
+        #expect(Self.finals(events).isEmpty)
+
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 4.0))
+        events = mapper.absorb(
+            transcript: "spoken after the noise and then more",
+            words: Self.words([
+                ("spoken", 2.0, 2.4), ("after", 2.4, 2.8), ("the", 2.8, 3.0),
+                ("noise", 3.0, 3.4), ("and", 4.5, 4.7), ("then", 4.7, 5.0),
+                ("more", 5.0, 5.4),
+            ]),
+            receivedSeconds: 5.6,
+            isFinal: false)
+        #expect(Self.finals(events).map(\.text) == ["spoken after the noise"])
+    }
+
+    @Test("under engine segmentation the word clock still owns the span")
+    func engineModeKeepsItsSpans() {
+        // The clamp above must not reach the default path: there the
+        // accumulator's end is a character-fraction estimate and the words are
+        // the better answer, which is the whole point of this file.
+        var mapper = FluidStreamingSegments(language: "en-US", wantWords: true)
+        mapper.mark(SpeechBoundary(kind: .end, seconds: 0.6))
+        let events = mapper.absorb(
+            transcript: "hello there. bye",
+            words: Self.words([("hello", 0.5, 1.0), ("there.", 1.0, 1.5), ("bye", 2.0, 2.4)]),
+            receivedSeconds: 2.6,
+            isFinal: false)
+        let final = Self.finals(events).first
+        #expect(final?.text == "hello there.")
+        #expect(final?.end == 1.5, "the words, not the boundary nobody asked to use")
+    }
+
     @Test("the span survives wantWords being false")
     func spanIndependentOfWantWords() {
         // The regression this pins cost the sliding-window row every one of its

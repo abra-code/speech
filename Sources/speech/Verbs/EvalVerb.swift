@@ -22,6 +22,7 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
     var reportDirectory: URL?
     var live = false
     var pace = 1.0
+    var segmentation = LiveSegmentation.engine
 
     var scanner = ArgScanner(verb: "eval", arguments)
     while let token = scanner.nextToken() {
@@ -43,6 +44,11 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
                                      The default, 1.0, is the only value whose
                                      latencies mean anything; anything else is a smoke
                                      test and is stamped into the report as one.
+                  --segment <how>    With --live, where utterance boundaries come
+                                     from: 'engine' (default) or 'vad'. WER is
+                                     unaffected either way - the words are the same
+                                     and the scorer joins them - so this measures the
+                                     latencies and the shape of the transcript.
 
                 Reports WER, CER, RTFx and peak memory. Corpus WER is total edits over
                 total reference words, not the mean of the per-row rates.
@@ -66,6 +72,15 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
             live = true
         case "--pace":
             pace = try scanner.doubleValue(token)
+        case "--segment":
+            let value = try scanner.value(token)
+            guard let parsed = LiveSegmentation(rawValue: value) else {
+                throw SpeechError.usage(
+                    "--segment wants "
+                    + LiveSegmentation.allCases.map(\.rawValue).joined(separator: " or ")
+                    + " (got '\(value)')")
+            }
+            segmentation = parsed
         case "--":
             scanner.endOptions()
         default:
@@ -82,6 +97,9 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
     }
     guard live || pace == 1 else {
         throw SpeechError.usage("--pace only means something with --live")
+    }
+    guard live || segmentation == .engine else {
+        throw SpeechError.usage("--segment only means something with --live")
     }
     guard pace > 0 else {
         throw SpeechError.usage("--pace wants a positive multiple of real time (got \(pace))")
@@ -116,13 +134,30 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
         }
     }
 
+    // Built before the manifest is played, so a missing detector row costs a
+    // download instruction rather than a run that is segmented the old way.
+    var vadEngine: (any VoiceActivityEngine)?
+    var vad: (any VoiceActivityDetector)?
+    if segmentation == .vad {
+        let candidate = try makeRegistry().make(
+            catalogID: VoiceActivity.defaultRow, modelsDirectory: globals.modelsDirectory)
+        guard let detector = candidate as? any VoiceActivityEngine else {
+            throw SpeechError.unavailable(
+                "'\(VoiceActivity.defaultRow)' in this build cannot detect speech")
+        }
+        vadEngine = detector
+        vad = try await detector.makeDetector { progress in
+            sink.modelProgress(model: VoiceActivity.defaultRow, progress)
+        }
+    }
+
     // Unloaded on the failure path too - see the note in TranscribeVerb.
     let outcome: EvalOutcome
     do {
         if live {
             outcome = try await LiveEvaluator.run(
                 engine: engine, catalogID: model, rows: rows, language: language,
-                pace: pace, sink: sink, reportDirectory: reportDirectory)
+                pace: pace, vad: vad, sink: sink, reportDirectory: reportDirectory)
         } else {
             outcome = try await Evaluator.run(
                 engine: engine, catalogID: model, rows: rows, language: language,
@@ -130,9 +165,11 @@ func runEval(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String])
         }
     } catch {
         await engine.unload()
+        if let vadEngine { await vadEngine.unload() }
         throw error
     }
     await engine.unload()
+    if let vadEngine { await vadEngine.unload() }
 
     if let reportDirectory, !globals.json {
         sink.text("Report written to \(reportDirectory.path)")

@@ -41,6 +41,7 @@ public actor LivePump {
     private let toSession: AudioFormatConverter?
     private let toCanonical: AudioFormatConverter?
     private let audio: LiveAudioBuffer?
+    private let vad: (any VoiceActivityDetector)?
     private let inputRate: Double
     private var capturedFrames = 0
     private var running = false
@@ -63,14 +64,19 @@ public actor LivePump {
     ///   - audio: the refinement buffer, or nil when `--refine` is off - which
     ///     is also what skips the second conversion entirely, so a run without
     ///     refinement pays nothing for the feature.
+    ///   - vad: the voice activity detector, or nil under `--segment engine`.
+    ///     It wants the same canonical audio the refinement buffer does, so the
+    ///     two share one conversion and either of them alone pays for it.
     public init(
         session: any LiveSession,
         inputFormat: AVAudioFormat,
         audio: LiveAudioBuffer?,
+        vad: (any VoiceActivityDetector)? = nil,
         onConversionFailure: (@Sendable () -> Void)? = nil
     ) throws {
         self.session = session
         self.audio = audio
+        self.vad = vad
         self.inputRate = inputFormat.sampleRate
         self.onConversionFailure = onConversionFailure
         if let target = session.preferredFormat, target != inputFormat {
@@ -79,7 +85,7 @@ public actor LivePump {
             self.toSession = nil
         }
         let canonical = LiveAudioFormat.canonical
-        if audio != nil, inputFormat != canonical {
+        if audio != nil || vad != nil, inputFormat != canonical {
             self.toCanonical = try AudioFormatConverter(from: inputFormat, to: canonical)
         } else {
             self.toCanonical = nil
@@ -103,11 +109,13 @@ public actor LivePump {
             try Task.checkCancellation()
             let raw = item.buffer
 
-            // Refinement first. If the session throws, the audio that provoked
-            // it is still in the buffer, which is what a person trying to work
-            // out what happened will want.
-            if let audio {
-                await append(raw, to: audio)
+            // One conversion, two consumers, and it happens before the session
+            // is fed for the reason the refinement buffer has always had: if
+            // the session throws, the audio that provoked it is already in the
+            // buffer, which is what a person working out what happened wants.
+            let canonical = (audio != nil || vad != nil) ? canonicalSamples(raw) : nil
+            if let audio, let canonical {
+                await audio.append(canonical)
             }
 
             let forSession: AVAudioPCMBuffer
@@ -116,30 +124,47 @@ public actor LivePump {
             } else {
                 forSession = raw
             }
-            guard forSession.frameLength > 0 else { continue }
-            try await session.feed(CapturedAudio(forSession))
-            capturedFrames += Int(raw.frameLength)
+            // An `if` rather than a `guard ... continue`, so that a buffer the
+            // session's converter emptied - the resampler holding frames back
+            // while it primes - still reaches the detector. Skipping it there
+            // would put the detector's clock behind the audio for the rest of
+            // the run, which is the same trap the failed-conversion path below
+            // exists for.
+            if forSession.frameLength > 0 {
+                try await session.feed(CapturedAudio(forSession))
+                capturedFrames += Int(raw.frameLength)
+            }
+
+            // After the feed, deliberately. Detection costs about a thousandth
+            // of the audio's duration, but it is still work on the path from
+            // the tap to the draft engine, and nothing on that path may delay
+            // the engine by a buffer it could have had already. A boundary is
+            // in the past by at least the detector's silence window anyway, so
+            // arriving one buffer later changes nothing about where it cuts.
+            if let vad, let canonical {
+                await mark(canonical, with: vad)
+            }
         }
     }
 
-    /// Appends this buffer to the refinement store, at its true length even
+    /// This buffer as canonical 16 kHz mono samples, at its true length even
     /// when the conversion fails.
     ///
-    /// The silence on the failure path is the whole point. `LiveAudioBuffer` is
-    /// addressed by seconds since capture start, and its clock is nothing but
-    /// the count of samples appended to it. Skipping a failed buffer would put
-    /// that clock permanently behind the session's, so *every later* slice would
-    /// hand the refine engine audio offset from the text it is replacing, and
-    /// `discard(before:)` would trim the wrong span. The cost of a failed
-    /// conversion has to stay one bad refinement, not all of them.
-    private func append(_ raw: AVAudioPCMBuffer, to audio: LiveAudioBuffer) async {
+    /// The silence on the failure path is the whole point, and it is now the
+    /// point twice over. `LiveAudioBuffer` is addressed by seconds since
+    /// capture start and its clock is nothing but the count of samples appended
+    /// to it; the detector's clock is nothing but the count of samples fed to
+    /// it. Skipping a failed buffer would put both permanently behind the
+    /// session's, so *every later* refine slice would be offset from the text
+    /// it replaces and *every later* boundary would name the wrong moment. The
+    /// cost of a failed conversion has to stay one bad refinement and one bad
+    /// cut, not all of them.
+    private func canonicalSamples(_ raw: AVAudioPCMBuffer) -> [Float] {
         guard let converter = toCanonical else {
-            await audio.append(LiveAudioFormat.samples(raw))
-            return
+            return LiveAudioFormat.samples(raw)
         }
         if let canonical = try? converter.convert(raw) {
-            await audio.append(LiveAudioFormat.samples(canonical))
-            return
+            return LiveAudioFormat.samples(canonical)
         }
         // From the buffer's own rate, not the pump's. They are the same for
         // every buffer a tap produces, and when they are not - which is one of
@@ -148,10 +173,24 @@ public actor LivePump {
         let rate = raw.format.sampleRate > 0 ? raw.format.sampleRate : inputRate
         let ratio = LiveAudioFormat.canonical.sampleRate / max(rate, 1)
         let expected = Int((Double(raw.frameLength) * ratio).rounded())
-        await audio.append([Float](repeating: 0, count: max(0, expected)))
         if !warnedAboutConversion {
             warnedAboutConversion = true
             onConversionFailure?()
+        }
+        return [Float](repeating: 0, count: max(0, expected))
+    }
+
+    /// Runs the detector over this buffer and reports what it found.
+    ///
+    /// A detector that throws is not a reason to end the run: it produces
+    /// boundaries, and a session with no boundaries falls back to the rule it
+    /// would have used anyway. The failure is swallowed here rather than
+    /// counted, because the only detector in this program cannot fail without
+    /// CoreML itself failing, and by then the draft engine has said so first.
+    private func mark(_ samples: [Float], with vad: any VoiceActivityDetector) async {
+        guard let boundaries = try? await vad.detect(samples) else { return }
+        for boundary in boundaries {
+            await session.mark(boundary)
         }
     }
 }

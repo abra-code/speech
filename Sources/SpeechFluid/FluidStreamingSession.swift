@@ -88,11 +88,13 @@ actor FluidStreamingSession: LiveSession {
         backend: any FluidStreamingBackend,
         catalogID: String,
         language: String?,
-        wantWords: Bool
+        wantWords: Bool,
+        segmentation: LiveSegmentation = .engine
     ) {
         self.backend = backend
         self.catalogID = catalogID
-        self.segments = FluidStreamingSegments(language: language, wantWords: wantWords)
+        self.segments = FluidStreamingSegments(
+            language: language, wantWords: wantWords, segmentation: segmentation)
         let (events, continuation) = AsyncStream<LiveEvent>.makeStream()
         self.events = events
         self.continuation = continuation
@@ -122,6 +124,16 @@ actor FluidStreamingSession: LiveSession {
         guard let poll, !finishing else { return }
         publish(poll, isFinal: false)
     }
+
+    /// These rows hand over a transcript that only grows and never say where an
+    /// utterance ended, so the cut is invented here - which makes them exactly
+    /// the rows a measured boundary helps.
+    func mark(_ boundary: SpeechBoundary) async {
+        guard !finishing else { return }
+        segments.mark(boundary)
+    }
+
+    nonisolated var honorsSpeechBoundaries: Bool { true }
 
     func finish() async throws -> [Segment] {
         // `finishing` rather than `finished`, because the flush below decodes

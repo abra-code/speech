@@ -51,9 +51,12 @@ actor GGMLLiveSession: LiveSession {
         catalogID: String,
         language: String?,
         runOptions: RunOptions,
-        streamExtension: StreamExtension?
+        streamExtension: StreamExtension?,
+        segmentation: LiveSegmentation = .engine
     ) async throws -> GGMLLiveSession {
-        let live = GGMLLiveSession(session: session, catalogID: catalogID, language: language)
+        let live = GGMLLiveSession(
+            session: session, catalogID: catalogID, language: language,
+            segmentation: segmentation)
         // `.auto` lets the family pick its own commit policy. Overriding it
         // here would mean this file claiming to know better than the decoder
         // about when a prefix is stable, which it does not.
@@ -63,11 +66,17 @@ actor GGMLLiveSession: LiveSession {
         return live
     }
 
-    private init(session: GGMLSession, catalogID: String, language: String?) {
+    private init(
+        session: GGMLSession,
+        catalogID: String,
+        language: String?,
+        segmentation: LiveSegmentation
+    ) {
         self.session = session
         self.catalogID = catalogID
         self.language = language
-        self.accumulator = StreamSegmentAccumulator(language: language)
+        self.accumulator = StreamSegmentAccumulator(
+            language: language, segmentation: segmentation)
         let (events, continuation) = AsyncStream<LiveEvent>.makeStream()
         self.events = events
         self.continuation = continuation
@@ -89,6 +98,16 @@ actor GGMLLiveSession: LiveSession {
         }
         absorb(step, isFinal: false)
     }
+
+    /// This engine never says where an utterance ended - there is one growing
+    /// hypothesis and nothing else - so its cuts are invented from the text.
+    /// A measured boundary is exactly what that rule was standing in for.
+    func mark(_ boundary: SpeechBoundary) async {
+        guard !finishing else { return }
+        accumulator.mark(boundary)
+    }
+
+    nonisolated var honorsSpeechBoundaries: Bool { true }
 
     func finish() async throws -> [SpeechCore.Segment] {
         if finished {

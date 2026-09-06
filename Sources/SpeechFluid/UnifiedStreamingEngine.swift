@@ -452,6 +452,7 @@ actor UnifiedStreamingEngine: TranscriptionEngine {
             backend: backend,
             catalogID: id,
             language: Self.language,
-            wantWords: options.wantWordTimestamps)
+            wantWords: options.wantWordTimestamps,
+            segmentation: options.segmentation)
     }
 }

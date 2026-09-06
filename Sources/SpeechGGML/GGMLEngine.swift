@@ -320,7 +320,8 @@ actor GGMLEngine: TranscriptionEngine {
             catalogID: id,
             language: language,
             runOptions: runOptions,
-            streamExtension: Self.streamExtension(for: model))
+            streamExtension: Self.streamExtension(for: model),
+            segmentation: options.segmentation)
     }
 
     /// The family-specific stream extension this model accepts, if any.

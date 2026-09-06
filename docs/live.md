@@ -11,6 +11,7 @@ Only rows whose capability record says `live` can be driven this way.
 ```
 speech stream --model apple.transcriber --language en-US
 speech stream --model apple.transcriber --refine apple.dictation --language en-US
+speech stream --model fluid.parakeet-unified@stream-640 --segment vad
 speech stream --list-devices
 ```
 
@@ -24,6 +25,7 @@ compute, write" but a set of concurrent parts:
 | the tap | `SpeechCore/Microphone.swift` | opens a device, copies each callback's buffer |
 | the pump | `SpeechCore/LivePump.swift` | converts, feeds the session, fills the refine buffer |
 | the session | each engine's `LiveSession` | the draft engine; emits partials and finals |
+| the detector | `SpeechFluid/SileroVad.swift` | under `--segment vad`, where the room goes quiet |
 | the refine queue | `SpeechCore/RefinementQueue.swift` | a second engine, one utterance at a time |
 | the audio buffer | `SpeechCore/LiveAudioBuffer.swift` | recent audio, addressable by seconds |
 | the stop controller | `speech/StopController.swift` | signals, stdin, the parent watchdog |
@@ -125,6 +127,74 @@ A live session that fails at the very end keeps its transcript. `finish()`
 throws `LiveSessionFailure`, which carries the segments alongside the message, so
 `done` reports what the run actually produced rather than zero segments for a
 session that emitted forty of them and then stumbled on its last flush.
+
+## Where an utterance ends
+
+Every row here decides that differently, and by default none of them decides it
+from the audio: Apple's analyzer finalizes on its own schedule, the sliding
+window finalizes when a window closes, and the two shapes that hand over a
+growing transcript are cut by `StreamSegmentAccumulator` at what looks like the
+end of a sentence, timed by interpolating a character position into a commit
+span. So the same recording is cut differently by every row, the times are
+estimates, and `--refine` re-transcribes a span the model chose.
+
+`--segment vad` replaces that with `fluid.silero-vad`, which has to be
+downloaded first. The detector watches the same canonical audio the refinement
+buffer sees, reports where speech starts and stops, and the session cuts there.
+
+**It is an observer and never on the path to the engine.** The audio the draft
+engine gets is untouched, so a detector that is wrong, slow or absent changes
+where a transcript is cut and can never change what it says. Measured on the
+53.7-second fixture, the hypothesis is byte-identical between `--segment engine`
+and `--segment vad` on all four Parakeet Unified streaming tiers, and WER with
+it: 7.21%, 19.82%, 11.71% and 25.23% either way.
+
+What changes is the shape. On that fixture the spans stop covering the silence:
+45.0 seconds of span over 53.7 seconds of audio against 51.2 with the sentence
+rule, and each segment ends exactly at a measured pause rather than 1 to 2
+seconds past it.
+
+Three rules are worth knowing before using it.
+
+**A cut needs a word clock to land where the audio said.** The cut fires on the
+first commit whose watermark passes the boundary - and on a real pause, that is
+the commit carrying the *next* utterance's first words. The two `fluid`
+streaming families answer "which of these words were spoken before this moment"
+from their own token timings, so their cut lands between the two words the
+boundary falls between. The `ggml` rows get no word timings on a live stream, so
+their cut takes the text as it stands, minus its last word: a boundary there is
+a better time than a sentence guess, but the words around it can be a decode
+step out of place.
+
+**Sentence-final punctuation is decoded late.** The RNN-T decoder emits `.`
+once it has evidence the sentence ended, which is at or after the next
+utterance's onset, and the word grouping glues a piece carrying no
+word-boundary marker onto the word before it. So `certainty.` starts at 9.84 s
+and ends at 13.20 on a pause that began around 10.2, while a word carrying no
+punctuation ends 80 ms after its last piece was decoded. Words are therefore selected by
+where they *start*, and a segment cut at a boundary takes its end from the
+boundary rather than from that word. Selecting on the end instead cut every
+segment about three seconds early, with each sentence's own ending leading the
+next segment.
+
+**A pause shorter than 0.75 s is not a boundary**, and one longer than that ends
+an utterance whatever the speaker meant. That is Silero's `minSilenceDuration`,
+and it is why the fixture above comes back one segment shorter on every tier
+than the sentence rule: two of its six sentences are separated by less than
+that and are published together. The
+15-second backstop still applies, because the streaming detector never splits a
+long span of speech on its own.
+
+Rows whose segmentation belongs to the model - the two Apple rows and
+`fluid.parakeet-v3` - ignore boundaries, and say so with a `segment_ignored`
+warning rather than accepting the flag and doing nothing with it.
+
+The detector costs about a thousandth of real time - 0.36 s of compute for 470 s
+of audio. Its memory cost is not measurable here: the model is 1.1 MB on disk,
+and peak memory across paired runs of the same row moves by several megabytes in
+both directions, which is larger than the thing being measured. It runs after
+the session has been fed rather than before, so it cannot delay the draft engine
+by a buffer it could have had already.
 
 ## Memory
 
@@ -612,11 +682,16 @@ one means nothing for thirteen seconds.
 
 ## What is not here yet
 
-- **VAD-driven segmentation** (plan step 4.3). Utterance boundaries currently
-  come from the draft engine's own finals, or from the sentence rule above.
-  Silero VAD marking speech start and end - which would give every engine the
-  same boundaries, and give refinement a span chosen for the audio rather than
-  for the model - is still to come.
+- **A corpus where VAD segmentation can be judged.** `--segment vad` is measured
+  above on six read sentences with clean punctuation, which is the case the
+  sentence rule was already good at - it produces the same words there and
+  tighter spans. The case it exists for is dictation: continuous speech with no
+  punctuation to guess from, where the sentence rule produces nothing until the
+  15-second backstop. Nothing in this project measures that yet.
+- **The `ggml` rows cut without a word clock.** Their boundary is measured but
+  the text at it is a decode step out of place, because transcribe.cpp reports
+  no word timings for a live stream. Either a timing source there or a
+  character-level estimate against the commit watermark would close it.
 - **A run long enough to choose a tier.** Every live row here has been measured
   on six utterances, which is enough to prove the plumbing and not enough to
   rank anything. The Parakeet Unified tiers make that concrete: on six

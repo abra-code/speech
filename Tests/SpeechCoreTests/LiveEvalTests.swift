@@ -249,6 +249,55 @@ struct LiveEvaluatorTests {
         #expect(summary.rowsWithDrops == 1)
     }
 
+    @Test("the detector is reset for each row and its boundaries reach the session")
+    func vadIsWiredPerRow() async throws {
+        let directory = try Fixtures.makeDirectory()
+        defer { Fixtures.cleanUp(directory) }
+        let audio = try Fixtures.makeWAV(in: directory, seconds: 4)
+        let rows = [
+            ManifestRow(index: 1, audioURL: audio, reference: "one two"),
+            ManifestRow(index: 2, audioURL: audio, reference: "one two"),
+        ]
+        let engine = ScriptedLiveEngine(cues: [.final("one two", at: 1.0, end: 1.0)])
+        // A boundary at 2 s of every row. If the detector were not reset
+        // between rows its clock would carry the first row's four seconds
+        // forward and the second row would see no boundary at all.
+        let vad = CountingDetector(boundaryAtSeconds: 2)
+
+        let outcome = try await LiveEvaluator.run(
+            engine: engine, catalogID: "fake.live", rows: rows, language: "en-US",
+            pace: 40, vad: vad, sink: Self.sink())
+
+        #expect(outcome.summary.rows == 2)
+        #expect(await vad.resets == 2)
+        #expect(await vad.boundaries == 2, "one boundary per row, not one per run")
+    }
+
+    @Test("a row that ignores boundaries is reported once, not once per row")
+    func vadIgnoredIsWarnedOnce() async throws {
+        let directory = try Fixtures.makeDirectory()
+        defer { Fixtures.cleanUp(directory) }
+        let audio = try Fixtures.makeWAV(in: directory, seconds: 2)
+        let rows = (1...3).map {
+            ManifestRow(index: $0, audioURL: audio, reference: "one two")
+        }
+        let engine = ScriptedLiveEngine(
+            cues: [.final("one two", at: 0.5, end: 0.5)], honorsBoundaries: false)
+        // Through a file, because the sink writes rather than calls back.
+        let log = directory.appendingPathComponent("events.jsonl")
+        FileManager.default.createFile(atPath: log.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: log)
+        _ = try await LiveEvaluator.run(
+            engine: engine, catalogID: "fake.live", rows: rows, language: "en-US",
+            pace: 40, vad: CountingDetector(boundaryAtSeconds: 1),
+            sink: EventSink(mode: .jsonl, out: handle, err: handle))
+        try handle.close()
+
+        let emitted = try String(contentsOf: log, encoding: .utf8)
+        let ignored = emitted.components(separatedBy: "segment_ignored").count - 1
+        #expect(ignored == 1, "three rows, one warning")
+    }
+
     @Test("a row whose session fails is skipped, not fatal")
     func failingRowIsSkipped() async throws {
         let directory = try Fixtures.makeDirectory()
@@ -345,6 +394,36 @@ struct LiveEvaluatorTests {
 /// A live session that publishes text on a clock made of the audio it has been
 /// fed, so a cue at 1.5 s fires after 1.5 s of samples have arrived however
 /// fast the harness played them.
+/// A detector that reports one ending per stream, at a fixed time, and counts
+/// what it was asked to do.
+actor CountingDetector: VoiceActivityDetector {
+    private let boundaryAtSeconds: Double
+    private var seen = 0
+    private var reported = false
+    private(set) var resets = 0
+    private(set) var boundaries = 0
+
+    init(boundaryAtSeconds: Double) {
+        self.boundaryAtSeconds = boundaryAtSeconds
+    }
+
+    func detect(_ samples: [Float]) async throws -> [SpeechBoundary] {
+        seen += samples.count
+        guard !reported, Double(seen) / AudioDecoder.sampleRate >= boundaryAtSeconds else {
+            return []
+        }
+        reported = true
+        boundaries += 1
+        return [SpeechBoundary(kind: .end, seconds: boundaryAtSeconds)]
+    }
+
+    func reset() {
+        resets += 1
+        seen = 0
+        reported = false
+    }
+}
+
 actor ScriptedLiveSession: LiveSession {
     struct Cue: Sendable {
         var atSeconds: Double
@@ -362,6 +441,7 @@ actor ScriptedLiveSession: LiveSession {
     }
 
     nonisolated let events: AsyncStream<LiveEvent>
+    nonisolated let honorsSpeechBoundaries: Bool
     private let continuation: AsyncStream<LiveEvent>.Continuation
     private var cues: [Cue]
     private let tail: [String]
@@ -371,10 +451,11 @@ actor ScriptedLiveSession: LiveSession {
     private var nextID = 0
     private var finished = false
 
-    init(cues: [Cue], tail: [String], feedDelay: Duration) {
+    init(cues: [Cue], tail: [String], feedDelay: Duration, honorsBoundaries: Bool = true) {
         self.cues = cues
         self.tail = tail
         self.feedDelay = feedDelay
+        self.honorsSpeechBoundaries = honorsBoundaries
         let (events, continuation) = AsyncStream<LiveEvent>.makeStream()
         self.events = events
         self.continuation = continuation
@@ -433,6 +514,7 @@ final class ScriptedLiveEngine: TranscriptionEngine, @unchecked Sendable {
     /// Sessions after this many succeed at being made and then throw, which is
     /// how a live row fails in practice: not at startup, but part way through.
     private let failSessionAfter: Int?
+    private let honorsBoundaries: Bool
     private let lock = NSLock()
     private var sessions = 0
 
@@ -441,13 +523,15 @@ final class ScriptedLiveEngine: TranscriptionEngine, @unchecked Sendable {
         tail: [String] = [],
         feedDelay: Duration = .zero,
         batchText: String = "",
-        failSessionAfter: Int? = nil
+        failSessionAfter: Int? = nil,
+        honorsBoundaries: Bool = true
     ) {
         self.cues = cues
         self.tail = tail
         self.feedDelay = feedDelay
         self.batchText = batchText
         self.failSessionAfter = failSessionAfter
+        self.honorsBoundaries = honorsBoundaries
     }
 
     func prepare(language: String?, progress: @escaping LoadProgressHandler) async throws -> String? {
@@ -464,7 +548,9 @@ final class ScriptedLiveEngine: TranscriptionEngine, @unchecked Sendable {
         if let failSessionAfter, index > failSessionAfter {
             throw SpeechError.runtime("this session was scripted to fail")
         }
-        return ScriptedLiveSession(cues: cues, tail: tail, feedDelay: feedDelay)
+        return ScriptedLiveSession(
+            cues: cues, tail: tail, feedDelay: feedDelay,
+            honorsBoundaries: honorsBoundaries)
     }
 
     func unload() async {}

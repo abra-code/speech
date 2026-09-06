@@ -48,12 +48,17 @@ public enum LiveEvaluator {
     ///   latencies mean anything; anything else is for a smoke test and is
     ///   stamped into the report so the numbers cannot be quoted as if they
     ///   were taken honestly.
+    /// - Parameter vad: the detector to segment with, or nil to leave each row
+    ///   to its own boundary rule. One detector for the whole run rather than
+    ///   one per row: the model is stateless between streams, so it is reset
+    ///   before each row and the 1.1 MB is loaded once.
     public static func run(
         engine: any TranscriptionEngine,
         catalogID: String,
         rows: [ManifestRow],
         language: String?,
         pace: Double = 1,
+        vad: (any VoiceActivityDetector)? = nil,
         sink: EventSink,
         reportDirectory: URL? = nil
     ) async throws -> EvalOutcome {
@@ -67,13 +72,17 @@ public enum LiveEvaluator {
         // `speech eval`. They contribute nothing to WER, but building them is
         // work the live path really does, and latency measured with that work
         // removed would be a latency nobody experiences.
-        let probe = TranscribeOptions(language: language, wantWordTimestamps: true)
+        let segmentation: LiveSegmentation = vad == nil ? .engine : .vad
+        let probe = TranscribeOptions(
+            language: language, wantWordTimestamps: true, segmentation: segmentation)
         try await engine.validate(probe)
 
         let prepared = try await Evaluator.prepare(
             engine: engine, catalogID: catalogID, rows: rows,
             language: language, sink: sink)
 
+        // One warning for the run, not one per row.
+        var warnedAboutSegmentation = false
         var wordCounts: [ScoreCounts] = []
         var characterCounts: [ScoreCounts] = []
         var emitted: [SpeechEvent.EvalRow] = []
@@ -102,11 +111,22 @@ public enum LiveEvaluator {
 
             let audioSeconds = Double(samples.count) / AudioDecoder.sampleRate
             let options = TranscribeOptions(
-                language: rowLanguage, wantWordTimestamps: true)
+                language: rowLanguage, wantWordTimestamps: true, segmentation: segmentation)
             let measurement: Measurement
             do {
+                // Each row is its own stream, so the detector starts over with
+                // it. Without this the second row's boundaries would carry the
+                // first row's clock and land in a segment nobody played.
+                await vad?.reset()
                 measurement = try await measure(
-                    engine: engine, options: options, samples: samples, pace: pace)
+                    engine: engine, options: options, samples: samples, pace: pace, vad: vad)
+                if vad != nil, !measurement.honorsBoundaries, !warnedAboutSegmentation {
+                    warnedAboutSegmentation = true
+                    sink.warning(
+                        "\(catalogID) decides its own utterance boundaries;"
+                        + " --segment vad has no effect on it",
+                        code: "segment_ignored")
+                }
             } catch {
                 // Same rule as the batch evaluator: one bad row is a warning,
                 // not the end of a run that may be forty minutes in. A live row
@@ -221,13 +241,18 @@ public enum LiveEvaluator {
         var droppedBuffers: Int
         var partials: Int
         var finals: Int
+        /// Whether this row's session took the boundaries it was handed. Read
+        /// once per run rather than per row, to warn a caller who asked for
+        /// `--segment vad` on a row that decides its own cuts.
+        var honorsBoundaries: Bool
     }
 
     private static func measure(
         engine: any TranscriptionEngine,
         options: TranscribeOptions,
         samples: [Float],
-        pace: Double
+        pace: Double,
+        vad: (any VoiceActivityDetector)?
     ) async throws -> Measurement {
         let format = LiveAudioFormat.canonical
         let rate = format.sampleRate
@@ -237,7 +262,9 @@ public enum LiveEvaluator {
         do {
             // No refinement buffer: `--refine` is a second engine's cost and
             // belongs to its own measurement, not inside this one's latency.
-            pump = try LivePump(session: session, inputFormat: format, audio: nil)
+            // The detector is not in that category - it changes where this run's
+            // own segments are cut, so its cost belongs inside the latencies.
+            pump = try LivePump(session: session, inputFormat: format, audio: nil, vad: vad)
         } catch {
             await session.cancel()
             throw error
@@ -339,7 +366,8 @@ public enum LiveEvaluator {
             maxFinalLagSeconds: collected.maxLag,
             droppedBuffers: dropped + droppedInputs,
             partials: collected.partials,
-            finals: collected.finals)
+            finals: collected.finals,
+            honorsBoundaries: session.honorsSpeechBoundaries)
     }
 
     private static func makeBuffer(

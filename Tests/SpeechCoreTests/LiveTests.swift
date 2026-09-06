@@ -321,18 +321,28 @@ actor FakeLiveSession: LiveSession {
     nonisolated let events: AsyncStream<LiveEvent>
     nonisolated let preferredFormat: AVAudioFormat?
 
+    nonisolated let honorsSpeechBoundaries: Bool
+
     private let continuation: AsyncStream<LiveEvent>.Continuation
     private var fed: [(rate: Double, channels: Int, frames: Int)] = []
+    private var marks: [SpeechBoundary] = []
     private var finals: [Segment] = []
     private var failOnFeed: String?
 
-    init(preferredFormat: AVAudioFormat? = nil, failOnFeed: String? = nil) {
+    init(
+        preferredFormat: AVAudioFormat? = nil,
+        failOnFeed: String? = nil,
+        honorsBoundaries: Bool = true
+    ) {
         self.preferredFormat = preferredFormat
         self.failOnFeed = failOnFeed
+        self.honorsSpeechBoundaries = honorsBoundaries
         let (events, continuation) = AsyncStream<LiveEvent>.makeStream()
         self.events = events
         self.continuation = continuation
     }
+
+    private var markPositions: [Int] = []
 
     func feed(_ audio: CapturedAudio) async throws {
         if let failOnFeed { throw SpeechError.runtime(failOnFeed) }
@@ -341,6 +351,17 @@ actor FakeLiveSession: LiveSession {
             Int(audio.buffer.format.channelCount),
             Int(audio.buffer.frameLength)))
     }
+
+    func mark(_ boundary: SpeechBoundary) async {
+        marks.append(boundary)
+        markPositions.append(fed.count)
+    }
+
+    /// What the pump reported, in the order it reported it. Interleaved with
+    /// `received` in the sense that matters: a boundary is recorded only after
+    /// the audio it was found in has been fed.
+    var marked: [SpeechBoundary] { marks }
+    var feedsWhenMarked: [Int] { markPositions }
 
     func emit(_ event: LiveEvent) {
         if case .final(let segment) = event { finals.append(segment) }
@@ -429,6 +450,43 @@ final class FakeBatchEngine: TranscriptionEngine, @unchecked Sendable {
     func unload() async {}
 }
 
+/// A detector that counts what it is handed and reports the boundaries it was
+/// built with as the count passes them.
+///
+/// It answers the only two questions a pump test can ask: did the audio reach
+/// the detector at the canonical rate and length, and did what came back reach
+/// the session.
+actor FakeVoiceActivity: VoiceActivityDetector {
+    private let schedule: [SpeechBoundary]
+    private let failing: Bool
+    private var next = 0
+    private(set) var samplesSeen = 0
+    private(set) var calls = 0
+
+    init(schedule: [SpeechBoundary] = [], failing: Bool = false) {
+        self.schedule = schedule
+        self.failing = failing
+    }
+
+    func detect(_ samples: [Float]) async throws -> [SpeechBoundary] {
+        calls += 1
+        if failing { throw SpeechError.runtime("no detector model") }
+        samplesSeen += samples.count
+        let now = Double(samplesSeen) / AudioDecoder.sampleRate
+        var found: [SpeechBoundary] = []
+        while next < schedule.count, schedule[next].seconds <= now {
+            found.append(schedule[next])
+            next += 1
+        }
+        return found
+    }
+
+    func reset() {
+        next = 0
+        samplesSeen = 0
+    }
+}
+
 @Suite("Live pump")
 struct LivePumpTests {
     @Test("hardware buffers reach the session in the format it asked for")
@@ -496,6 +554,139 @@ struct LivePumpTests {
         let captured = await audio.capturedSeconds
         #expect(abs(captured - 0.2) < 0.01, "the clock advanced by the real duration")
         #expect(warned.warnings.count == 1, "and said so once")
+    }
+
+    @Test("boundaries reach the session, after the audio they were found in")
+    func detectorBoundariesReachTheSession() async throws {
+        let session = FakeLiveSession(preferredFormat: nil)
+        // Half a second of audio in five buffers, with a boundary in the middle
+        // of the third and one in the fifth.
+        let vad = FakeVoiceActivity(schedule: [
+            SpeechBoundary(kind: .start, seconds: 0.25),
+            SpeechBoundary(kind: .end, seconds: 0.45),
+        ])
+        let input = AudioFormatConverterTests.tone(rate: 16000, channels: 1, seconds: 0.1)
+        let pump = try LivePump(
+            session: session, inputFormat: input.format, audio: nil, vad: vad)
+
+        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream()
+        for _ in 0..<5 { continuation.yield(CapturedAudio(input)) }
+        continuation.finish()
+        try await pump.run(stream)
+
+        #expect(await session.marked == [
+            SpeechBoundary(kind: .start, seconds: 0.25),
+            SpeechBoundary(kind: .end, seconds: 0.45),
+        ])
+        // The ordering rule, and it is not cosmetic: a boundary that reached
+        // the session before the audio it came from would be honored against a
+        // commit watermark that had not seen that audio yet.
+        #expect(await session.feedsWhenMarked == [3, 5])
+        // Every sample, once, at the canonical rate.
+        #expect(await vad.samplesSeen == 5 * 1600)
+    }
+
+    @Test("the detector is handed canonical audio, converted once")
+    func detectorSeesCanonicalAudio() async throws {
+        // 48 kHz stereo in, and the session wants the hardware format, so
+        // nothing else on this path needs a conversion. The detector's clock is
+        // the count of samples it is given, so a rate of anything but 16 kHz
+        // would put every boundary it reports at the wrong moment.
+        let session = FakeLiveSession(preferredFormat: nil)
+        let vad = FakeVoiceActivity()
+        let input = AudioFormatConverterTests.tone(rate: 48000, channels: 2, seconds: 0.1)
+        let pump = try LivePump(
+            session: session, inputFormat: input.format, audio: nil, vad: vad)
+
+        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream()
+        for _ in 0..<10 { continuation.yield(CapturedAudio(input)) }
+        continuation.finish()
+        try await pump.run(stream)
+
+        // One second in. The shortfall is the resampler's delay line filling
+        // up: measured here at 475, 987 and 1200 samples for 2, 10 and 40
+        // buffers, so it approaches a ceiling rather than accruing per buffer.
+        // That is the property worth pinning - a clock losing 475 samples every
+        // two buffers would be three seconds behind after a minute, and every
+        // boundary would name a moment that had already passed.
+        let seen = await vad.samplesSeen
+        let shortfall = Int(AudioDecoder.sampleRate) - seen
+        #expect(shortfall >= 0)
+        #expect(shortfall < 1600, "the clock is behind by \(shortfall) samples")
+        #expect(await session.received.first?.rate == 48000, "and the session still got its own")
+    }
+
+    @Test("a detector that fails costs boundaries, not the run")
+    func detectorFailuresAreNotFatal() async throws {
+        // The rule the whole design rests on: the detector is an observer. A
+        // session with no boundaries falls back to the rule it would have used
+        // anyway, so a broken detector must never cost a transcript.
+        let session = FakeLiveSession(preferredFormat: nil)
+        let vad = FakeVoiceActivity(failing: true)
+        let input = AudioFormatConverterTests.tone(rate: 16000, channels: 1, seconds: 0.1)
+        let pump = try LivePump(
+            session: session, inputFormat: input.format, audio: nil, vad: vad)
+
+        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream()
+        for _ in 0..<3 { continuation.yield(CapturedAudio(input)) }
+        continuation.finish()
+        try await pump.run(stream)
+
+        #expect(await session.received.count == 3, "the audio kept flowing")
+        #expect(await session.marked.isEmpty)
+        #expect(await vad.calls == 3, "and it was asked every time, not disabled after one failure")
+    }
+
+    @Test("a failed conversion keeps the detector's clock aligned too")
+    func detectorClockSurvivesAConversionFailure() async throws {
+        // Same trap as the refinement buffer, one clock over. The detector
+        // counts samples; skipping a buffer it could not convert would put
+        // every later boundary earlier than the moment it names, for the rest
+        // of the session.
+        let session = FakeLiveSession(preferredFormat: nil)
+        let vad = FakeVoiceActivity()
+        let declared = AudioFormatConverterTests.tone(rate: 48000, channels: 2, seconds: 0.2)
+        let actual = AudioFormatConverterTests.tone(rate: 44100, channels: 1, seconds: 0.2)
+        let warned = CollectingBox()
+        let pump = try LivePump(
+            session: session, inputFormat: declared.format, audio: nil, vad: vad,
+            onConversionFailure: { warned.warn("conversion") })
+
+        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream()
+        continuation.yield(CapturedAudio(actual))
+        continuation.finish()
+        try await pump.run(stream)
+
+        let seen = await vad.samplesSeen
+        #expect(abs(Double(seen) / AudioDecoder.sampleRate - 0.2) < 0.01)
+        #expect(warned.warnings.count == 1)
+    }
+
+    @Test("a buffer the session's converter empties still reaches the detector")
+    func emptySessionBufferStillFeedsTheDetector() async throws {
+        // One frame at 48 kHz is a third of a canonical sample, and the
+        // resampler holds it back rather than emitting a partial one. The
+        // session gets nothing from that buffer - which is what the old
+        // `continue` skipped the rest of the loop for - and the detector still
+        // has to see it, or its clock falls behind the audio for the rest of
+        // the run.
+        let session = FakeLiveSession(preferredFormat: LiveAudioFormat.canonical)
+        let vad = FakeVoiceActivity()
+        let format = try #require(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1,
+            interleaved: false))
+        let pump = try LivePump(session: session, inputFormat: format, audio: nil, vad: vad)
+        let single = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1))
+        single.frameLength = 1
+        single.floatChannelData?[0][0] = 0.5
+
+        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream()
+        continuation.yield(CapturedAudio(single))
+        continuation.finish()
+        try await pump.run(stream)
+
+        #expect(await session.received.isEmpty, "the converter emitted no frames")
+        #expect(await vad.calls == 1, "and the detector was still asked")
     }
 
     @Test("a pump refuses a second concurrent run")

@@ -450,6 +450,7 @@ actor NemotronEngine: TranscriptionEngine {
             backend: await NemotronStreamingBackend.make(manager: manager),
             catalogID: id,
             language: options.language,
-            wantWords: options.wantWordTimestamps)
+            wantWords: options.wantWordTimestamps,
+            segmentation: options.segmentation)
     }
 }
