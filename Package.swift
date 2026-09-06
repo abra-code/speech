@@ -37,11 +37,18 @@ let package = Package(
             ]
         ),
         .target(name: "SpeechCore"),
+        // The `speech` half of the speech-mlx wire format. Foundation only,
+        // and deliberately not a dependent of SpeechCore: the helper's Xcode
+        // project compiles this same directory, and it must not drag
+        // FluidAudio or the transcribe.cpp xcframework into a binary that
+        // links nothing but MLX.
+        .target(name: "SpeechMLXProtocol"),
         .target(name: "SpeechApple", dependencies: ["SpeechCore"]),
         .target(name: "SpeechFluid", dependencies: ["SpeechCore", .product(name: "FluidAudio", package: "FluidAudio")]),
         .target(name: "SpeechGGML", dependencies: ["SpeechCore", "TranscribeCpp"]),
         .executableTarget(name: "speech", dependencies: ["SpeechCore", "SpeechApple", "SpeechFluid", "SpeechGGML"]),
         .testTarget(name: "SpeechCoreTests", dependencies: ["SpeechCore"]),
+        .testTarget(name: "SpeechMLXProtocolTests", dependencies: ["SpeechMLXProtocol"]),
         .testTarget(name: "SpeechFluidTests", dependencies: ["SpeechFluid", "SpeechCore"]),
         .testTarget(name: "SpeechGGMLTests", dependencies: ["SpeechGGML", "SpeechCore"]),
     ]
