@@ -288,8 +288,10 @@ default silently produce nothing. The value is pinned in
 
 ## The `fluid` rows
 
-Two of them stream, and they answer the same question - a language Apple does
-not have - differently enough that both are worth keeping.
+Three families of them stream. Two answer the same question - a language Apple
+does not have - differently enough that both are worth keeping. The third is
+English only and is here for a different reason: it is the only row whose
+latency is a dial the caller turns.
 
 ### `fluid.parakeet-v3`, the row with the most languages
 
@@ -434,6 +436,96 @@ its return value duplicates everything it has already published.
 which is why the session polls it only when a chunk was actually consumed rather
 than on every 64 ms buffer.
 
+### `fluid.parakeet-unified@stream-*`, the row with a latency dial
+
+The third `fluid` family to stream, and the only row in the catalog whose
+responsiveness is a choice rather than a property. Its encoder re-runs over a
+`[left | chunk | right]` window whose chunked-attention mask was baked in at
+conversion time, so each of the four published contexts is a different download
+and a different row - see the engines document for the tier table. English only.
+
+**The tier has two independent knobs and they do different things.** The chunk
+sets how often text appears; the look-ahead sets how long each piece waits. That
+is visible in the two tiers that share a chunk: `@stream-1120` and `@stream-640`
+are both seven encoder frames of new audio per step and produce partials at the
+same rate, and they differ by half a second in how long the first one takes.
+Compare the Nemotron row, where the two are locked together and the tier is a
+single number.
+
+Measured here, the first six FLEURS en_us rows, on an M5:
+
+| row | live WER | batch WER | first partial | partial every | lag med/worst | tail |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@stream-2080` | 6.45% | 6.45% | 3.19 s | 1.47 s | 1.15 / 2.59 s | 0.05 s |
+| `@stream-1120` | 6.45% | 6.45% | 2.28 s | 0.82 s | 1.16 / 2.60 s | 0.03 s |
+| `@stream-640` | 7.26% | 7.26% | 1.83 s | 0.80 s | 1.15 / 2.51 s | 0.03 s |
+| `@stream-320` | 8.06% | 8.06% | 1.64 s | 0.38 s | 0.24 / 2.62 s | 0.03 s |
+
+**Live WER equals batch WER, and the transcripts are byte-identical**, row by
+row, on all four tiers - checked by diffing the `--json` hypotheses rather than
+by comparing percentages. That is the same result the Nemotron row gives and for
+the same reason: the window schedule is driven by how much audio has arrived,
+not by how it arrived, so streaming costs nothing at all.
+
+That covers the text and not the word timings, which a hypothesis diff cannot
+see. Those were checked separately, against the real model: eight minutes at the
+0.32 s tier, 1262 polls, 968 words, live word timings identical to a whole-file
+run in text, start and end.
+
+**Unlike the Nemotron row, time to first partial does separate these tiers**,
+and the tier accounts for most of the gap: subtract each tier's
+chunk-plus-look-ahead from its first-partial time and the four leftovers are
+1.11, 1.16, 1.19 and 1.32 s, roughly the silence every FLEURS row opens with
+plus one decode. Not all of it - those four are not equal, they rise by 0.21 s
+as the tier gets faster, which is the direction the faster tiers' higher
+per-second encoder cost would push them. The Nemotron tiers hid the effect
+entirely because their first chunk lands inside the silence; here the shortest
+tier's does too, and it still shows, because the tiers are far enough apart.
+
+Over 647 rows rather than six, the batch WER of the four is 5.07%, 5.40%, 6.80%
+and 7.24%, against 4.90% for the offline encoder of the same checkpoint. The
+look-ahead is what costs accuracy: `@stream-640` and `@stream-1120` feed the
+same audio per step and differ only in future context, and that is worth 1.4
+points.
+
+**On continuous speech, none of these numbers holds.** Six distinct sentences
+concatenated into one 53.7 s utterance, 109 reference words:
+
+| row | WER | words | finals | max final lag |
+| --- | --- | --- | --- | --- |
+| `@stream-2080` | 7.21% | 109 | 6 | 2.01 s |
+| `@stream-1120` | 19.82% | 93 | 5 | 7.25 s |
+| `@stream-640` | 11.71% | 108 | 6 | 0.81 s |
+| `@stream-320` | 25.23% | 91 | 5 | 6.70 s |
+
+Live and batch are still byte-identical in all four, so this is the encoder and
+not the live path. What happened is specific rather than gradual: `@stream-1120`
+and `@stream-320` dropped one whole sentence - the same one in both - and the
+16 words it was made of are most of the difference. One sentence out of six is
+not a rate, and six sentences do not rank four tiers; what this does establish
+is that the per-row figures above, where every row is a single 12 s sentence,
+say nothing about a minute of continuous speech. The 200-row run and a
+long-form corpus are what settle it.
+
+The max-lag column is worth reading separately, because it is not the encoder's
+latency at all. A final is published when the sentence rule finds a boundary, so
+a dropped sentence means a missed boundary and text held for seven seconds. On
+single-sentence rows the lag is about one chunk; on continuous speech it is
+whatever the segmentation does. That is the argument for stage 4.3's VAD in one
+number.
+
+**One live session at a time, per engine**, the same contract the Nemotron row
+carries and for the same reason: the session shares the manager the engine
+already loaded, so live mode costs no second 609 MB and no second ANE compile,
+and two concurrent sessions would reset each other's decoder state and window
+position. Nothing in the CLI can do it; an embedded caller has to keep it.
+
+The library trap here is the same one, for the fourth time: **`finish()` returns
+the whole transcript, not a remainder.** There is a second one specific to this
+manager - `consumeTokenTimings()` *drains* rather than reads, so the back-fill
+that gives each token a real duration stops at the poll boundary and the session
+has to carry it across. See `StreamingTokenTimings`.
+
 ## Measuring it: `eval --live`
 
 ```
@@ -525,10 +617,11 @@ one means nothing for thirteen seconds.
   Silero VAD marking speech start and end - which would give every engine the
   same boundaries, and give refinement a span chosen for the audio rather than
   for the model - is still to come.
-- **A live session for the Parakeet Unified streaming rows** (the rest of plan
-  step 4.2). The download half is done: `fluid.parakeet-unified@stream-2080`,
-  `@stream-1120`, `@stream-640` and `@stream-320` are catalog rows that fetch
-  the streaming encoder - a *separate* CoreML bundle from the offline one, 609
-  MB per latency tier - and transcribe files with it. What they still report
-  `unavailable` for is the live session itself, which is now an adapter rather
-  than a download.
+- **A run long enough to choose a tier.** Every live row here has been measured
+  on six utterances, which is enough to prove the plumbing and not enough to
+  rank anything. The Parakeet Unified tiers make that concrete: on six
+  single-sentence rows they look 1.6 points apart, and on one 54-second
+  utterance they are 18 points apart in a different order. Plan step 4.5's
+  200-row grid is the open item, and this row adds a second one - a corpus of
+  continuous speech, because every FLEURS row is one sentence and no measurement
+  taken on them says anything about dictation.

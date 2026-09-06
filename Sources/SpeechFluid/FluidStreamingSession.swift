@@ -1,10 +1,9 @@
 // FluidStreamingSession.swift - live mode for the `fluid` rows whose managers
 // are cache-aware streaming ones.
 //
-// One row lands here today, `fluid.nemotron-multilingual`, and
-// `fluid.parakeet-unified` is meant to be the second - it has the same shape,
-// but its streaming encoder is a separate download this project does not fetch
-// yet, so it still reports `live: false`. The shape is the last of the four
+// Two row families land here: `fluid.nemotron-multilingual` and the four
+// `fluid.parakeet-unified@stream-<ms>` tiers, whose streaming encoder is a
+// separate download from the offline row's. The shape is the last of the four
 // this program has to speak: hand over audio, and the manager grows a
 // transcript. There is no result callback worth using (the library's
 // partial callback delivers the same whole transcript a poll returns), no
@@ -51,10 +50,13 @@ struct FluidStreamingPoll: Sendable {
 protocol FluidStreamingBackend: Sendable {
     /// Hand over 16 kHz mono samples and decode whatever chunks they complete.
     ///
-    /// Returns nil when nothing was decoded. A poll costs a full re-decode of
-    /// every accumulated token, and buffers arrive every 64 ms while chunks
-    /// complete every 0.5 to 2 seconds, so polling on every buffer would spend
-    /// most of a core rebuilding a string that had not changed.
+    /// Returns nil when nothing was decoded, which is what stops the session
+    /// publishing a partial identical to the last one. How much that saves
+    /// differs by backend and neither is free: the Nemotron manager re-decodes
+    /// every accumulated token id on each poll, so its backend gates on a chunk
+    /// watermark as well; the Unified one appends to a transcript cache, so its
+    /// backend can ask the honest question - did this call decode anything -
+    /// and pay only a scan.
     func feed(_ samples: [Float]) async throws -> FluidStreamingPoll?
     /// Flush the remainder and report the transcript one last time.
     func flush() async throws -> FluidStreamingPoll

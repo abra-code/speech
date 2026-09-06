@@ -324,7 +324,7 @@ expect_grep '"devices"' cat "$TMP/devices.json"
 # When the remaining fluid rows gain live mode, this fails with a message
 # naming everything else that has to move with it.
 live_ids=$("$SPEECH" engines | awk '/ live|,live/ {print $1}' | sort | tr '\n' ' ')
-want_live="apple.dictation apple.transcriber fluid.nemotron-multilingual@1120 fluid.nemotron-multilingual@2240 fluid.nemotron-multilingual@560 fluid.parakeet-v3@int4 fluid.parakeet-v3@int8 ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m ggml.nemotron-3.5-asr-streaming-0.6b@q8_0 ggml.parakeet-unified-en-0.6b@q8_0 "
+want_live="apple.dictation apple.transcriber fluid.nemotron-multilingual@1120 fluid.nemotron-multilingual@2240 fluid.nemotron-multilingual@560 fluid.parakeet-unified@stream-1120 fluid.parakeet-unified@stream-2080 fluid.parakeet-unified@stream-320 fluid.parakeet-unified@stream-640 fluid.parakeet-v3@int4 fluid.parakeet-v3@int8 ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m ggml.nemotron-3.5-asr-streaming-0.6b@q8_0 ggml.parakeet-unified-en-0.6b@q8_0 "
 if [ "$live_ids" != "$want_live" ]; then
     fail "the set of rows with the 'live' flag changed to [$live_ids].
     If that is intended, update in the same commit: docs/models.catalog.tsv

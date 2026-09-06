@@ -274,8 +274,6 @@ struct UnifiedStreamingTests {
             let capabilities = try #require(
                 FluidEngineFactory.capabilities(for: "parakeet-unified", variant: variant))
             #expect(capabilities.batch == true)
-            // Live arrives with the adapter, not with the download.
-            #expect(capabilities.live == false)
             #expect(capabilities.wordTimestamps == true)
             #expect(capabilities.languages == ["en"])
             // The streaming manager's boosting path is a second model and a

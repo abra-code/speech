@@ -158,11 +158,13 @@ actor UnifiedStreamingEngine: TranscriptionEngine {
         FluidNetwork.denyByDefault()
         self.capabilities = EngineCapabilities(
             batch: true,
-            // Stage 4, and the next commit. The manager below is the streaming
-            // one, so live mode here is the same weights and the same ANE
-            // compile as the batch path above - what is missing is the adapter
-            // between it and `FluidStreamingSession`, not a download.
-            live: false,
+            // The manager below is the streaming one, so live mode here is
+            // the same weights and the same ANE compile as the batch path
+            // above - see `UnifiedStreamingBackend`. The tier is the latency:
+            // a chunk is decoded only once a whole one has arrived, and the
+            // look-ahead is held back on top of that, so the row's variant IS
+            // its responsiveness.
+            live: true,
             wordTimestamps: true,
             segmentTimestamps: true,
             // The streaming manager does implement vocabulary boosting, and it
@@ -416,7 +418,40 @@ actor UnifiedStreamingEngine: TranscriptionEngine {
     }
 
     func makeLiveSession(options: TranscribeOptions) async throws -> any LiveSession {
-        throw SpeechError.unavailable(
-            "'\(id)' has no live mode in this build (the manager streams; the adapter is next)")
+        guard let manager else {
+            // "not loaded" rather than "prepare() was not called": after an
+            // `unload()` the second is simply wrong, and Speech.app reaches
+            // this state that way between jobs.
+            throw SpeechError.runtime(
+                "'\(id)' has no models loaded; call prepare() before starting a live session")
+        }
+        // ONE LIVE SESSION AT A TIME, and it is a contract rather than a guard -
+        // the same one `fluid.nemotron-multilingual` carries, for the same
+        // reason. The session shares this manager instead of loading a second
+        // one, which is why live mode on this row costs no extra 609 MB and no
+        // second ANE compile; two concurrent sessions, or a `transcribe()`
+        // during a session, would reset each other's decoder state and each
+        // other's window position. Nothing in the CLI can break it - the verbs
+        // are sequential and `--refine` refuses the draft engine's own id - so
+        // enforcing it would mean a session-lifetime hook for a caller that
+        // does not exist yet. Stage 5 is when it does; see plan step 5.10.
+        // Wrapped, because `make` resets the manager and that reallocates the
+        // RNN-T decoder's state. Its sibling's `make` cannot throw, so without
+        // this one failure path in the whole actor would surface a raw CoreML
+        // string where every other one names the row.
+        let backend: UnifiedStreamingBackend
+        do {
+            backend = try await UnifiedStreamingBackend.make(manager: manager)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw SpeechError.runtime(
+                "'\(id)' could not start a live session: \(error.localizedDescription)")
+        }
+        return FluidStreamingSession(
+            backend: backend,
+            catalogID: id,
+            language: Self.language,
+            wantWords: options.wantWordTimestamps)
     }
 }
