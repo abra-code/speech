@@ -289,35 +289,59 @@ default silently produce nothing. The value is pinned in
 ## The `fluid` rows
 
 `fluid.parakeet-v3` streams through `SlidingWindowAsrManager`, and it is the row
-live mode needed: 25 languages including Polish, where the Apple rows and both
-streaming `ggml` families between them offer English plus one row that lost to
-Apple everywhere spike 2 measured.
+live mode needed: 25 languages including Polish, where the Apple rows have no
+Polish at all and the one `ggml` streaming row that does scored nearly twice its
+error rate (see the live measurements below).
 
-It is a third streaming shape again. The manager runs the *offline* encoder over
-overlapping windows rather than a cache-aware streaming one - FluidAudio's own
-documentation says so, which is why it deliberately does not conform to that
-library's `StreamingAsrManager` protocol. Three consequences, all measured:
+It is a third streaming shape again, and the shape is not the one the manager's
+name suggests. It runs the *offline* encoder over overlapping windows rather
+than a cache-aware streaming one - FluidAudio's own documentation says so, which
+is why it deliberately does not conform to that library's `StreamingAsrManager`
+protocol.
 
-- **The update stream carries confirmed windows, not utterances.** Each
-  `isConfirmed` update becomes a `segment.final` with the token timings the
-  window reported, so word timings survive live. A window boundary can still cut
-  mid-sentence: one observed run produced a 165-character segment followed by a
-  3-character one.
-- **`finish()` returns what is still unconfirmed, not the whole transcript.**
-  Measured: a four-sentence dictation ended with `finish()` returning only
-  `"One to be sure."` while `confirmedTranscript` was empty, because confirmed
-  text is drained as it is emitted. Discarding that return value silently lost
-  the last thing the speaker said on every run.
-- **Volatile updates arrive with empty text.** The growing hypothesis lives only
-  in the `volatileTranscript` property, so partials are polled rather than
-  received - at four times a second, not per buffer. Polling per buffer put an
-  actor round trip between every 85 ms of audio and the encoder that was already
-  busy, and measurably starved the feed: a 20-second dictation delivered 8.6
-  seconds of audio and one segment.
+**The first version of this mapping was wrong in three ways**, all of them
+because the library's behavior was inferred from utterances shorter than one
+window. The corrected reading, taken from the v0.15.6 source and confirmed by
+measurement:
+
+- **A window is decoded once `chunk + right` seconds have arrived - 13 s with
+  this config - and once every `chunk` (11 s) after that.** Nothing at all is
+  emitted before the first one.
+- **Each window's tokens are deduplicated against everything decoded so far, and
+  the update carries only the new text.** Updates are non-overlapping,
+  append-only pieces of one transcript, and no piece is ever revised.
+- **`isConfirmed` is not about the update carrying it.** It says the *previous*
+  piece has been promoted out of the manager's volatile slot. Treating an
+  unconfirmed update as provisional means waiting for a correction that is never
+  sent.
+
+So every update becomes a `segment.final`, and **this row emits no partials at
+all**. On a 50-second utterance it produced five finals, the first at 13.2 s.
+That is the row's real character: it buys languages, not responsiveness. The
+`ggml` rows put a partial on screen in 1.4 to 3.2 seconds and run a tenth of a
+second behind the speaker; this one shows nothing for thirteen seconds and then
+a paragraph.
+
+Three specific traps in the library, each of which was a defect in the first
+version and is measured in the second:
+
+- **`finish()` returns the WHOLE transcript**, rebuilt from every accumulated
+  token - not a remainder. Emitting its return value as a trailing segment
+  duplicated the entire session: on a 50-second utterance that scored WER 105%
+  against a transcript that is otherwise 4.2%.
+- **`finish()` does not close the update stream; only `cancel()` does.** Without
+  a `cancel()` after it the reader parks forever and the join waits out its full
+  five seconds on every single run. Measured: 5.11 s of shutdown, against 0.11 s
+  once fixed. Buffered updates survive the cancel, so nothing is lost by it.
+- **`volatileTranscript` is assigned the same string the update carries**, so
+  polling it can never learn anything the update stream has not already
+  delivered. The first version polled it and published the previous segment's
+  text under the next segment's id.
 
 `transcriptionUpdates` is a computed property that builds a fresh `AsyncStream`
 and overwrites the manager's continuation on **every** read. Reading it twice
-orphans the first stream silently. It is read exactly once.
+orphans the first stream silently. It is read exactly once, and before
+`startStreaming`, since a yielded update goes nowhere until it has been read.
 
 Custom vocabulary is refused for live rather than ignored: the batch path boosts
 a finished transcript with a second CTC model, and there is no equivalent inside
@@ -366,6 +390,35 @@ automatic gain control and no device resampling, so a WER from here is a floor
 rather than a promise. And `--pace` exists for smoke tests only - at anything
 other than 1x the latencies describe no session anyone could have, which is why
 the value is warned about on the terminal and stamped into the report.
+
+### What it said the first time
+
+Every live row, six FLEURS utterances each, on an M5. **Six rows is 124
+reference words: this table ranks nothing.** It is here because the shape of the
+latency column is a property of each engine's design rather than of the sample,
+and that shape is the thing worth knowing before choosing a default.
+
+| row | lang | WER | first partial | lag med/worst | tail |
+| --- | --- | --- | --- | --- | --- |
+| `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | en-US | 0.81% | 1.44 s | 0.05 / 0.09 s | 0.04 s |
+| `fluid.parakeet-v3@int8` | en-US | 4.03% | none | 0.83 / 2.31 s | 0.16 s |
+| `fluid.parakeet-v3@int4` | en-US | 5.65% | none | 1.01 / 2.22 s | 0.15 s |
+| `ggml.parakeet-unified-en-0.6b@q8_0` | en-US | 6.45% | 3.23 s | 0.10 / 0.15 s | 0.10 s |
+| `apple.dictation` | en-US | 7.26% | 1.82 s | 1.32 / 2.36 s | 0.07 s |
+| `apple.transcriber` | en-US | 9.68% | 4.00 s | 1.16 / 1.36 s | 0.13 s |
+| `fluid.parakeet-v3@int8` | pl-PL | 18.26% | none | 0.64 / 1.70 s | 0.18 s |
+| `fluid.parakeet-v3@int4` | pl-PL | 23.48% | none | 0.72 / 1.64 s | 0.14 s |
+| `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | pl-PL | 31.30% | 1.45 s | 0.07 / 0.08 s | 0.04 s |
+
+No row dropped a buffer and no row lost a trailing word, so every WER above is
+a score over the whole audio.
+
+Two things in it are worth more than the ranking. **Polish is why
+`fluid.parakeet-v3` exists**: Apple has no Polish at all, and the only other
+multilingual live row scored nearly twice its error. And **`first partial:
+none` is the price**: that row publishes nothing until a window closes, which
+on these nine-second utterances means nothing until the very end and on a long
+one means nothing for thirteen seconds.
 
 ## What is not here yet
 

@@ -265,6 +265,13 @@ actor ParakeetEngine: TranscriptionEngine {
         // precisely to give the memory back.
         await manager?.cleanup()
         manager = nil
+        // The models too, and not as a tidy-up: `AsrModels` is a struct of
+        // `MLModel` references, so holding it keeps all four compiled models
+        // resident and makes `unload` return almost nothing. It is retained in
+        // the first place so a live session can share the batch manager's
+        // weights rather than pay a second ANE compile - measured at 11.7 s -
+        // but that sharing has to end when the caller says it is done.
+        models = nil
         boosterEpoch &+= 1
         boosterTask = nil
         booster = nil
@@ -333,7 +340,11 @@ actor ParakeetEngine: TranscriptionEngine {
 
     func makeLiveSession(options: TranscribeOptions) async throws -> any LiveSession {
         guard let models else {
-            throw SpeechError.runtime("'\(id)': prepare() was not called")
+            // "not loaded" rather than "prepare() was not called": after an
+            // `unload()` the second is simply wrong, and this is reachable that
+            // way in Speech.app, which unloads between jobs.
+            throw SpeechError.runtime(
+                "'\(id)' has no models loaded; call prepare() before starting a live session")
         }
         if !options.vocabulary.isEmpty {
             // The batch path boosts a transcript after the fact with a second

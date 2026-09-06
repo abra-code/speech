@@ -5,29 +5,54 @@
 // to Apple in every language spike 2 measured. Parakeet v3 streams 25 languages
 // including Polish, which is the claim the whole product rests on.
 //
-// FluidAudio's sliding-window manager is a third streaming shape, different
-// again from Apple's callback and from transcribe.cpp's committed/tentative
-// split, and the difference is worth stating because it is the easiest of the
-// three to map: it emits updates that say `isConfirmed`, so `segment.partial`
-// and `segment.final` are handed to us rather than inferred. No sentence rule,
-// no watermark, no interpolated timings - the window decides, and it decides
-// from the audio.
+// FluidAudio's `SlidingWindowAsrManager` is a third streaming shape, and the
+// first version of this file mapped it wrongly in three separate ways because
+// the mapping was inferred from short test utterances. What it actually does,
+// read out of the library rather than guessed at:
 //
-// Two things about the library's API drove the code below and neither is
-// obvious from its signatures.
+//   1. A window is assembled and decoded once `chunk + right` seconds of audio
+//      have arrived - 13 s with the config here - and once every `chunk`
+//      seconds (11 s) after that. Nothing is emitted before the first one.
+//   2. Each window's tokens are deduplicated against everything decoded so far,
+//      and the update carries the text of ONLY the new tokens. Updates are
+//      therefore non-overlapping, append-only pieces of one transcript, and no
+//      piece is ever revised.
+//   3. `isConfirmed` on an update is not about that update. It says the
+//      PREVIOUS piece has been promoted out of the manager's volatile slot. A
+//      piece marked unconfirmed is not provisional text - it is the same
+//      never-revised piece, arriving before the manager is willing to settle
+//      its predecessor.
 //
-// `transcriptionUpdates` is a *computed property* that builds a fresh
+// So every update becomes a `segment.final`, and this row emits no partials at
+// all. That is a real and uncomfortable property worth stating plainly rather
+// than dressing up: on this row, live means a block of text roughly every 11
+// seconds, with nothing for the first 13. Apple's rows and the ggml rows both
+// give word-by-word feedback; this one gives languages instead.
+//
+// The three corrections the first version needed, each of which was a defect:
+//
+// `finish()` returns the WHOLE transcript, not a remainder - it rebuilds text
+// from every accumulated token. Emitting its return value as a trailing segment
+// duplicated the entire session's text on any run past 13 seconds. It is called
+// for its flush and its return value is deliberately discarded.
+//
+// Unconfirmed updates carry text, and `volatileTranscript` is assigned that
+// same string. Polling the property could therefore never learn anything the
+// update stream had not already delivered, and it published the previous
+// segment's text under the next segment's id. The poll is gone, along with the
+// per-buffer actor round trip that was blamed for starving the feed.
+//
+// `finish()` does not close the update stream; only `cancel()` does. Without a
+// `cancel()` after it, the reader parks forever and the join below burns its
+// whole deadline on every single run.
+//
+// One thing the first version got right, and it is still the sharpest edge in
+// the file: `transcriptionUpdates` is a computed property that builds a fresh
 // `AsyncStream` and overwrites the manager's continuation every time it is
-// read. Reading it twice silently orphans the first stream: the reader is still
-// there, awaiting a continuation nothing will ever yield to again. It is read
-// exactly once, in `make`, and stored.
-//
-// `SlidingWindowAsrManager` deliberately does not conform to FluidAudio's own
-// `StreamingAsrManager` protocol - its own documentation says so, because it
-// runs an offline encoder over overlapping windows rather than a cache-aware
-// streaming one. So none of the other fluid managers' shapes apply here, and a
-// future `fluid.parakeet-unified` live session will not be able to share this
-// file's structure.
+// read. Reading it twice silently orphans the first stream - the reader is
+// still there, awaiting a continuation nothing will ever yield to again. It is
+// read exactly once, in `start`, and before `startStreaming`, so there is no
+// interval in which a window could be decoded with nowhere to put it.
 
 import AVFoundation
 import Foundation
@@ -42,26 +67,17 @@ actor ParakeetLiveSession: LiveSession {
 
     private let manager: SlidingWindowAsrManager
     private let catalogID: String
-    private let language: String?
-    private let wantWords: Bool
     private let continuation: AsyncStream<LiveEvent>.Continuation
 
     private var reader: Task<Void, Never>?
     private var readerFinished = false
-    private var lastPartialText = ""
-    /// The end of the last confirmed window, so a partial has a plausible span
-    /// rather than a fabricated one.
-    private var lastConfirmedEnd: Double = 0
-    /// Seconds of audio handed to the manager. The library reports no clock of
-    /// its own for the volatile hypothesis or for `finish()`'s tail, and a
-    /// segment with no span at all is worse on the wire than an approximate
-    /// one, so this is what those two are dated by.
-    private var fedSeconds: Double = 0
-    private var lastPollAt: ContinuousClock.Instant?
-    private var finals: [Segment] = []
-    private var nextID = 0
+    /// The mapping, in a plain struct so it can be tested without four
+    /// compiled CoreML models. See `SlidingWindowSegments`.
+    private var segments: SlidingWindowSegments
     private var finishing = false
     private var finished = false
+    /// Kept so a second `finish()` rethrows rather than reporting a clean run.
+    private var failure: String?
 
     static func make(
         models: AsrModels,
@@ -69,10 +85,15 @@ actor ParakeetLiveSession: LiveSession {
         language: String?,
         wantWords: Bool
     ) async throws -> ParakeetLiveSession {
-        // `.streaming` rather than `.default`: one-second hypothesis chunks and
-        // a 0.80 confirmation threshold, against `.default`'s two seconds and
-        // 0.85. The difference is how long a word sits volatile before it is
-        // confirmed, which is exactly the thing live mode is for.
+        // `.streaming` rather than `.default`, and the difference is one knob:
+        // a confirmation threshold of 0.80 against 0.85. (`.streaming` also
+        // sets `hypothesisChunkSeconds` to 1.0, but nothing in the manager
+        // reads it - it is exposed as `hypothesisChunkSamples` and used
+        // nowhere.) Since every update becomes a final here, the threshold
+        // changes only when the manager promotes its own volatile slot, which
+        // this session does not read. The lower value is kept because it is
+        // what the library calls the streaming configuration, not because it
+        // has been measured to matter.
         var config = SlidingWindowAsrConfig.streaming
         if let hint = FluidLanguage.parakeet(language) {
             // The hint only reaches the v3 joint decoder's script filter. It
@@ -107,16 +128,19 @@ actor ParakeetLiveSession: LiveSession {
     ) {
         self.manager = manager
         self.catalogID = catalogID
-        self.language = language
-        self.wantWords = wantWords
+        self.segments = SlidingWindowSegments(language: language, wantWords: wantWords)
         let (events, continuation) = AsyncStream<LiveEvent>.makeStream()
         self.events = events
         self.continuation = continuation
     }
 
     private func start() async throws {
-        // Read the update stream exactly once, and before streaming starts, so
-        // no update can be produced before there is somewhere to put it.
+        // Read the update stream first, and exactly once. Until this property
+        // is read the manager's continuation is nil and a yielded update goes
+        // nowhere, so doing it after `startStreaming` would leave a window -
+        // small, but real - in which a decoded chunk is silently discarded.
+        let updates = await manager.transcriptionUpdates
+        reader = Task { [weak self] in await self?.consume(updates) }
         do {
             // `.microphone` is a label on the source, not a request for one:
             // this session never opens a device, it is fed by `LivePump`.
@@ -131,93 +155,64 @@ actor ParakeetLiveSession: LiveSession {
             throw SpeechError.runtime(
                 "'\(catalogID)' could not start live analysis: \(error.localizedDescription)")
         }
-        let updates = await manager.transcriptionUpdates
-        reader = Task { [weak self] in await self?.consume(updates) }
     }
 
     func feed(_ audio: CapturedAudio) async throws {
         guard !finishing else { return }
-        let buffer = audio.buffer
-        let seconds = buffer.format.sampleRate > 0
-            ? Double(buffer.frameLength) / buffer.format.sampleRate
-            : 0
-        await manager.streamAudio(buffer)
-        fedSeconds += seconds
-        await pollVolatile()
-    }
-
-    /// Publish the manager's volatile hypothesis as a partial.
-    ///
-    /// Polled rather than received, because the update stream does not carry
-    /// it. Measured on `fluid.parakeet-v3@int8`: unconfirmed updates *are*
-    /// yielded, but their `text` is empty every time - the growing hypothesis
-    /// lives only in `volatileTranscript`, which is a property. Waiting for a
-    /// volatile update to arrive with text in it would mean waiting forever,
-    /// and a live mode with no partials is a recorder with a delay.
-    /// How often the volatile hypothesis is read.
-    ///
-    /// Not every buffer. `SlidingWindowAsrManager` is an actor that runs an
-    /// *offline* encoder over 15-second windows, so it is busy for long
-    /// stretches, and every property read has to wait its turn behind that
-    /// work - alongside the `streamAudio` calls that actually matter. Polling
-    /// at the 85 ms buffer rate measurably starved the feed: a 20-second
-    /// dictation delivered 8.6 seconds of audio and one segment. Four times a
-    /// second is faster than a person can read a changing line anyway.
-    private static let volatilePollInterval: Duration = .milliseconds(250)
-
-    private func pollVolatile() async {
-        let now = ContinuousClock().now
-        if let lastPollAt, now - lastPollAt < Self.volatilePollInterval { return }
-        lastPollAt = now
-        await emitVolatile()
-    }
-
-    private func emitVolatile() async {
-        guard !finishing else { return }
-        let volatileText = await manager.volatileTranscript
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !volatileText.isEmpty, volatileText != lastPartialText else { return }
-        lastPartialText = volatileText
-        emit(
-            text: volatileText, words: nil, confidence: nil, isConfirmed: false,
-            start: lastConfirmedEnd, end: fedSeconds)
+        await manager.streamAudio(audio.buffer)
     }
 
     func finish() async throws -> [Segment] {
-        guard !finished else { return finals }
-        finishing = true
-        var failure: String?
-        do {
-            // The return value is NOT discarded, and treating it as redundant
-            // was a real defect. `finish()` returns what is left *unconfirmed*,
-            // not the whole transcript - measured: a four-sentence dictation
-            // ended with `finish()` returning only "One to be sure." while
-            // `confirmedTranscript` was empty, because confirmed text is
-            // drained as it is emitted. Ignoring it silently dropped the last
-            // thing the user said, on every run.
-            let tail = try await manager.finish()
-            let remaining = tail.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !remaining.isEmpty {
-                emit(
-                    text: remaining, words: nil, confidence: nil, isConfirmed: true,
-                    start: lastConfirmedEnd, end: fedSeconds)
+        // `finishing`, not `finished`: the flush below is the longest await in
+        // the file - it decodes the last window - and a second `finish()`
+        // arriving inside it would run the whole teardown concurrently with the
+        // first, flushing twice.
+        guard !finishing else {
+            if let failure {
+                throw LiveSessionFailure(
+                    segments: segments.finals,
+                    message: "'\(catalogID)' could not finish the live stream: \(failure)")
             }
+            return segments.finals
+        }
+        finishing = true
+
+        do {
+            // Called for its side effect and NOT for its return value, which is
+            // the whole transcript rather than a remainder. What matters here
+            // is that it ends the input stream, which makes the recognizer task
+            // flush the audio left over below one window's worth - and that
+            // flush is yielded as an ordinary update, so it reaches the wire
+            // through the same path every other window does.
+            _ = try await manager.finish()
         } catch {
             failure = error.localizedDescription
         }
+        // The library closes the update stream only in `cancel()`, never in
+        // `finish()`. Without this the reader is parked on a continuation that
+        // will never yield again and the join below waits out its full
+        // deadline on every run. Buffered updates survive it: an `AsyncStream`
+        // iterator drains what is already in the buffer before it ends.
+        await manager.cancel()
         await joinReader()
+
         finished = true
         continuation.finish()
         if let failure {
             throw LiveSessionFailure(
-                segments: finals,
+                segments: segments.finals,
                 message: "'\(catalogID)' could not finish the live stream: \(failure)")
         }
-        return finals
+        return segments.finals
     }
 
     func cancel() async {
-        guard !finished else { return }
+        // Both flags. `finish()` sets `finishing` and then suspends for the
+        // length of a window decode; a `cancel()` landing in that gap would
+        // close the event stream underneath it, so the flush window would reach
+        // the returned array and never reach the wire. `GGMLLiveSession` guards
+        // the same way for the same reason.
+        guard !finished, !finishing else { return }
         finishing = true
         finished = true
         reader?.cancel()
@@ -231,70 +226,21 @@ actor ParakeetLiveSession: LiveSession {
     private func consume(_ updates: AsyncStream<SlidingWindowTranscriptionUpdate>) async {
         defer { readerFinished = true }
         for await update in updates {
-            if Task.isCancelled { return }
             absorb(update)
         }
     }
 
-    private func absorb(_ update: SlidingWindowTranscriptionUpdate) {
-        let text = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-
-        let words = Self.words(from: update.tokenTimings, wanted: wantWords)
-        // The window's own span where it has one. `timestamp` is a wall clock
-        // `Date` and says nothing about position in the audio, so it is not a
-        // substitute: a segment with no token timings gets the previous
-        // segment's end for both bounds rather than a fabricated range.
-        let start = words?.first?.start ?? finals.last?.end ?? 0
-        let end = max(start, words?.last?.end ?? start)
-
-        emit(
-            text: text, words: words, confidence: update.confidence,
-            isConfirmed: update.isConfirmed, start: start, end: end)
-    }
-
-    /// One place that builds a segment and puts it on the wire, so `finish`'s
-    /// tail and a confirmed window cannot number or bound themselves
-    /// differently.
-    private func emit(
-        text: String,
-        words: [Word]?,
-        confidence: Float?,
-        isConfirmed: Bool,
-        start: Double? = nil,
-        end: Double? = nil
-    ) {
-        let from = start ?? finals.last?.end ?? 0
-        let to = max(from, end ?? from)
-        let segment = Segment(
-            id: nextID,
-            start: from,
-            end: to,
-            text: text,
-            words: words,
-            confidence: confidence,
-            speaker: nil,
-            language: language.map(Language.primarySubtag))
-        if isConfirmed {
-            finals.append(segment)
-            nextID += 1
-            lastConfirmedEnd = to
-            lastPartialText = ""
-            continuation.yield(.final(segment))
-        } else {
-            continuation.yield(.partial(segment))
-        }
-    }
-
-    /// Token timings to word timings, through FluidAudio's own grouper.
+    /// One update, one segment on the wire.
     ///
-    /// The same call the batch path makes, so a word boundary means the same
-    /// thing live as it does in an eval run.
-    private static func words(from timings: [TokenTiming], wanted: Bool) -> [Word]? {
-        guard wanted, !timings.isEmpty else { return nil }
-        let built = buildWordTimings(from: timings)
-        guard !built.isEmpty else { return nil }
-        return built.map { Word(text: $0.word, start: $0.startTime, end: $0.endTime) }
+    /// Every update is final because the library never revises one: its tokens
+    /// were deduplicated against everything already decoded, and its text is
+    /// only the new part. `isConfirmed` describes the manager's own volatile
+    /// slot - whether the PREVIOUS piece has been settled - and holding this
+    /// piece back on the strength of it would mean waiting for a correction
+    /// that is never sent, and losing the last piece of every session outright.
+    private func absorb(_ update: SlidingWindowTranscriptionUpdate) {
+        guard let segment = segments.absorb(update) else { return }
+        continuation.yield(.final(segment))
     }
 
     /// Waits for the update reader, but not forever.
@@ -303,17 +249,25 @@ actor ParakeetLiveSession: LiveSession {
     /// session records: a task group waits for every child before returning, so
     /// racing the reader against a sleep still hangs if the reader ignores
     /// cancellation - which is the failure being defended against.
+    ///
+    /// A timeout here is recorded as a failure rather than swallowed. It means
+    /// the last window or two never reached the transcript, and a silent
+    /// version of this would look exactly like a slow shutdown.
     private func joinReader() async {
         guard let reader else { return }
         self.reader = nil
         let deadline = ContinuousClock().now.advanced(by: .seconds(5))
         while !readerFinished {
+            // Cancellation first. Once this task is canceled `Task.sleep`
+            // throws instantly and `try?` swallows it, so without this the loop
+            // stops sleeping and spins a core for the rest of the deadline.
             if Task.isCancelled {
                 reader.cancel()
                 return
             }
             if ContinuousClock().now >= deadline {
                 reader.cancel()
+                failure = failure ?? "the transcription updates did not end within 5 s"
                 return
             }
             try? await Task.sleep(for: .milliseconds(20))
