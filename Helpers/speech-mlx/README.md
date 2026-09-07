@@ -86,6 +86,106 @@ default was chosen. The bound is on the pool, not on the model: weights and the
 working set are allocated whatever it says, so too low a value costs allocation
 time rather than correctness.
 
+## Dependency pins
+
+Two direct dependencies, declared in `project.yml` with `exactVersion` rather
+than a range. Exact, because a floating minor would change the runtime under a
+recorded measurement: the numbers in the SpeechApp repository's `reference/`
+are only reproducible if the graph is. The resolved set is committed in
+`speech-mlx.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`,
+which is the file that actually makes a build reproducible - review it in diffs.
+
+| package | version | why it is in the graph |
+| --- | --- | --- |
+| `mlx-audio-swift` | 0.1.3 | direct: the eight speech-to-text model implementations the helper exposes |
+| `mlx-swift` | 0.31.6 | direct: MLX itself, and the Metal shaders that make `mlx-swift_Cmlx.bundle` |
+| `mlx-swift-lm` | 3.31.4 | via mlx-audio-swift: `MLXLMCommon` is imported by six of the eight model types, and the language-model half of Qwen3-ASR and Voxtral is its own |
+| `swift-transformers` | 1.3.4 | via mlx-audio-swift: tokenizers for Whisper and Qwen3-ASR |
+| `swift-huggingface` | 0.10.0 | via mlx-audio-swift and swift-transformers: the Hub client. The helper never calls it - downloads are the CLI's job - but it links |
+| `swift-jinja` | 2.4.2 | via swift-transformers: chat templates |
+| `swift-crypto` | 4.5.2 | via swift-transformers and swift-huggingface. On Apple platforms its Crypto product is CryptoKit; the BoringSSL it vendors is compiled only where there is no CryptoKit |
+| `swift-asn1` | 1.7.2 | via swift-crypto |
+| `swift-collections` | 1.6.0 | via swift-transformers and swift-jinja |
+| `swift-numerics` | 1.1.1 | via mlx-swift |
+| `swift-argument-parser` | 1.8.2 | via mlx-swift |
+| `swift-syntax` | 603.0.2 | via mlx-swift-lm: backs a compiler macro plugin, so it is build-time only |
+| `yyjson` | 0.12.0 | via swift-transformers |
+| `eventsource` | 1.5.1 | via swift-huggingface |
+
+Fourteen, and that is fewer than the manifests name: `swift-docc-plugin`,
+`swift-xet`, `swift-nio` and `async-http-client` appear in dependency manifests
+in the graph and do not resolve into it. Read the pins, not the manifests.
+
+## Third-party notices
+
+`build/speech-mlx` statically links most of those fourteen - swift-syntax backs
+a compiler macro plugin and is build-time only - and several of them vendor C
+and C++ of their own: mlx-swift's `Cmlx` carries Apple's MLX, mlx-c, fmt,
+nlohmann/json, metal-cpp and pocketfft. It also redistributes the resource
+bundles beside the binary. Every one of those licenses requires its notice to
+accompany the binary form.
+
+`build-speech-mlx.sh` writes that notice as
+`build/speech-mlx-THIRD-PARTY-NOTICES.txt`, and whatever ships the helper ships
+it alongside. It is generated rather than maintained:
+
+```
+Helpers/speech-mlx/tools/generate-third-party-notices.sh --bundles build --output <file>
+```
+
+The generator reads the resolution the build just used and the SPM checkouts it
+left behind, and refuses to run when SPM's own `workspace-state.json` says the
+two disagree - so the file cannot label one resolution's licenses with another
+resolution's version numbers, which is what "describes an older graph" looks
+like when it happens. Anything that would make it quietly short - a package with no license text,
+a checkout with no pin, a missing supplemental - is a hard error, because an
+incomplete notices file passes every check that only asks whether one exists.
+`tools/notices-supplemental/` carries what a file-name search cannot find: a
+license that exists only as a comment at the top of a source file. Four of
+those are compiled into this binary and none has a license file anywhere -
+`small_vector.h` (the V8 project's, included by `mlx/array.h`, so in every
+translation unit), `pocketfft.h` (included by both FFT backends), `expm1f.h`
+and `cexpf.h` (both compiled into the Metal library) - so all four are vendored
+there. BoringSSL is a fifth, kept as over-reporting, since swift-crypto does
+not compile it on Apple platforms. pocketfft is also the reason
+`ACKNOWLEDGMENTS*` is searched for and the reason that was not enough on its
+own: mlx reproduces a PocketFFT notice there, but an older one than the header
+of the copy it ships.
+
+**A file-name search finds license files, and the most-used third-party code in
+this graph does not have one.** When a pin moves, grep the new sources for
+`Copyright` - `grep -rIl -i copyright --include='*.h' --include='*.hpp'
+--include='*.cpp' --include='*.metal'` over the checkouts - and read what comes
+back. The supplemental bodies are verbatim, which is why two of them are the
+only non-ASCII text in this repository: a copyright line is not ours to
+transliterate. `test.sh` regenerates the file
+and compares, so a stale one fails the suite.
+
+The models are not covered by it. They are downloaded at the user's request,
+are not redistributed with the binary, and carry their own licenses on Hugging
+Face.
+
+## Code coverage
+
+Off, and stated in the scheme rather than assumed, because the level matters:
+coverage is a scheme setting that applies to the whole build graph, so a
+per-target setting cannot control it and leaves a mixed binary that reads as
+success. An instrumented helper is bigger, slower in the decode loop, and
+writes a multi-megabyte `default.profraw` into its working directory on every
+run - which, for a helper an app spawns, is wherever the app is running from.
+
+There are no test targets in this project, so nothing turns it on today, and
+`NO` is Xcode's default - the `gatherCoverageData: false` in `project.yml` is
+for whoever adds a test bundle to the scheme later. Check the artifact rather
+than the setting:
+
+```
+otool -l build/speech-mlx | grep -c __llvm_prf_cnts     # 0 when clean
+```
+
+Use that, not `nm | grep __llvm_prf`: `nm` reports nothing for a small
+instrumented binary and reads as a false clean.
+
 ## Why it is not a product of the root Package.swift
 
 SwiftPM resolves every declared dependency whether or not the product that uses

@@ -73,7 +73,6 @@
 				49C853722C81D04EDF1A069E /* ModelSession.swift */,
 				E7C476B643C7C5DB4EF4B27F /* ProtocolIO.swift */,
 				5EA8DD8392C677236EE2C0AB /* Version.swift */,
-				8E84426A862B79DEA54A6313 /* .claude */,
 			);
 			path = "speech-mlx";
 			sourceTree = "<group>";
@@ -94,13 +93,6 @@
 			);
 			name = speech;
 			path = ../..;
-			sourceTree = "<group>";
-		};
-		8E84426A862B79DEA54A6313 /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
 			sourceTree = "<group>";
 		};
 		993E631B7B9990B018EBEE1D /* Sources */ = {

@@ -135,7 +135,21 @@ strip -x build/speech-mlx.new
 # signature survives the strip; codesign then refuses to sign an already signed
 # binary and under `set -e` that ends the build after everything worked.
 codesign -f -s - build/speech-mlx.new
+
+# The notices for everything statically linked into what was just built, and
+# they are written BEFORE the binary is moved into place. `set -e` then makes
+# the pair consistent in both directions: a generator that fails leaves the
+# previous binary beside the previous notices, rather than a new binary beside
+# a file describing the dependency graph of an older build. The pins come out
+# of the resolution xcodebuild just used, so the file cannot lag what it sits
+# beside, and it is a hard failure for the same reason it is generated rather
+# than written by hand - an incomplete notices file passes every check that
+# only asks whether one exists.
+Helpers/speech-mlx/tools/generate-third-party-notices.sh \
+    --bundles build --output build/speech-mlx-THIRD-PARTY-NOTICES.txt
+
 mv build/speech-mlx.new build/speech-mlx
+
 
 # Prove it launches and reaches the GPU rather than trusting that it linked.
 # This is the whole reason the helper answers a handshake before reading a

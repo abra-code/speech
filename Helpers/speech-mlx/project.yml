@@ -69,6 +69,13 @@ targets:
     platform: macOS
     sources:
       - path: Sources/speech-mlx
+        # The harness this project is often edited from leaves a `.claude`
+        # directory inside whatever it writes to, and XcodeGen faithfully adds
+        # it to the project - which then differs from what the same spec
+        # generates anywhere else, so every other machine gets "xcodegen
+        # rewrote project.pbxproj" and a dirty tree.
+        excludes:
+          - ".claude"
     dependencies:
       - target: SpeechMLXProtocol
       - package: mlx-audio-swift
@@ -84,6 +91,29 @@ schemes:
       targets:
         speech-mlx: all
         SpeechMLXProtocol: all
+    # Coverage, stated where it exists. It is a SCHEME setting and applies to
+    # the whole build graph, so a per-target setting cannot control it and
+    # leaves a mixed binary - dependencies instrumented, product not - that
+    # reads as success. An instrumented helper is bigger, slower in the decode
+    # loop, and writes a multi-megabyte default.profraw into its working
+    # directory on every run, which for a helper an app spawns is wherever the
+    # app is running from.
+    #
+    # There are no test targets here, so nothing switches it on today, and NO
+    # is Xcode's default - which is why the generated scheme carries no
+    # attribute for this key at all. It is here so that whoever adds a test
+    # bundle to this scheme adds it under a decision that is already written
+    # down; mlx-agent had coverage switched on for a whole graph by exactly
+    # that edit, against an auto-generated scheme. Asking for a test action at
+    # all is not free of diff: XcodeGen writes an empty CommandLineArguments
+    # element into the scheme for it.
+    #
+    # Check the artifact rather than the setting:
+    # `otool -l build/speech-mlx | grep -c __llvm_prf_cnts` is 0 when clean,
+    # and `nm` is the check that lies.
+    test:
+      config: Debug
+      gatherCoverageData: false
     run:
       config: Release
     profile:

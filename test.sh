@@ -443,6 +443,35 @@ fi
 if [ -x build/speech-mlx ]; then
     echo "== speech-mlx =="
 
+    # The third-party notices that have to travel with this binary, checked
+    # before anything that needs a GPU because a compliance artifact is not a
+    # runtime property. The file has to be there on every machine that has the
+    # helper, which is why this check is not nested under the one below: a
+    # machine that received a prebuilt binary is exactly the machine where a
+    # missing notices file is the compliance failure, and it is also what is
+    # left after someone deletes the multi-gigabyte derived data and keeps
+    # build/.
+    if [ ! -f build/speech-mlx-THIRD-PARTY-NOTICES.txt ]; then
+        fail "no build/speech-mlx-THIRD-PARTY-NOTICES.txt beside build/speech-mlx"
+    elif [ -d Helpers/speech-mlx/build/SourcePackages/checkouts ]; then
+        # Regenerated and compared rather than merely looked for: the failure
+        # worth catching is a file that is present, non-empty and describing
+        # the dependency graph of some earlier build. Same arguments as
+        # build-speech-mlx.sh uses, or the comparison would fail on a
+        # difference this suite introduced.
+        if Helpers/speech-mlx/tools/generate-third-party-notices.sh \
+                --bundles build --output "$TMP/notices.txt" > /dev/null; then
+            cmp -s build/speech-mlx-THIRD-PARTY-NOTICES.txt "$TMP/notices.txt" \
+                || fail "build/speech-mlx-THIRD-PARTY-NOTICES.txt does not match the resolved pins - re-run ./build-speech-mlx.sh"
+        else
+            fail "the third-party notices could not be generated"
+        fi
+    else
+        # Said out loud, the way the GPU skip below is: a check that quietly
+        # did not run reads exactly like a check that passed.
+        echo "WARNING: no SPM checkouts, so the notices were not regenerated and compared."
+    fi
+
     # The handshake, which is also the proof that this build can reach the GPU:
     # a helper that lost its Metal bundle dies here rather than mid-measurement.
     printf '{"op":"bye"}\n' | ./build/speech-mlx \
@@ -469,6 +498,12 @@ if [ -x build/speech-mlx ]; then
         expect_grep '"event":"ready"' head -1 "$TMP/mlx-hello.jsonl"
         expect_grep '"mlx_swift"' head -1 "$TMP/mlx-hello.jsonl"
 
+        # The buffer-cache bound, which is the difference between a peak
+        # footprint that means something and one that records how much MLX was
+        # willing to keep. The default is asserted by value because that value
+        # is what every recorded measurement was taken under, and the override
+        # is exercised because an unread environment variable looks exactly
+        # like a working one.
         # The comma matters: '"cache_mb":64' also matches 640 and 6400, and the
         # keys are sorted, so a value is always followed by one.
         expect_grep '"cache_mb":512,' head -1 "$TMP/mlx-hello.jsonl"
@@ -476,7 +511,6 @@ if [ -x build/speech-mlx ]; then
             > "$TMP/mlx-cache.jsonl" 2>/dev/null \
             || fail "speech-mlx did not exit cleanly under SPEECH_MLX_CACHE_MB"
         expect_grep '"cache_mb":64,' head -1 "$TMP/mlx-cache.jsonl"
-
 
 
         # The response stream carries JSON and nothing else. This is the check
@@ -535,6 +569,16 @@ if [ -x build/speech-mlx ]; then
         # because the helper is checked before the store - see MLXEngine.start.
         expect_code 2 env SPEECH_MLX_BIN=/nonexistent/speech-mlx \
             "$SPEECH" transcribe "$TMP/fox.aiff" --model mlx.parakeet-tdt_ctc-110m
+        # And the one thing the notices check above cannot prove: that the
+        # notices describe THIS binary. The generator compares the pins against
+        # the checkouts, never against what was compiled - so a pin bump plus a
+        # failed compile leaves an old helper beside fresh checkouts, and a
+        # regeneration would make the two agree with each other and not with
+        # the binary. The handshake reports the mlx-swift it was built against;
+        # the notices name the version they were generated from.
+        mlx_swift=$(sed -n 's/.*"mlx_swift":"\([^"]*\)".*/\1/p' "$TMP/mlx-hello.jsonl" | head -1)
+        [ -n "$mlx_swift" ] || fail "the handshake did not report an mlx_swift version"
+        expect_grep "mlx-swift $mlx_swift" cat build/speech-mlx-THIRD-PARTY-NOTICES.txt
     fi
 fi
 
