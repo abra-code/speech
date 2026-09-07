@@ -317,6 +317,20 @@ public protocol TranscriptionEngine: Sendable {
     /// `prepare` therefore throws `modelMissing` and this is the only path
     /// that touches the network, reached only from `speech models download`.
     func install(progress: @escaping LoadProgressHandler) async throws
+
+    /// Peak memory of a process this engine runs the model in, when that is not
+    /// this one. nil for every engine whose model is in this address space,
+    /// which is all of them but `mlx`.
+    ///
+    /// Reported ADDED to this process's own peak, because both processes are
+    /// resident at the same time and the question the figure answers is what
+    /// the run needed. Without it an out-of-process engine reports the parent's
+    /// footprint, which is a real measurement of the wrong thing: measured at
+    /// 18 MB for a run holding a 459 MB model in the helper.
+    ///
+    /// Sampled while the helper is alive rather than at the end: the kernel
+    /// keeps no ledger for a process that has exited.
+    func peakOutOfProcessMemoryBytes() async -> Int64?
 }
 
 extension TranscriptionEngine {
@@ -325,6 +339,8 @@ extension TranscriptionEngine {
 
     /// Nothing to check ahead of time is the common case.
     public func validate(_ options: TranscribeOptions) async throws {}
+
+    public func peakOutOfProcessMemoryBytes() async -> Int64? { nil }
 
     public func install(progress: @escaping LoadProgressHandler) async throws {
         throw SpeechError.usage("'\(id)' has no downloadable weights of its own")

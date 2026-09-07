@@ -13,6 +13,7 @@ import SpeechCore
 import SpeechApple
 import SpeechFluid
 import SpeechGGML
+import SpeechMLX
 
 struct VerbEntry: Sendable {
     let name: String
@@ -78,6 +79,13 @@ func makeRegistry() -> EngineRegistry {
     registry.register(prefix: "apple", factory: AppleEngineFactory.make)
     registry.register(prefix: "fluid", factory: FluidEngineFactory.make)
     registry.register(prefix: "ggml", factory: GGMLEngineFactory.make)
+    // Registered whether or not the helper binary exists. A build with no
+    // speech-mlx beside it still lists these rows and still answers for them -
+    // with "needs the MLX helper", and where it looked. Leaving the prefix out
+    // would answer "no engine 'mlx' in this build", which describes a binary
+    // compiled without the target rather than one missing a file, and sends the
+    // reader to the wrong problem.
+    registry.register(prefix: "mlx", factory: MLXEngineFactory.make)
     return registry
 }
 

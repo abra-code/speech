@@ -187,6 +187,18 @@ public enum Catalog {
 
     static let whisperRows: [CatalogRow] = [
         CatalogRow(
+            id: "mlx.whisper-large-v3-turbo",
+            family: .whisper,
+            source: "mlx-community/whisper-large-v3-turbo",
+            parametersM: 809,
+            precision: "fp16",
+            // Two files from that repository plus the eight tokenizer files
+            // from openai/whisper-large-v3-turbo, which the MLX conversion does
+            // not ship and the loader will not run without. `source` names
+            // where the weights come from; MLXCatalog owns the full list.
+            sizeBytes: 1_618_594_759,
+            label: "Whisper large-v3-turbo (MLX, fp16)"),
+        CatalogRow(
             id: "ggml.whisper-large-v3-turbo@q8_0",
             family: .whisper,
             source: "handy-computer/whisper-large-v3-turbo-gguf",
@@ -209,6 +221,22 @@ public enum Catalog {
     // MARK: - Parakeet
 
     static let parakeetRows: [CatalogRow] = [
+        CatalogRow(
+            id: "mlx.parakeet-tdt-0.6b-v3",
+            family: .parakeet,
+            source: "mlx-community/parakeet-tdt-0.6b-v3",
+            parametersM: 600,
+            precision: "bf16",
+            sizeBytes: 2_509_041_541,
+            label: "Parakeet TDT 0.6B v3 (MLX, bf16)"),
+        CatalogRow(
+            id: "mlx.parakeet-tdt_ctc-110m",
+            family: .parakeet,
+            source: "mlx-community/parakeet-tdt_ctc-110m",
+            parametersM: 110,
+            precision: "bf16",
+            sizeBytes: 458_958_626,
+            label: "Parakeet TDT-CTC 110M (MLX, bf16)"),
         CatalogRow(
             id: "ggml.parakeet-tdt-0.6b-v3@q8_0",
             family: .parakeet,
@@ -326,6 +354,22 @@ public enum Catalog {
     // MARK: - Qwen3-ASR
 
     static let qwen3Rows: [CatalogRow] = [
+        CatalogRow(
+            id: "mlx.qwen3-asr-1.7b@8bit",
+            family: .qwen3ASR,
+            source: "mlx-community/Qwen3-ASR-1.7B-8bit",
+            parametersM: 1_700,
+            precision: "int8",
+            sizeBytes: 2_467_856_503,
+            label: "Qwen3-ASR 1.7B (MLX, 8-bit)"),
+        CatalogRow(
+            id: "mlx.qwen3-asr-1.7b@4bit",
+            family: .qwen3ASR,
+            source: "mlx-community/Qwen3-ASR-1.7B-4bit",
+            parametersM: 1_700,
+            precision: "int4",
+            sizeBytes: 1_607_630_579,
+            label: "Qwen3-ASR 1.7B (MLX, 4-bit)"),
         CatalogRow(
             id: "ggml.qwen3-asr-1.7b@q8_0",
             family: .qwen3ASR,

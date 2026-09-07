@@ -11,6 +11,7 @@ import SpeechCore
 import SpeechApple
 import SpeechFluid
 import SpeechGGML
+import SpeechMLX
 
 struct KnownEngine {
     let id: String
@@ -89,7 +90,32 @@ func knownEngines() -> [KnownEngine] {
         return KnownEngine(id: id, capabilities: capabilities, available: true, reason: nil)
     }
 
-    return apple + fluid + ggml
+    // The mlx rows. A third distinction joins the two above: these need a
+    // second binary. "Available" here means the helper was found - not that it
+    // starts, not that it can reach the GPU, and still not that the weights are
+    // downloaded. Those are answered by the handshake and by `models list`
+    // respectively, and asking them here would mean spawning a helper and
+    // initializing Metal once per row just to draw a list.
+    let mlxHelper = MLXEngineFactory.availability()
+    let mlxReason: String? = {
+        guard case .failure(let error) = mlxHelper else { return nil }
+        return "\(error)"
+    }()
+    let mlx: [KnownEngine] = MLXEngineFactory.catalogRows.compactMap { model, variant in
+        guard let capabilities = MLXEngineFactory.capabilities(for: model, variant: variant)
+        else { return nil }
+        let id = variant.map { "mlx.\(model)@\($0)" } ?? "mlx.\(model)"
+        guard capabilities.runsOnThisOS else {
+            return KnownEngine(
+                id: id, capabilities: capabilities, available: false,
+                reason: "needs macOS \(capabilities.minimumMacOS) or later")
+        }
+        return KnownEngine(
+            id: id, capabilities: capabilities,
+            available: mlxReason == nil, reason: mlxReason)
+    }
+
+    return apple + fluid + ggml + mlx
 }
 
 /// The published flag names live on `EngineCapabilities` so that this verb, the
@@ -130,7 +156,12 @@ func runEngines(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [Strin
     for engine in engines {
         let name = engine.id.padding(toLength: width, withPad: " ", startingAt: 0)
         let state = engine.available ? "available" : "unavailable"
-        var line = "\(name)  \(state.padding(toLength: 11, withPad: " ", startingAt: 0))"
+        // 13, not 11: "unavailable" is itself 11 characters, so padding to the
+        // width of the longest word leaves no gutter at all and the flags run
+        // straight into it - "unavailablebatch, seg_ts". Only visible once a
+        // row is actually unavailable, which on this machine no row was until
+        // the mlx rows arrived.
+        var line = "\(name)  \(state.padding(toLength: 13, withPad: " ", startingAt: 0))"
         // A row can legitimately have no capability flags at all - the CTC
         // spotter is a store row rather than a transcriber - and the separator
         // between flags and languages then has nothing on its left. Build the

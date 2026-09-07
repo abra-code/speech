@@ -186,7 +186,7 @@ func runTranscribe(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [St
         audioSeconds: audioSeconds,
         wallSeconds: sink.elapsed,
         peakRSSBytes: SystemInfo.peakResidentBytes(),
-        peakMemoryBytes: SystemInfo.peakMemoryBytes(),
+        peakMemoryBytes: SystemInfo.peakMemoryBytes() + (await engine.peakOutOfProcessMemoryBytes() ?? 0),
         output: output?.path)))
 }
 

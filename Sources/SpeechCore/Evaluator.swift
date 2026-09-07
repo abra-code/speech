@@ -215,12 +215,17 @@ public enum Evaluator {
         // does not add up, which in a measurement document reads as a bug in
         // the measurement.
         let memory = SystemInfo.memorySnapshot()
+        // An engine whose model runs in another process adds that process's
+        // peak, because both are resident at once and the figure answers what
+        // the run needed. nil for every engine but `mlx`, so this changes no
+        // number that has already been recorded.
+        let helperMemory = await engine.peakOutOfProcessMemoryBytes() ?? 0
         let summary = SpeechEvent.EvalSummary(
             model: catalogID, language: language, rows: emitted.count,
             wer: word.rate, cer: character.rate,
             audioSeconds: totalAudio, wallSeconds: totalWall,
             peakRSSBytes: memory?.residentPeak ?? SystemInfo.peakResidentBytes(),
-            peakMemoryBytes: memory?.peak ?? SystemInfo.peakResidentBytes(),
+            peakMemoryBytes: (memory?.peak ?? SystemInfo.peakResidentBytes()) + helperMemory,
             worst: Array(worst))
         sink.emit(.evalSummary(summary))
 

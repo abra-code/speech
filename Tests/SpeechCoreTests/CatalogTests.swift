@@ -113,6 +113,14 @@ struct CatalogTableTests {
                 // it names no single file.
                 #expect(row.file == nil, "\(row.id) is a directory download")
                 #expect(row.source?.hasPrefix("FluidInference/") == true, "\(row.id): repo name")
+            case "mlx":
+                // An mlx row is a directory of files, so it names no single
+                // one either. `source` is where the weights come from; one row
+                // also takes a tokenizer from a second repository, and the list
+                // that knows about that lives with the engine.
+                #expect(row.file == nil, "\(row.id) is a directory download")
+                #expect(row.source?.hasPrefix("mlx-community/") == true, "\(row.id): repo name")
+                #expect(row.sizeBytes != nil, "\(row.id) needs a download size")
             default:
                 Issue.record("unknown engine prefix in '\(row.id)'")
             }

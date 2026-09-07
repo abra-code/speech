@@ -507,6 +507,24 @@ if [ -x build/speech-mlx ]; then
             | ./build/speech-mlx > "$TMP/mlx-cut.jsonl" 2>/dev/null \
             && fail "speech-mlx exited 0 on a truncated frame"
         expect_grep 'ended mid-frame' cat "$TMP/mlx-cut.jsonl"
+
+        # And the engine on this side of it. `engines` reports these rows as
+        # available only because the helper is beside the binary; the same
+        # command with the override pointed at nothing must report them
+        # unavailable and say why, since that is what every machine without a
+        # helper sees.
+        # A leading space, not ".*available": "unavailable" contains
+        # "available", so the loose pattern would pass either way round.
+        expect_grep "mlx.parakeet-tdt_ctc-110m .* available " "$SPEECH" engines
+        SPEECH_MLX_BIN=/nonexistent/speech-mlx "$SPEECH" engines > "$TMP/mlx-engines.txt" 2>&1
+        expect_grep "mlx.parakeet-tdt_ctc-110m .* unavailable " cat "$TMP/mlx-engines.txt"
+        expect_grep "SPEECH_MLX_BIN is set to /nonexistent/speech-mlx" cat "$TMP/mlx-engines.txt"
+
+        # Exit 2 is "unavailable engine". It is 2 and not 3 ("model missing")
+        # whether or not these weights happen to be downloaded on this machine,
+        # because the helper is checked before the store - see MLXEngine.start.
+        expect_code 2 env SPEECH_MLX_BIN=/nonexistent/speech-mlx \
+            "$SPEECH" transcribe "$TMP/fox.aiff" --model mlx.parakeet-tdt_ctc-110m
     fi
 fi
 

@@ -177,27 +177,10 @@ actor GGMLEngine: TranscriptionEngine {
         return match
     }
 
-    /// The model's own spelling of a requested language, or nil if it has none.
-    ///
-    /// Prefers an exact tag, then a bare primary subtag, then the first
-    /// regional variant of the same language - so `pt-BR` finds itself where
-    /// the model lists both Brazilian and European Portuguese, and a bare `pt`
-    /// lands on whichever the model names first rather than being refused.
+    /// The model's own spelling of a requested language. `Language.match` owns
+    /// the rule; this stays as a name the tests already use.
     static func matchLanguage(_ requested: String, in supported: [String]) -> String? {
-        let canonical = Language.canonical(requested)
-        if let exact = supported.first(where: {
-            $0.caseInsensitiveCompare(canonical) == .orderedSame
-        }) {
-            return exact
-        }
-        let primary = Language.primarySubtag(requested)
-        guard !primary.isEmpty else { return nil }
-        if let bare = supported.first(where: {
-            $0.caseInsensitiveCompare(primary) == .orderedSame
-        }) {
-            return bare
-        }
-        return supported.first { Language.primarySubtag($0) == primary }
+        Language.match(requested, in: supported)
     }
 
     /// Fetches the weights. Only `speech models download` calls this.

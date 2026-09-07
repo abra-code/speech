@@ -43,10 +43,10 @@ let package = Package(
         // FluidAudio or the transcribe.cpp xcframework into a binary that
         // links nothing but MLX.
         .target(name: "SpeechMLXProtocol"),
-        // The supervisor for the optional speech-mlx helper. It depends on the
-        // wire format and nothing else: no SpeechCore, so that the target stays
-        // buildable and testable on its own, and no MLX, which lives entirely
-        // in the other binary.
+        // The optional speech-mlx helper: the supervisor that runs it and the
+        // engine that decides what to ask it for. No MLX here - that lives
+        // entirely in the other binary, which is the whole point - so this
+        // target builds and tests on a machine with none.
         .target(name: "SpeechMLX", dependencies: ["SpeechCore", "SpeechMLXProtocol"]),
         .target(name: "SpeechApple", dependencies: ["SpeechCore"]),
         .target(name: "SpeechFluid", dependencies: ["SpeechCore", .product(name: "FluidAudio", package: "FluidAudio")]),
