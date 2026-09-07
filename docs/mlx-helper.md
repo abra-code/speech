@@ -170,6 +170,12 @@ Times are seconds from the start of the buffer that was handed over, never from
 the start of a recording. The helper is not told where its buffer came from;
 offsetting is `speech`'s job, because `speech` is the only side that knows.
 
+`index` counts from zero within a request and skips nothing, and `done` reports
+how many were sent. Both are checked on the reading side, so a helper that
+numbered its events any other way would be refused. They are the only thing that
+can catch a segment event that went missing, and a transcript quietly short one
+sentence still scores.
+
 ### `done`
 
 ```jsonl

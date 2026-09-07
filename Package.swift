@@ -43,12 +43,20 @@ let package = Package(
         // FluidAudio or the transcribe.cpp xcframework into a binary that
         // links nothing but MLX.
         .target(name: "SpeechMLXProtocol"),
+        // The supervisor for the optional speech-mlx helper. It depends on the
+        // wire format and nothing else: no SpeechCore, so that the target stays
+        // buildable and testable on its own, and no MLX, which lives entirely
+        // in the other binary.
+        .target(name: "SpeechMLX", dependencies: ["SpeechCore", "SpeechMLXProtocol"]),
         .target(name: "SpeechApple", dependencies: ["SpeechCore"]),
         .target(name: "SpeechFluid", dependencies: ["SpeechCore", .product(name: "FluidAudio", package: "FluidAudio")]),
         .target(name: "SpeechGGML", dependencies: ["SpeechCore", "TranscribeCpp"]),
-        .executableTarget(name: "speech", dependencies: ["SpeechCore", "SpeechApple", "SpeechFluid", "SpeechGGML"]),
+        .executableTarget(
+            name: "speech",
+            dependencies: ["SpeechCore", "SpeechApple", "SpeechFluid", "SpeechGGML", "SpeechMLX"]),
         .testTarget(name: "SpeechCoreTests", dependencies: ["SpeechCore"]),
         .testTarget(name: "SpeechMLXProtocolTests", dependencies: ["SpeechMLXProtocol"]),
+        .testTarget(name: "SpeechMLXTests", dependencies: ["SpeechMLX", "SpeechCore", "SpeechMLXProtocol"]),
         .testTarget(name: "SpeechFluidTests", dependencies: ["SpeechFluid", "SpeechCore"]),
         .testTarget(name: "SpeechGGMLTests", dependencies: ["SpeechGGML", "SpeechCore"]),
     ]
