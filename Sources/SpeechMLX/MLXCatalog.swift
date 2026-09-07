@@ -137,6 +137,13 @@ public enum MLXCatalog {
             ],
             languageID: true,
             segmentTimestamps: true,
+            // Parakeet does not chunk internally - it has no `chunk_seconds` -
+            // so whatever it is handed, it encodes at once. Measured on one
+            // hour of continuous speech: no ceiling costs 21.91 GB and drops
+            // throughput to 41.9x, where a two-minute ceiling costs 4.55 GB and
+            // runs at 153.4x. The cut lands on the quietest frame in a window
+            // before the limit, so on speech with pauses it falls in one.
+            maxSeconds: 120,
             parametersM: 600,
             precision: "bf16",
             sizeBytes: 2_509_041_541,
@@ -153,6 +160,8 @@ public enum MLXCatalog {
             languages: ["en"],
             languageID: false,
             segmentTimestamps: true,
+            // The same reason as the row above: no internal chunking.
+            maxSeconds: 120,
             parametersM: 110,
             precision: "bf16",
             sizeBytes: 458_958_626,
@@ -182,6 +191,21 @@ public enum MLXCatalog {
             ],
             languageID: true,
             segmentTimestamps: true,
+            // Whisper cuts its own input into 30-second windows, so this is
+            // not what keeps it from encoding an hour at once - but the mel
+            // spectrogram and the segment list are built over whatever it is
+            // handed, and one hour peaked at 5.27 GB against 4.31 GB with this
+            // ceiling, for the same transcript at the same speed.
+            //
+            // It has one consequence worth knowing: this build detects the
+            // language once per request, from the first 30-second window, and
+            // reuses it for the rest of that request. So a ceiling makes
+            // detection per five minutes rather than per file, and a chunk
+            // that opens on music or on a quoted sentence in another language
+            // decodes that whole chunk in the language it heard first.
+            // `--language` settles it, and 4B.5 recorded separately that the
+            // hint is accepted rather than obeyed.
+            maxSeconds: 300,
             parametersM: 809,
             precision: "fp16",
             sizeBytes: 1_618_594_759,
@@ -254,6 +278,14 @@ public enum MLXCatalog {
             segmentTimestamps: true,
             // The library's own default here is 1200 seconds. See MLXRow.
             chunkSeconds: 30,
+            // Not only memory, for this family. `max_tokens` is a single
+            // budget spent across every chunk of one request - MLX Audio issue
+            // #249 - so a long buffer runs out of tokens and the tail is
+            // dropped in silence. Measured on one hour of continuous speech:
+            // 21.66% WER with no ceiling against 15.13% with this one, and
+            // 5.17 GB against 4.01 GB. The ceiling starts a fresh request, and
+            // a fresh budget, every five minutes.
+            maxSeconds: 300,
             parametersM: 1_700,
             precision: precision,
             sizeBytes: sizeBytes,

@@ -469,6 +469,16 @@ if [ -x build/speech-mlx ]; then
         expect_grep '"event":"ready"' head -1 "$TMP/mlx-hello.jsonl"
         expect_grep '"mlx_swift"' head -1 "$TMP/mlx-hello.jsonl"
 
+        # The comma matters: '"cache_mb":64' also matches 640 and 6400, and the
+        # keys are sorted, so a value is always followed by one.
+        expect_grep '"cache_mb":512,' head -1 "$TMP/mlx-hello.jsonl"
+        printf '{"op":"bye"}\n' | SPEECH_MLX_CACHE_MB=64 ./build/speech-mlx \
+            > "$TMP/mlx-cache.jsonl" 2>/dev/null \
+            || fail "speech-mlx did not exit cleanly under SPEECH_MLX_CACHE_MB"
+        expect_grep '"cache_mb":64,' head -1 "$TMP/mlx-cache.jsonl"
+
+
+
         # The response stream carries JSON and nothing else. This is the check
         # that earns its keep: MLX Audio prints to stdout while loading a model,
         # and without the descriptor rescue in the helper those lines land here.

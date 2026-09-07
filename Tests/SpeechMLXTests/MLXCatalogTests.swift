@@ -168,6 +168,26 @@ struct MLXCatalogTests {
         #expect(MLXCatalog.isComplete(directory, row: row))
     }
 
+    @Test("every row puts a ceiling on how much audio the helper holds at once")
+    func everyRowBoundsWhatItHandsOver() {
+        // The helper transcribes what it is given, and a recording is as long
+        // as a user's recording. Measured on one hour of continuous speech,
+        // with no ceiling: Parakeet v3 peaked at 21.91 GB and ran at 41.9x,
+        // against 4.55 GB and 153.4x with one; Qwen3-ASR scored 21.66% WER
+        // against 15.13%, because `max_tokens` is one budget spent across a
+        // whole request and the tail runs out of it; Whisper, which cuts its
+        // own input, still held 5.27 GB against 4.31 GB.
+        //
+        // So this is not a per-model tuning knob to be set where it seems to
+        // help. It is an invariant: a row with no ceiling is a row whose cost
+        // is set by the length of the file someone opens.
+        for row in MLXCatalog.rows {
+            #expect(row.maxSeconds > 0, "\(row.id) would hand the helper a whole recording")
+            #expect(row.maxSeconds <= 600, "\(row.id) has a ceiling too high to be one")
+        }
+        #expect(MLXCatalog.rows.count >= 5)
+    }
+
     @Test("a chunk's timestamps are placed where the chunk was")
     func segmentsAreOffsetIntoTheRecording() {
         // The helper is never told where its buffer came from, so this is the
@@ -177,8 +197,11 @@ struct MLXCatalogTests {
         let result = MLXTranscription(
             segments: [
                 .init(id: 2, index: 0, start: 0.5, end: 1.5, text: "first"),
-                .init(id: 2, index: 1, start: 1.5, end: 2.0, text: "  second  "),
-                .init(id: 2, index: 2, start: 2.0, end: 2.5, text: "   "),
+                // In the middle, not at the end, and that placement is the
+                // test: a blank span numbered before it is dropped leaves a
+                // hole in the ids, and a blank one at the end would not.
+                .init(id: 2, index: 1, start: 1.5, end: 2.0, text: "   "),
+                .init(id: 2, index: 2, start: 2.0, end: 2.5, text: "  second  "),
             ],
             done: .init(id: 2, seconds: 0.1, segments: 3, synthesized: false))
         let segments = MLXEngine.segments(from: result, offset: 30, firstID: 4, language: "pl")
@@ -190,7 +213,11 @@ struct MLXCatalogTests {
         #expect(segments[0].end == 31.5)
         #expect(segments[0].id == 4)
         #expect(segments[1].text == "second")
-        #expect(segments[1].start == 31.5)
+        #expect(segments[1].start == 32.0)
+        // Contiguous, not merely increasing. The next chunk is numbered from
+        // the count of what came back, so a gap here - which is what numbering
+        // before dropping the blank span produces - collides with it.
+        #expect(segments[1].id == 5)
         #expect(segments[0].language == "pl")
         #expect(segments[0].words == nil)
     }

@@ -67,6 +67,25 @@ byte-identical project - which means a spec edit cannot be built against the
 previous project by accident. Commit the regenerated project along with the
 spec change.
 
+## Memory
+
+MLX never returns a freed buffer to the system. It keeps it in a pool for the
+next allocation of that size, and the pool's default limit is the memory limit,
+which mlx computes as `min(1.5 * recommended working set, 0.95 * physical
+memory)` - about 24 GB on a 24 GB machine. Within one transcription that is the
+right trade. Across a long run it is not: over the full FLEURS `en_us` split,
+`parakeet-tdt-0.6b-v3` reached a peak footprint of 18.1 GB for a 2.5 GB model,
+and `parakeet-tdt_ctc-110m` reached 8.0 GB for 459 MB of weights. None of that
+is a leak and all of it is dirty memory that counts against the machine.
+
+So the helper bounds the pool at startup, to
+`SpeechMLXHelper.defaultCacheMegabytes` (512 MB), and reports the bound in its
+handshake as `cache_mb`. `SPEECH_MLX_CACHE_MB` overrides it, and 0 disables the
+pool entirely; sweeping that variable over a fixed slice of a corpus is how the
+default was chosen. The bound is on the pool, not on the model: weights and the
+working set are allocated whatever it says, so too low a value costs allocation
+time rather than correctness.
+
 ## Why it is not a product of the root Package.swift
 
 SwiftPM resolves every declared dependency whether or not the product that uses

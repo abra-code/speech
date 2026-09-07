@@ -39,7 +39,7 @@ struct MLXWireTests {
     func responsesRoundTrip() throws {
         let responses: [MLXResponse] = [
             .ready(.init(helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6",
-                         types: ["parakeet", "whisper"])),
+                         types: ["parakeet", "whisper"], cacheMegabytes: 512)),
             .loaded(.init(type: "whisper", seconds: 1.5, languages: ["en", "pl"],
                           languageHint: true)),
             .loaded(.init(type: "parakeet", seconds: 0.9, languages: [], languageHint: false)),
@@ -453,8 +453,8 @@ struct MLXWireTests {
         }
 
         let responses: [(MLXResponse, Set<String>)] = [
-            (.ready(.init(helper: "1", mlxAudio: "2", mlxSwift: "3", types: [])),
-             ["event", "helper", "mlx_audio", "mlx_swift", "types"]),
+            (.ready(.init(helper: "1", mlxAudio: "2", mlxSwift: "3", types: [], cacheMegabytes: 0)),
+             ["event", "helper", "mlx_audio", "mlx_swift", "types", "cache_mb"]),
             (.loaded(.init(type: "t", seconds: 1, languages: [], languageHint: false)),
              ["event", "type", "seconds", "languages", "language_hint"]),
             (.segment(.init(id: 1, index: 0, start: 0, end: 1, text: "x")),

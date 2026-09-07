@@ -328,8 +328,14 @@ public final class MLXHelperConnection {
         do {
             return try MLXWire.decoder().decode(MLXResponse.self, from: frame.line)
         } catch {
+            // Both halves matter, and the second one was added because it was
+            // missing when it was needed: the line alone leaves the reader to
+            // spot what changed, while `DecodingError` names the key. A helper
+            // built before a field was added fails here, and "keyNotFound
+            // cache_mb" is the difference between a rebuild and an afternoon.
             let text = String(decoding: frame.line.prefix(200), as: UTF8.self)
-            throw MLXHelperError.protocolViolation("could not read a response: \(text)")
+            throw MLXHelperError.protocolViolation(
+                "could not read a response: \(text) - \(error)")
         }
     }
 

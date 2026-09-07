@@ -40,12 +40,14 @@ enum SpeechMLXHelper {
         // moved to startup, where the parent sees a helper that died before its
         // handshake rather than a measurement that stopped halfway.
         warmUpMetal()
+        let cacheMegabytes = boundBufferCache()
 
         out.send(.ready(MLXResponse.Ready(
             helper: HelperVersion.helper,
             mlxAudio: HelperVersion.mlxAudio,
             mlxSwift: HelperVersion.mlxSwift,
-            types: ModelSession.implementedTypes)))
+            types: ModelSession.implementedTypes,
+            cacheMegabytes: cacheMegabytes)))
 
         let session = ModelSession()
         var decoder = MLXFrameDecoder()
@@ -179,6 +181,62 @@ enum SpeechMLXHelper {
         case .bye:
             break  // handled by the caller, which has to stop reading
         }
+    }
+
+    /// How much freed GPU memory MLX may keep for reuse, in megabytes, and the
+    /// environment variable that overrides it.
+    ///
+    /// MLX does not return a freed buffer to the system; it keeps it in a pool
+    /// for the next allocation of that size, and the pool's default limit is
+    /// the memory limit - which mlx sets to `min(1.5 * recommended working
+    /// set, 0.95 * physical memory)`, so on a 24 GB machine the pool may grow
+    /// to about 24 GB. Nothing about that is a leak, and within one
+    /// transcription it is the right trade. Across a run it is not: measured
+    /// on the full FLEURS `en_us` split, `parakeet-tdt-0.6b-v3` reached a peak
+    /// footprint of 18.1 GB for a model of 2.5 GB, and the 110M model reached
+    /// 8.0 GB for weights of 459 MB. That memory is dirty and counts against
+    /// the machine, so an app that spawns this helper would show it.
+    ///
+    /// It also makes the measurement meaningless: `peak_memory_bytes` would
+    /// record how much MLX was willing to keep rather than how much the model
+    /// needed, and a comparison against a `ggml` row measured at 0.98 GB would
+    /// be a comparison of two different quantities.
+    ///
+    /// The value is a bound on the pool, not on the model: weights and the
+    /// working set are allocated regardless, and a limit lower than a
+    /// transcription's turnover costs allocation time rather than correctness.
+    static let defaultCacheMegabytes = 512
+    private static let cacheEnvironmentVariable = "SPEECH_MLX_CACHE_MB"
+
+    /// Applies that bound and returns the value used, which the handshake
+    /// reports. Runs after `warmUpMetal`, so the GPU probe stays the first MLX
+    /// call and its failure keeps the shape the parent recognizes.
+    private static func boundBufferCache() -> Int {
+        // An empty value is an unset variable, not a bad one: `env VAR= cmd`
+        // and an exported-but-empty shell variable are how people turn an
+        // override off, and warning about it would train the reader to ignore
+        // the warning that matters.
+        let raw = ProcessInfo.processInfo.environment[cacheEnvironmentVariable]
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let requested = raw.flatMap { Int($0) }
+        if let raw, requested == nil {
+            // Not fatal - the helper runs at the default - but silence here
+            // would mean a run measured at 512 MB while its operator believed
+            // it was measuring something else. "64MB" and "1e3" are the shapes
+            // this catches.
+            let note = "speech-mlx: ignoring \(cacheEnvironmentVariable)=\(raw), "
+                + "which is not a whole number of megabytes\n"
+            FileHandle.standardError.write(Data(note.utf8))
+        }
+        // Clamped rather than obeyed, and the ceiling is arithmetic rather than
+        // a guess about hardware: `megabytes << 20` overflows past
+        // `Int.max >> 20`, and overflow in Swift is a crash rather than a large
+        // number. Nothing smaller would do as a limit - a Mac Studio ships with
+        // up to 512 GB of unified memory, so a value that looks absurd on this
+        // machine can be an ordinary request on one this has never run on.
+        let megabytes = requested.map { min(max($0, 0), Int.max >> 20) } ?? defaultCacheMegabytes
+        MLX.Memory.cacheLimit = megabytes << 20
+        return megabytes
     }
 
     /// The smallest operation that forces the Metal device to exist.

@@ -261,11 +261,11 @@ actor MLXEngine: TranscriptionEngine {
             }
         }
 
-        // Zero means no ceiling, which is every row today: the helper is handed
-        // a whole utterance and the model's own chunking - bounded by
-        // `chunk_seconds` - decides what it holds at once. The cut is here for
-        // the row that eventually needs it, and because a ceiling that only
-        // appears once a user hits it is a ceiling nobody tested.
+        // Every row has a ceiling, and `MLXCatalogTests` asserts that none can
+        // lose one: a row without it is a row whose memory is set by the length
+        // of the file a user opens, which one hour of speech through Parakeet
+        // measured at 21.91 GB. Zero still means no ceiling, because that is
+        // what the field's default is and a caller can build a row by hand.
         let cap = row.maxSeconds > 0 ? row.maxSeconds : .infinity
         let ranges = try await segmenter.split(samples: samples, maxSeconds: cap)
 
@@ -343,9 +343,15 @@ actor MLXEngine: TranscriptionEngine {
     static func segments(
         from result: MLXTranscription, offset: Double, firstID: Int, language: String?
     ) -> [Segment] {
-        result.segments.enumerated().compactMap { index, event in
+        // Filtered first, then numbered. The caller's next chunk starts at the
+        // count of what came back, so numbering before the filter leaves a hole
+        // - three spans with a blank second one give ids 0 and 2, and the next
+        // chunk starts at 2 again. No helper sends a blank span today; the
+        // contract admits one, and the tests hand it one.
+        result.segments.filter {
+            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.enumerated().map { index, event in
             let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { return nil }
             return Segment(
                 id: firstID + index,
                 start: offset + event.start,

@@ -129,7 +129,8 @@ private func makeEngine(
 @Suite("The MLX engine")
 struct MLXEngineTests {
     static let ready = MLXResponse.ready(
-        .init(helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6", types: ["parakeet", "whisper"]))
+        .init(helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6",
+              types: ["parakeet", "whisper"], cacheMegabytes: 512))
     static let loaded = MLXResponse.loaded(
         .init(type: "parakeet", seconds: 0.13, languages: [], languageHint: false))
     static let transcribed: [MLXResponse] = [
@@ -190,7 +191,8 @@ struct MLXEngineTests {
     func anUnimplementedTypeIsUnavailable() async throws {
         let helper = try ScriptedHelper(
             ready: .ready(.init(
-                helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6", types: ["sensevoice"])),
+                helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6",
+                types: ["sensevoice"], cacheMegabytes: 512)),
             install: ["mlx.parakeet-tdt_ctc-110m"])
         let engine = try makeEngine(helper)
 
@@ -445,10 +447,11 @@ struct MLXEngineTests {
 
     @Test("a long recording is cut, and the second chunk's timestamps are not the first's")
     func aCutRecordingIsPutBackTogether() async throws {
-        // No shipped row has a ceiling, so this builds one. The path it
-        // exercises - more than one request per call, ids that keep counting,
-        // spans offset into the recording - is the one an `mlx` row would take
-        // the first time a model needed its audio cut.
+        // Every shipped row has a ceiling now; this builds a two-second one so
+        // the cut happens on a buffer a test can hold. The path it exercises -
+        // more than one request per call, ids that keep counting, spans offset
+        // into the recording - is the one every row takes on a recording longer
+        // than its ceiling.
         let base = try #require(MLXCatalog.row(model: "parakeet-tdt_ctc-110m", variant: nil))
         var capped = base
         capped.maxSeconds = 1

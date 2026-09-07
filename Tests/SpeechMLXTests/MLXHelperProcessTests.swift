@@ -48,7 +48,8 @@ private final class Locked<Value>: @unchecked Sendable {
 }
 
 private let ready = MLXResponse.ready(
-    .init(helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6", types: ["parakeet"]))
+    .init(helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6", types: ["parakeet"],
+          cacheMegabytes: 512))
 
 private let quickTimeouts = MLXHelperConnection.Timeouts(
     handshake: 5, load: 5, control: 5, transcribeBase: 5, transcribeRealTimeFactor: 1)

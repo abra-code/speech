@@ -149,12 +149,25 @@ public enum MLXResponse: Sendable, Equatable {
         /// languages and flags are properties of a checkpoint, not of a type,
         /// and are reported by `loaded` after the weights are read.
         public var types: [String]
+        /// Megabytes of freed GPU memory this helper will keep for reuse.
+        ///
+        /// Reported because it changes what a measurement means. MLX does not
+        /// return a freed buffer to the system, it pools it, and the pool's
+        /// own default limit is close to physical memory - so a peak footprint
+        /// taken over a long run records how much MLX was willing to keep
+        /// rather than how much the model needed. The helper bounds it, and
+        /// says here what the bound was.
+        public var cacheMegabytes: Int
 
-        public init(helper: String, mlxAudio: String, mlxSwift: String, types: [String]) {
+        public init(
+            helper: String, mlxAudio: String, mlxSwift: String, types: [String],
+            cacheMegabytes: Int
+        ) {
             self.helper = helper
             self.mlxAudio = mlxAudio
             self.mlxSwift = mlxSwift
             self.types = types
+            self.cacheMegabytes = cacheMegabytes
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -162,6 +175,7 @@ public enum MLXResponse: Sendable, Equatable {
             case mlxAudio = "mlx_audio"
             case mlxSwift = "mlx_swift"
             case types
+            case cacheMegabytes = "cache_mb"
         }
     }
 

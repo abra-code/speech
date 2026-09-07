@@ -127,7 +127,7 @@ stop, not "finish what you have".
 Sent unprompted, once, before any request is read.
 
 ```jsonl
-{"event":"ready","helper":"0.1.0","mlx_audio":"0.1.3","mlx_swift":"0.31.6","types":["parakeet","whisper","qwen3_asr"]}
+{"cache_mb":512,"event":"ready","helper":"0.1.0","mlx_audio":"0.1.3","mlx_swift":"0.31.6","types":["parakeet","whisper","qwen3_asr"]}
 ```
 
 It is emitted only after the helper has run a trivial MLX operation, which makes
@@ -142,6 +142,24 @@ rather than a measurement that stops halfway.
 `types` are model types this build can construct, not a capability table.
 Languages and flags are properties of a checkpoint rather than of a type, so
 they are reported by `loaded`, after the weights have been read.
+
+`cache_mb` is how much freed GPU memory this helper will keep for reuse, and it
+is on the wire because it changes what a memory measurement means. MLX pools
+every buffer it frees instead of returning it, and the pool's own default limit
+is close to physical memory: measured over the full FLEURS `en_us` split, a
+model of 2.5 GB reached a peak footprint of 18.1 GB, where the same run with
+the pool bounded peaks at 3.9 GB for the same transcripts. The helper bounds it
+at startup - 512 MB by default, overridable with `SPEECH_MLX_CACHE_MB`, 0 to
+disable pooling - and reports the bound here, on the one line that already
+exists to say what this process is. `speech` does not copy it into an eval
+summary today, so a run that changes the variable has to say so in whatever
+records its numbers.
+
+The field is required, not optional, and that is a deliberate choice about a
+pair of binaries built from one tree: a `speech` from after this field was
+added, talking to a `speech-mlx` from before it, fails its handshake with a
+decoding error naming `cache_mb` rather than measuring at an unknown setting.
+Rebuild both.
 
 ### `loaded`
 

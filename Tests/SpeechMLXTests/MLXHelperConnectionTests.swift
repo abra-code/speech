@@ -157,7 +157,8 @@ private func makeConnection(
 }
 
 private let ready = MLXResponse.ready(
-    .init(helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6", types: ["parakeet", "whisper"]))
+    .init(helper: "0.1.0", mlxAudio: "0.1.3", mlxSwift: "0.31.6", types: ["parakeet", "whisper"],
+          cacheMegabytes: 512))
 
 // MARK: - Tests
 
