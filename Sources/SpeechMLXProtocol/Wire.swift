@@ -72,7 +72,7 @@ public enum MLXRequest: Sendable, Equatable {
         /// Seconds of audio the model is allowed to hold in one chunk.
         ///
         /// Not a tuning knob: mlx-audio-swift's default is 1200, and issue
-        /// #249 reports that default building a roughly 7 GB KV cache and
+        /// #248 reports that default building a roughly 7 GB KV cache and
         /// hanging a 108-minute file on a 48 GB machine. `speech` hands over
         /// bounded buffers and says here how the model may cut them.
         public var chunkSeconds: Double?

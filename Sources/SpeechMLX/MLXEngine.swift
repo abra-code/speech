@@ -3,8 +3,8 @@
 // The fourth backend, and the only one whose model is not in this address
 // space. What that buys is stated in the plan: mlx-audio-swift's API churns,
 // its OS floor moves, and one of its loaders deletes the directory it was asked
-// to read. All of that is now behind a five-call protocol in a binary that can
-// be absent, and this engine is the part that knows what a catalog row is.
+// to read. All of that is now behind a four-request protocol in a binary that
+// can be absent, and this engine is the part that knows what a catalog row is.
 //
 // So the division of labor is deliberate and one-directional. The helper loads
 // a directory and turns samples into spans. Everything else - which row, where

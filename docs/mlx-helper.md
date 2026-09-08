@@ -6,10 +6,11 @@ a manifest, score anything, or know that a catalog exists. `speech` keeps all
 of that, because `speech` already has it.
 
 The split is not tidiness. mlx-swift's Metal kernels are compiled into a
-resource bundle that has to travel beside the binary, its package graph pulls in
-four more packages, and the API it exposes has changed shape more than once.
-Keeping it behind a five-call surface means a churn in any of that moves inside
-a binary this tool can also be shipped without.
+resource bundle that has to travel beside the binary, mlx-audio-swift pulls in
+four more packages directly and fourteen once resolved, and the API it exposes
+has changed shape more than once. Keeping it behind a surface of four requests
+means a churn in any of that moves inside a binary this tool can also be shipped
+without.
 
 This file is the specification. It is what both sides implement, and the
 examples in it are parsed and re-encoded by the test suite, so an example that

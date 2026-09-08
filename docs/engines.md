@@ -25,8 +25,10 @@ first dot selects the backend; a model name may contain dots of its own.
 `languages` lists BCP-47 primary subtags; an empty list means the engine takes
 any language. `minimum_macos` is the floor the engine runs on.
 
-`live` is what `speech stream` filters on, and today only the two Apple rows
-carry it. See `docs/live.md` for how a live session is driven, what format each
+`live` is what `speech stream` filters on, and fourteen rows carry it: the two
+Apple modules, both Nemotron streaming families, `fluid.parakeet-v3`, the four
+`fluid.parakeet-unified@stream-` tiers and `ggml.parakeet-unified-en-0.6b`. See
+[docs/live.md](live.md) for how a live session is driven, what format each
 family demands, and how a run stops.
 
 Options an engine cannot honor are a `warning` event and a transcript, not a
@@ -122,7 +124,7 @@ so it can run beside any draft engine without competing with it.
 Why it exists: every live row in this catalog decides utterance boundaries its
 own way and none of them decides from the audio, so the same recording is cut
 differently by every row and `--refine` re-transcribes a span the model chose.
-See docs/live.md for what the boundaries are used for.
+See [docs/live.md](live.md) for what the boundaries are used for.
 
 ### Parakeet Unified has two encoders, and they are separate downloads
 
@@ -171,7 +173,7 @@ and means the two engines have to be sized differently for the same weights.
 
 Thirteen rows across six families, most at two quantizations.
 
-Any figure quoted on this page or in docs/models.catalog.tsv is a property of a
+Any figure quoted on this page or in [docs/models.catalog.tsv](models.catalog.tsv) is a property of a
 build, not a score: sizes and capability flags are stable, but speed and
 accuracy belong to a machine, an OS and a set of dependency versions, and have
 to be measured where they are going to be used.
@@ -188,6 +190,78 @@ Its xcframework is dynamic, unlike FluidAudio's static dependency, so
 `CTranscribe.framework` ships beside `build/speech` and whoever embeds one
 embeds both.
 
+## `mlx.*` - mlx-audio-swift 0.1.3 on mlx-swift 0.31.6, Metal, in another process
+
+Shipped in stage 4B. Safetensors checkpoints from mlx-community on Hugging Face,
+run through `speech-mlx`: a separate binary that turns PCM into spans and does
+nothing else. It does not reach the network, decode a container, read a manifest
+or know that a catalog exists, because `speech` already has all of that.
+
+The out-of-process split is the distinguishing property and it is not tidiness.
+mlx-swift compiles its Metal kernels into a resource bundle that has to travel
+beside the binary, mlx-audio-swift pulls in four more packages directly and
+fourteen once resolved, and the API has changed shape more than once. Behind a
+protocol of four requests, all of that churn moves inside a binary this tool can
+also ship without. See
+[docs/mlx-helper.md](mlx-helper.md) for the wire format; the test suite parses
+and re-encodes the examples in it, so an example that stops being true fails the
+build.
+
+That makes this the only optional engine. `./build-speech-mlx.sh` builds the
+helper, `./build.sh` does not, and nothing in the helper is on the main binary's
+dependency graph. A build with no `speech-mlx` beside it still registers the
+prefix and still lists the rows: it reports `unavailable` with a reason naming
+where it looked and how to build what it did not find, rather than the "no engine
+'mlx' in this build" that a missing compile-time target produces, which would
+send the reader to the wrong problem. `SPEECH_MLX_BIN` overrides the location.
+
+Five rows: two Parakeet sizes, Qwen3-ASR 1.7B at two quantizations, and Whisper
+large-v3-turbo. All batch only, with segment timestamps and a language hint;
+every row but the English-only `parakeet-tdt_ctc-110m` also identifies the
+language on its own. No row here streams, none reports word timings, and none
+accepts a custom vocabulary.
+
+Memory is the third shape in this catalog. `peak_memory_bytes` for an `mlx` row
+is this process plus the helper's own peak footprint, because both are resident
+at once and the model is in the second one. Measured in stage 4B, every twin
+landed between 3.0 and 4.1 GB whatever the model was, so the premium over the
+equivalent `ggml` row is largest where the model is smallest: Parakeet v3 pays
+0.98 to 1.00 GB through ggml against 3.93 GB here, near four times, while
+Qwen3-ASR 1.7B at 8 bits moves only from 3.67 to between 3.89 and 4.08 GB. The
+Parakeet twins agreed on accuracy to within four hundredths of a point across
+English, Polish and German.
+
+That is the fact worth carrying away from stage 4B: no `mlx` row beat its `ggml`
+twin on both accuracy and memory, and the one place MLX won anything was German
+on Whisper turbo, 4.54 against 5.07, bought with a third of the speed and three
+times the memory. The rows are here as an instrument, not as a recommendation.
+
+Installing a Qwen3-ASR row is not quite finished when the download is. Loading
+one synthesizes a `tokenizer.json` from `vocab.json` and `merges.txt` when the
+repository ships none, which is the normal case for those repositories, and
+writes it into the model directory. So the row grows a file after it was
+installed, and a read-only model store fails the load rather than the download.
+
+### `seg_ts` means something different here per family
+
+The helper reports whether a row's timings came from the model or from the
+helper covering the buffer with one span, and that distinction does not survive
+into the capability flag. Parakeet returns real spans from its own alignment.
+Whisper and Qwen3-ASR return one span per decoding chunk instead: a window
+Whisper fixes at 30 seconds internally, and for Qwen3-ASR the `chunk_seconds`
+this build sends, which is also 30 today. Either way that is the same field as
+Parakeet's sentence-level alignment carrying a very different thing. Read
+`seg_ts` on an `mlx` row as "the model said", not as "finely".
+
+### Every row carries an audio ceiling, and it is not a tuning knob
+
+MLX Audio defaults to 1200 second decoding chunks, and its issue #248 reports
+that default building a roughly 7 GB KV cache and hanging a 108 minute file on a
+48 GB machine. `speech` hands the helper bounded buffers and states how they may
+be cut. The cost of not doing so was measured rather than assumed: one whole
+recording in a single request took `mlx.parakeet-tdt-0.6b-v3` to 21.91 GB at
+41.9x, against 4.55 GB at 153.4x with a 120 second ceiling.
+
 ## Deployment floor
 
 Both libraries would run lower - FluidAudio declares macOS 14 and transcribe.cpp
@@ -198,6 +272,13 @@ runtime and which has no other published precision.
 A build without those targets simply has no `fluid` or `ggml` entry in the
 engine registry and reports `unavailable` for those ids, rather than failing to
 link. That is what lets the stages land one engine at a time.
+
+`speech-mlx` is built separately and carries the same macOS 15 target, but it is
+absent rather than unregistered when it was not built: the `mlx` rows stay in the
+catalog and report why they cannot run. It also does not travel alone - like
+`CTranscribe.framework` beside `build/speech`, mlx-swift's Metal resource bundles
+have to sit beside the helper, and a copy of the binary on its own aborts at
+startup.
 
 ## Choosing between them
 
@@ -210,5 +291,5 @@ machine, the OS and the dependency versions they were taken on.
 
 Speech.app makes that choice, and can re-measure locally with `speech eval` -
 against the standard corpora or against the user's own recordings. See
-docs/catalog.md for what this tool reports and why the ranking is not part of
-it.
+[docs/catalog.md](catalog.md) for what this tool reports and why the ranking is
+not part of it.

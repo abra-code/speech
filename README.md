@@ -10,16 +10,18 @@ CER, real-time factor and peak memory against a reference corpus - and every
 model it later offers has to earn its place against Apple's built-in engines,
 which are free, already installed, and better than most people expect.
 
-Stage 4 of the development plan. The Apple engines, the FluidAudio and
-transcribe.cpp engines, the model store, the inventory, the scorer, the decoder,
-the event protocol, the evaluation harness and live microphone capture are in
-place. Live sessions for the non-Apple rows, voice-activity segmentation, the
-MLX helper and Speech.app are the stages after this one.
+Stage 4 of the development plan is complete. The Apple engines, the FluidAudio,
+transcribe.cpp and MLX engines, the model store, the inventory, the scorer, the
+decoder, the event protocol, the evaluation harness, live microphone capture,
+live sessions for every row that can stream and voice-activity segmentation are
+all in place. Speech.app is stage 5, and post-processing, diarization and release
+are stage 6.
 
 ## Build
 
-    ./build.sh          # produces build/speech (arm64, ad-hoc signed)
-    ./test.sh           # builds, runs the unit tests and the CLI smoke tests
+    ./build.sh              # produces build/speech (arm64, ad-hoc signed)
+    ./test.sh               # builds, runs the unit tests and the CLI smoke tests
+    ./build-speech-mlx.sh   # optional: produces build/speech-mlx, for the mlx.* rows
 
 Deployment target macOS 15, set by `fluid.canary-1b-v2@int4`: its int4 weight
 payloads need CoreML's macOS 15 runtime and no other precision is published for
@@ -29,11 +31,19 @@ linked, and report why when they are unavailable. arm64 only: FluidAudio's sourc
 unavailable on x86_64 macOS, and its CoreML pipelines want the Neural Engine in
 any case.
 
-One dependency, FluidAudio, pinned to 0.15.6. It brings the Parakeet, Canary and
-Nemotron CoreML pipelines and fetches a binary xcframework at resolve time, so
-the first build needs the network. Beyond it nothing here needs Python, ffmpeg or
-a package manager; audio decoding is AVFoundation and the Apple engines are the
-system's own frameworks.
+Two dependencies: FluidAudio, pinned to 0.15.6, which brings the Parakeet, Canary
+and Nemotron CoreML pipelines; and transcribe.cpp 0.2.3 as the `CTranscribe`
+binary target. Both fetch at resolve time, so the first build needs the network.
+Beyond them `build/speech` needs no Python, no ffmpeg and no package manager:
+audio decoding is AVFoundation and the Apple engines are the system's own
+frameworks. The measuring tools under `tools/` are Python, and the optional MLX
+helper wants XcodeGen and Apple's Metal toolchain, but neither is on the path to
+the binary.
+
+The optional `speech-mlx` helper has its own pins - mlx-audio-swift 0.1.3 on
+mlx-swift 0.31.6 - and its own project, deliberately off the main binary's
+dependency graph. `speech` builds, tests and ships without it; the `mlx.*` rows
+then report `unavailable` with a reason rather than disappearing.
 
 ## Usage
 
@@ -59,7 +69,7 @@ here, and 3 when a model is not installed.
 `notices` is defined by the plan and arrives in a later stage; it refuses with a
 reason rather than pretending not to exist.
 
-Global options: `--json` (JSONL events on stdout, see `docs/protocol.md`),
+Global options: `--json` (JSONL events on stdout, see [docs/protocol.md](docs/protocol.md)),
 `--models-dir <path>`, `--log <path>`, `--verbose`.
 
 ### Examples
@@ -117,15 +127,30 @@ rates. A run that scored no rows exits 1 rather than reporting 0.00%.
 
 ## Engines
 
-See `docs/engines.md` for the capability flags and `docs/catalog.md` for the
-inventory; `speech catalog` prints it. Three engine families are compiled in:
-the two Apple modules (`apple.transcriber`, `apple.dictation`; macOS 26 and
-up), nine FluidAudio CoreML rows (`fluid.*`), and thirteen GGUF rows through
-transcribe.cpp (`ggml.*`).
+See [docs/engines.md](docs/engines.md) for the capability flags and
+[docs/catalog.md](docs/catalog.md) for the inventory; `speech catalog` prints it.
+Four engine families: the two Apple modules (`apple.transcriber`,
+`apple.dictation`; macOS 26 and up), fourteen FluidAudio CoreML rows (`fluid.*`),
+thirteen GGUF rows through transcribe.cpp (`ggml.*`), and five MLX rows
+(`mlx.*`). The first three are compiled in; the MLX rows run in a separate
+`speech-mlx` process and are the one family a build can be missing, which
+[docs/mlx-helper.md](docs/mlx-helper.md) specifies.
 
-Live mode is documented in `docs/live.md` and today covers the two Apple rows;
-`speech engines` marks every row that can stream with a `live` flag.
+Live mode is documented in [docs/live.md](docs/live.md) and covers fourteen rows
+across three engines; `speech engines` marks every row that can stream with a
+`live` flag.
+
+## Documentation
+
+| Document | What is in it |
+| --- | --- |
+| [docs/engines.md](docs/engines.md) | Every backend, its capability flags, what it costs and why it is shaped the way it is |
+| [docs/catalog.md](docs/catalog.md) | What the model inventory reports, field by field, and why it ranks nothing |
+| [docs/models.catalog.tsv](docs/models.catalog.tsv) | The inventory itself, exported from `speech catalog --tsv` and diffed by `test.sh`, which fails when it is stale |
+| [docs/protocol.md](docs/protocol.md) | The `--json` event stream: every event kind and every field |
+| [docs/live.md](docs/live.md) | How a live microphone session is driven, what each engine family demands of it, and how a run stops |
+| [docs/mlx-helper.md](docs/mlx-helper.md) | The `speech-mlx` wire format, whose examples the test suite parses |
 
 ## License
 
-Apache-2.0. See LICENSE.
+Apache-2.0. See [LICENSE](LICENSE).
