@@ -8,13 +8,19 @@ three languages the project started with. Here the model list is derived from
 language - so adding a language is naming it, and adding a model to the catalog
 puts it in the matrix without editing anything.
 
-The intended use is an unattended run over hours or days:
+Languages are named by tag - `es`, `es-ES`, `pt-BR`, `zh` - and resolved to the
+FLEURS directory holding them, so nobody has to know that Spanish is filed under
+es_419 or Mandarin under cmn_hans_cn. Those directory names still work where a
+script already uses them. `--list` prints every one of them. The intended use is an
+unattended run over hours or days:
 
     # what would run, how big the downloads are, how long it will take
-    tools/language-battery.py --plan cs_cz uk_ua ru_ru
+    tools/language-battery.py --plan cs uk ru
 
-    # do it, keeping the Mac awake, with a log to read afterwards
-    tools/language-battery.py --caffeinate --download cs_cz uk_ua ru_ru 2>&1 | tee battery.log
+    # do it, keeping the Mac awake, with a log to read afterwards. Audio is
+    # fetched as needed with or without --download, which is about model weights
+    # (--no-fetch is what declines the audio).
+    tools/language-battery.py --caffeinate --download cs uk ru 2>&1 | tee battery.log
 
 It is resumable at the cell. A cell that has a summary.json and no failure
 marker is skipped, a cell that failed is remembered and skipped too
@@ -61,6 +67,29 @@ CAFFEINATED = "SPEECH_BATTERY_CAFFEINATED"
 REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 FETCH_FLEURS = os.path.join(REPO, "tools", "fetch-fleurs.sh")
 FLEURS_TREE = "https://huggingface.co/api/datasets/google/fleurs/tree/main/data"
+
+# Every directory under that tree, as of the 2022 release. FLEURS is a published,
+# frozen dataset - 102 languages, unchanged since - so this is baked in rather
+# than fetched: it lets a language tag be resolved to a directory offline and
+# instantly, which is the difference between `--plan es` working on a plane and
+# not. It is only a lookup table. A name that is not in it but looks like a
+# FLEURS directory is still passed through untouched, so a future release that
+# adds a language needs no edit here to be usable.
+FLEURS_DIRECTORIES = [
+    "af_za", "am_et", "ar_eg", "as_in", "ast_es", "az_az", "be_by", "bg_bg",
+    "bn_in", "bs_ba", "ca_es", "ceb_ph", "ckb_iq", "cmn_hans_cn", "cs_cz",
+    "cy_gb", "da_dk", "de_de", "el_gr", "en_us", "es_419", "et_ee", "fa_ir",
+    "ff_sn", "fi_fi", "fil_ph", "fr_fr", "ga_ie", "gl_es", "gu_in", "ha_ng",
+    "he_il", "hi_in", "hr_hr", "hu_hu", "hy_am", "id_id", "ig_ng", "is_is",
+    "it_it", "ja_jp", "jv_id", "ka_ge", "kam_ke", "kea_cv", "kk_kz", "km_kh",
+    "kn_in", "ko_kr", "ky_kg", "lb_lu", "lg_ug", "ln_cd", "lo_la", "lt_lt",
+    "luo_ke", "lv_lv", "mi_nz", "mk_mk", "ml_in", "mn_mn", "mr_in", "ms_my",
+    "mt_mt", "my_mm", "nb_no", "ne_np", "nl_nl", "nso_za", "ny_mw", "oc_fr",
+    "om_et", "or_in", "pa_in", "pl_pl", "ps_af", "pt_br", "ro_ro", "ru_ru",
+    "sd_in", "sk_sk", "sl_si", "sn_zw", "so_so", "sr_rs", "sv_se", "sw_ke",
+    "ta_in", "te_in", "tg_tj", "th_th", "tr_tr", "uk_ua", "umb_ao", "ur_pk",
+    "uz_uz", "vi_vn", "wo_sn", "xh_za", "yo_ng", "yue_hant_hk", "zu_za",
+]
 
 # FLEURS names its directories <language>_<region>, sometimes with a script in
 # between (cmn_hans_cn, yue_hant_hk). The catalog spells languages the way the
@@ -167,6 +196,181 @@ def tag_for(fleurs_dir):
 
 def primary(tag):
     return tag.replace("_", "-").split("-")[0].lower()
+
+
+def script_of(name):
+    """The script subtag in a tag or a directory name, lowercased, or ''.
+
+    'zh-Hant' -> 'hant', 'cmn_hans_cn' -> 'hans', 'pl_pl' -> ''. A script is the
+    only 4-letter alphabetic subtag BCP-47 allows in the language's own part of
+    a tag, and FLEURS spells it the same way in the two directory names that
+    carry one. A single-character subtag opens an extension or a private-use
+    sequence (-u-, -t-, -x-), whose payload may be four letters without being a
+    script, so the scan stops there rather than reading 'zh-CN-x-test' as Test.
+    """
+    parts = name.replace("_", "-").lower().split("-")
+    for part in parts[1:]:
+        if len(part) == 1:
+            break
+        if len(part) == 4 and part.isalpha():
+            return part
+    return ""
+
+
+def region_of(name):
+    """The region subtag in a tag or a directory name, lowercased, or ''.
+
+    The same shape rule tag_for() applies in the other direction: two letters or
+    three digits, and it is the last such subtag before any extension.
+    """
+    region = ""
+    for part in name.replace("_", "-").lower().split("-")[1:]:
+        if len(part) == 1:
+            break
+        if (len(part) == 2 and part.isalpha()) or (len(part) == 3 and part.isdigit()):
+            region = part
+    return region
+
+
+def note_for(name, wanted, directory):
+    """The line to print when the split chosen is not the one asked for, or None.
+
+    Silence is the answer when the only difference is a region the dataset added
+    to a bare tag: 'pl' -> pl_pl surprises nobody, and a note on every language
+    of every run is noise that trains people to skip the ones that matter. The
+    header printed for each language already names the directory and its tag.
+
+    That justification covers a region and stops there. tag_for() never emits a
+    script, so a script that was asked for and not honored is invisible in the
+    header, and it is the difference that matters most: Latin against Cyrillic
+    references measures the writing system rather than the recognizer.
+
+    A note is earned when something the request actually stated was not honored:
+    the language is filed under a different code (zh -> cmn_hans_cn, tl ->
+    fil_ph, no -> nb_no), a region was asked for and is not the one that exists
+    (es-ES -> es_419), or the split turns out to carry a script the request did
+    not mention (cmn -> cmn_hans_cn).
+    """
+    tag = tag_for(directory)
+    want_region = region_of(wanted)
+    want_script = script_of(wanted)
+    dir_script = script_of(directory)
+
+    changed = (primary(directory) != primary(wanted)
+               or (want_region and want_region != region_of(tag))
+               or (dir_script and not want_script)
+               or (want_script and not dir_script))
+    if not changed:
+        return None
+
+    note = ("%s: FLEURS files this language as %s (%s); using it"
+            % (name.strip(), directory, tag))
+    if want_script and not dir_script:
+        # Nothing in the directory name says which script the references use, so
+        # this cannot be called a contradiction the way zh-Hant can - only flagged.
+        note += ("\n      the %s script was asked for and this split does not "
+                 "say which it uses" % want_script.capitalize())
+    return note
+
+
+def resolve_language(name):
+    """A language tag as anyone would write it -> the FLEURS directory holding it.
+
+    'es', 'es-ES', 'es_ES', 'es_419' and 'es-419' all arrive at es_419, because
+    that is the only Spanish split FLEURS ships. Returns (fleurs_dir, note),
+    where note is a line worth printing when the answer is not literally what
+    was asked for, or (None, complaint) when nothing should be run.
+
+    Callers should not have to know that Spanish is filed under es_419, that
+    Mandarin is cmn_hans_cn, or that the Portuguese is Brazilian. FLEURS carries
+    exactly one split per language, so a bare primary subtag is never ambiguous
+    - checked against every name in the table - and a region that does not match
+    is not an error either: asking for es-ES can only mean the Spanish that
+    exists. It is dropped with a note rather than silently, because it changes
+    what gets measured and the reference text is not in the dialect asked for.
+
+    A script subtag is not treated that way. Dropping -Hant to score against
+    Simplified references would measure the writing system rather than the
+    recognizer, which is the same objection the nb/nn comment above makes, so a
+    script that provably contradicts the split is refused instead.
+    """
+    wanted = name.strip().replace("_", "-").lower()
+    if not wanted:
+        return None, "empty language name"
+    # A tag is subtags joined by separators and nothing else. The check is a
+    # shape test rather than a blocklist because the value becomes a path
+    # component under --out and the corpus directory, and because anything
+    # looser lets a name with a space through as its first subtag alone:
+    # 'es-419 es-ES' would otherwise resolve, quietly, to Spanish.
+    if not re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", wanted):
+        return None, ("'%s' is not a language name. A tag is letters and digits in "
+                      "groups separated by '-' or '_':\nes, es-419, pt-BR, cmn_hans_cn."
+                      % name)
+
+    # An actual directory name wins outright: it is the dataset's own spelling.
+    for directory in FLEURS_DIRECTORIES:
+        if directory == wanted.replace("-", "_"):
+            return directory, None
+
+    # Then the tag each directory is known by, region and all: pt-BR, es-419.
+    # This still earns a note: 'zh-CN' is the tag for a directory called
+    # cmn_hans_cn, and nothing about the answer is guessable from the request.
+    for directory in FLEURS_DIRECTORIES:
+        if tag_for(directory).lower() == wanted:
+            return directory, note_for(name, wanted, directory)
+
+    # Then the language alone. Aliases are consulted so the older codes people
+    # still type - iw, in, jw, tl - land on the same split as the current ones.
+    want = primary(wanted)
+    # An extlang names the language more precisely than the primary does, and
+    # BCP-47 puts it second: 'zh-yue' is Cantonese, which FLEURS holds separately
+    # from Mandarin, so matching on 'zh' alone would score the wrong language.
+    parts = wanted.split("-")
+    if len(parts) > 1 and len(parts[1]) == 3 and parts[1].isalpha():
+        if any(primary(d) == parts[1] for d in FLEURS_DIRECTORIES):
+            want = parts[1]
+    candidates = [want] + LANGUAGE_ALIASES.get(want, [])
+    matches = []
+    for candidate in candidates:
+        for directory in FLEURS_DIRECTORIES:
+            if directory in matches:
+                continue
+            if primary(tag_for(directory)) == candidate or primary(directory) == candidate:
+                matches.append(directory)
+    if len(matches) > 1:
+        # Cannot happen against today's table; if a later release ships two
+        # splits for one language, say so rather than picking one by list order.
+        return None, ("'%s' is ambiguous - FLEURS has %s. Name the one you want."
+                      % (name, " and ".join(matches)))
+    if matches:
+        directory = matches[0]
+        want_script = script_of(wanted)
+        dir_script = script_of(directory)
+        if want_script and dir_script and want_script != dir_script:
+            return None, ("'%s' asks for the %s script, and FLEURS' split for this "
+                          "language is %s (%s).\nThe references are in the other "
+                          "orthography, so a score against them would measure the\n"
+                          "writing system rather than the recognizer."
+                          % (name, want_script.capitalize(), directory,
+                             dir_script.capitalize()))
+        return directory, note_for(name, wanted, directory)
+
+    # Nothing in the table knows this language. An underscore is the dataset's
+    # own separator, so spelling it that way is taken as naming a directory
+    # literally - the escape hatch for a FLEURS release newer than the table.
+    # A tag spelling is refused instead, so that a language the table rejects on
+    # purpose, nn, is refused in every tag spelling. nn_NO still reaches the
+    # hatch, which is harmless: there is no such split to fetch, so it cannot be
+    # scored against the Bokmal references the refusal exists to keep it away
+    # from.
+    if "_" in name:
+        directory = wanted.replace("-", "_")
+        return directory, ("'%s' is not a FLEURS directory this program knows; "
+                           "trying it anyway" % directory)
+
+    return None, ("'%s' does not name a language in FLEURS. It takes a language tag "
+                  "(es, es-419, pt-BR, zh) or a\ndirectory name (es_419). Run --list "
+                  "for all %d." % (name, len(FLEURS_DIRECTORIES)))
 
 
 def match_tag(wanted, supported):
@@ -829,6 +1033,18 @@ def command_list(options, catalog):
         if not names:
             die("could not reach the FLEURS listing and no split is downloaded yet")
         print("(offline: showing only the splits already in %s)" % root)
+    else:
+        # This is the one place the live listing and the baked table are both in
+        # hand, so it is the only place that can notice the table going stale.
+        # A language missing from the table resolves only by its directory name,
+        # which is exactly the confusing case: --list would show it while a tag
+        # for it came back "does not name a language in FLEURS".
+        added = [name for name in names if name not in FLEURS_DIRECTORIES]
+        if added:
+            print("(FLEURS has %d split(s) this program's table does not list: %s.\n"
+                  " They are reachable by directory name; add them to "
+                  "FLEURS_DIRECTORIES to name them by tag.)"
+                  % (len(added), " ".join(added)))
 
     print("%-14s %-7s %-9s %-22s %s" % ("fleurs", "tag", "models", "engines", "corpus"))
     for name in names:
@@ -1054,13 +1270,33 @@ def parse_arguments(argv):
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Score every model that claims a language against that "
                     "language's FLEURS test split.",
-        epilog="A <fleurs-dir> is a directory name from the FLEURS dataset:\n"
-               "pl_pl, cs_cz, uk_ua, pt_br, cmn_hans_cn. --list prints all 102\n"
-               "with the number of models that claim each.\n\n"
+        epilog="Languages are positional arguments, one or more of them, each a\n"
+               "language tag: es, es-ES, pt-BR, zh. FLEURS' own directory names\n"
+               "(es_419, cmn_hans_cn) work too. FLEURS ships one split per\n"
+               "language, so a bare tag is never ambiguous and a region it does\n"
+               "not have is resolved to the one it does, with a note. --list\n"
+               "prints them all, with how many models claim each and which\n"
+               "engines.\n"
+               "\n"
+               "examples:\n"
+               "  # every language, how many models claim it, whether it is downloaded\n"
+               "  tools/language-battery.py --list\n"
+               "  # what a Spanish run would cost, in cells, hours and gigabytes\n"
+               "  tools/language-battery.py --plan es\n"
+               "  # run it on all 4 engines. Audio is fetched as needed either way;\n"
+               "  # --download is what also pulls the model weights that are missing\n"
+               "  tools/language-battery.py --caffeinate --download es 2>&1 | tee battery-es.log\n"
+               "  # a quicker look: two engines, two languages, 50 utterances each\n"
+               "  tools/language-battery.py --engines \"apple mlx\" --limit 50 es pt\n"
+               "\n"
                "SPEECH_CORPUS_DIR  where FLEURS lives (default ~/Corpora)\n"
                "SPEECH_MODELS_DIR  where model weights live, read by `speech` itself")
 
-    parser.add_argument("languages", nargs="*", metavar="fleurs-dir")
+    parser.add_argument("languages", nargs="*", metavar="language",
+                        help="one or more language tags (es, pt-BR, zh) or FLEURS "
+                             "directory names (es_419); every model that claims the "
+                             "language is scored against its FLEURS test split. "
+                             "--list to see them all")
     parser.add_argument("--list", action="store_true",
                         help="list FLEURS languages and how many models claim each, then exit")
     parser.add_argument("--plan", action="store_true",
@@ -1146,6 +1382,42 @@ def main(argv):
                   [CAFFEINATE, "-i", sys.executable, os.path.realpath(__file__)] + argv[1:],
                   dict(os.environ, **{CAFFEINATED: "1"}))
 
+    # The languages are settled first, because none of it needs the binary or the
+    # catalog: resolution is offline, against the baked table. Ordering this
+    # after the --speech check would answer a bare invocation with "no binary at
+    # build/speech", which tells someone who does not yet know how to name a
+    # language nothing about how to name one. It sits after the --caffeinate
+    # re-exec so that the notes below are printed once, by the child, rather
+    # than by both halves of the exec.
+    if not options.list:
+        if not options.languages:
+            parser.print_usage(sys.stderr)
+            die("no languages given. A language is a positional argument, written as a\n"
+                "language tag - es, es-ES, pt-BR, zh - or as a FLEURS directory name:\n"
+                "\n"
+                "    tools/language-battery.py --plan es\n"
+                "\n"
+                "--list prints all %d languages, --help the rest of the options."
+                % len(FLEURS_DIRECTORIES), status=2)
+
+        resolved = []
+        announced = []
+        for name in options.languages:
+            directory, note = resolve_language(name)
+            if directory is None:
+                die(note, status=2)
+            # The note belongs to the name, the run belongs to the directory. In
+            # `es-419 es-ES` the second name is the one with something to say and
+            # the first is the one that claims the slot, so notes are printed
+            # before the duplicate is dropped, and de-duplicated on their own text.
+            if note and note not in announced:
+                print("note: %s" % note, file=sys.stderr)
+                announced.append(note)
+            if directory in resolved:
+                continue                # `es es-419` is one run, not two
+            resolved.append(directory)
+        options.languages = resolved
+
     if not os.access(options.speech, os.X_OK):
         die("no binary at %s - run ./build.sh first, or pass --speech <path>"
             % options.speech, status=2)
@@ -1154,18 +1426,6 @@ def main(argv):
 
     if options.list:
         return command_list(options, catalog)
-
-    if not options.languages:
-        parser.print_usage(sys.stderr)
-        die("no languages given", status=2)
-
-    # Reject a name that is not a FLEURS directory before spending an hour on it.
-    # The check is offline: a name that is not <lang>_<region> is a typo whatever
-    # the dataset holds, and the network check belongs to --list.
-    for name in options.languages:
-        if "_" not in name:
-            die("'%s' is not a FLEURS directory name - they look like pl_pl, cs_cz, "
-                "pt_br.\nRun --list for the full set." % name, status=2)
 
     if options.plan:
         return command_plan(options, catalog)
