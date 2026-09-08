@@ -95,15 +95,15 @@ A manifest is a UTF-8 TSV with no header:
 `tools/make-manifest.sh <folder>` pairs recordings with same-basename `.txt`
 references. Public sets rank models; your own recordings decide.
 
-`tools/language-battery.sh` runs the whole matrix for one or more languages:
+`tools/language-battery.py` runs the whole matrix for one or more languages:
 every transcriber row whose loaded model claims the language, against that
 language's FLEURS split, resumable at the cell so a multi-day run survives being
 interrupted. It picks the models from `speech catalog --json` rather than a
 list, so a new catalog row joins the matrix by existing.
 
-    tools/language-battery.sh --list                 # the 102 FLEURS languages, and who claims each
-    tools/language-battery.sh --plan cs_cz uk_ua     # the cells, the downloads, the hours
-    tools/language-battery.sh --caffeinate --download cs_cz uk_ua
+    tools/language-battery.py --list                 # the 102 FLEURS languages, and who claims each
+    tools/language-battery.py --plan cs_cz uk_ua     # the cells, the downloads, the hours
+    tools/language-battery.py --caffeinate --download cs_cz uk_ua
 
 Scoring normalizes to NFC, lowercases in the reference language's locale, and
 replaces punctuation and symbols with spaces - keeping an apostrophe that sits

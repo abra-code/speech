@@ -80,7 +80,7 @@ fi
 # the catalog, while the three Whisper rows that can actually transcribe
 # Javanese all list `jw` and will not match it.
 #
-# tools/language-battery.sh resolves a tag per model for exactly this reason -
+# tools/language-battery.py resolves a tag per model for exactly this reason -
 # its `tag_for` mirrors this function, and its LANGUAGE_ALIASES table covers
 # what a single column cannot. Keep the two in step. For a hand-run eval, pass
 # --language yourself against a manifest with no language column.
