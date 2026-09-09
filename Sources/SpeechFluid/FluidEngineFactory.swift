@@ -37,7 +37,14 @@ public enum FluidEngineFactory {
         for tier in NemotronFlavor.chunkTiers {
             rows.append((model: "nemotron-multilingual", variant: String(tier)))
         }
-        rows.append((model: "canary-1b-v2", variant: "int4"))
+        
+        // `canary-1b-v2@int4` is missing on purpose, and `make` below still
+        // builds it. It is unlisted rather than removed: the measurements that
+        // decided that are in `Catalog.canaryRows`, and both lists have to drop
+        // it together or `speech catalog`'s join reports the survivor as an
+        // orphan. An id typed in full still downloads, loads and transcribes.
+        // rows.append((model: "canary-1b-v2", variant: "int4"))
+        
         for variant in ["int8", "fp16"] {
             rows.append((model: "parakeet-unified", variant: variant))
         }

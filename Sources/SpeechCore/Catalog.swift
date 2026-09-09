@@ -154,6 +154,33 @@ public enum Catalog {
 
     // MARK: - Canary
 
+    // `fluid.canary-1b-v2@int4` is deliberately absent, and this is the one
+    // exclusion in the file that is not "no engine can build it". The engine
+    // still exists and still builds, so an id typed in full downloads and runs;
+    // it is only unlisted, which is why the note lives here rather than in
+    // `CanaryEngine`.
+    //
+    // The reason is not a preference between rows, which this file does not
+    // express. It is that FluidInference's int4 CoreML conversion of these
+    // weights is beaten by the GGUF build of the same weights on every axis
+    // measured, and is broken on M1-generation hardware. Against
+    // `ggml.canary-1b-v2@q4_k_m` over FLEURS, all 647 to 908 rows per language:
+    //
+    //     language   int4 WER   q4_k_m WER   int4 RTFx   q4_k_m RTFx
+    //     de_de          6.96         4.59         7.7          59.5
+    //     en_us          6.36         5.04         7.6          63.1
+    //     es_419         6.03         3.10         5.4          49.8
+    //     pl_pl         11.77         7.19         6.0          49.3
+    //
+    // Those are M5 figures, where the conversion works as intended. On M1 and
+    // M1 Pro the ANE compiler fails on part of the graph - "ANECCompile()
+    // FAILED", after 85 minutes of trying, byte-identical on both chips - and
+    // leaves 149 MB of a 570 MB model on the Neural Engine with the rest on
+    // single-threaded BNNS: RTFx 3.7 and 3.4 GB of memory against the GGUF's
+    // 36.3 and 0.89 GB. FluidAudio labels the conversion beta.
+    //
+    // If a later conversion fixes this, the row goes back and this note goes
+    // with it. Re-measure before believing that, and re-measure on an M1.
     static let canaryRows: [CatalogRow] = [
         CatalogRow(
             id: "ggml.canary-1b-v2@q8_0",
@@ -173,14 +200,6 @@ public enum Catalog {
             precision: "q4_k_m",
             sizeBytes: 735_476_448,
             label: "Canary 1B v2 (Q4_K_M)"),
-        CatalogRow(
-            id: "fluid.canary-1b-v2@int4",
-            family: .canary,
-            source: "FluidInference/canary-1b-v2-coreml",
-            parametersM: 1000,
-            precision: "int4",
-            sizeBytes: 569_316_715,
-            label: "Canary 1B v2 (int4)"),
     ]
 
     // MARK: - Whisper

@@ -15,7 +15,6 @@
 # id	family	engine	role	source	file	params_m	precision	languages	modes	caps	min_macos	size_bytes	label
 apple.dictation	apple	apple	transcriber	-	-	-	system	ar,ca,cs,da,de,el,en,es,fi,fr,he,hi,hr,hu,id,it,ja,ko,ms,nb,nl,pl,pt,ro,ru,sk,sv,th,tr,uk,vi,yue,zh	batch,live	word_ts,seg_ts,vocab,lang_hint	26.0	-	Apple dictation (built in)
 apple.transcriber	apple	apple	transcriber	-	-	-	system	de,en,es,fr,it,ja,ko,pt,yue,zh	batch,live	word_ts,seg_ts,lang_hint	26.0	-	Apple long-form (built in)
-fluid.canary-1b-v2@int4	canary	fluid	transcriber	FluidInference/canary-1b-v2-coreml	-	1000	int4	bg,cs,da,de,el,en,es,et,fi,fr,hr,hu,it,lt,lv,mt,nl,pl,pt,ro,ru,sk,sl,sv,uk	batch	lang_hint	15.0	569316715	Canary 1B v2 (int4)
 ggml.canary-1b-v2@q8_0	canary	ggml	transcriber	handy-computer/canary-1b-v2-gguf	canary-1b-v2-Q8_0.gguf	1000	q8_0	bg,hr,cs,da,nl,en,et,fi,fr,de,el,hu,it,lv,lt,mt,pl,pt,ro,sk,sl,es,sv,ru,uk	batch	lang_hint	15.0	1144290016	Canary 1B v2 (Q8_0)
 ggml.canary-1b-v2@q4_k_m	canary	ggml	transcriber	handy-computer/canary-1b-v2-gguf	canary-1b-v2-Q4_K_M.gguf	1000	q4_k_m	bg,hr,cs,da,nl,en,et,fi,fr,de,el,hu,it,lv,lt,mt,pl,pt,ro,sk,sl,es,sv,ru,uk	batch	lang_hint	15.0	735476448	Canary 1B v2 (Q4_K_M)
 fluid.nemotron-multilingual@2240	nemotron	fluid	transcriber	FluidInference/Nemotron-3.5-ASR-Streaming-Multilingual-0.6b-CoreML	-	600	int8	*	batch,live	word_ts,seg_ts,lang_hint	15.0	664846846	Nemotron 3.5 streaming (2.24 s chunks)

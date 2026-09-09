@@ -23,10 +23,12 @@ are stage 6.
     ./test.sh               # builds, runs the unit tests and the CLI smoke tests
     ./build-speech-mlx.sh   # optional: produces build/speech-mlx, for the mlx.* rows
 
-Deployment target macOS 15, set by `fluid.canary-1b-v2@int4`: its int4 weight
-payloads need CoreML's macOS 15 runtime and no other precision is published for
-that model. Nothing else needs it - FluidAudio itself declares macOS 14 and has
-no OS gate in any engine used here. The Apple engines need macOS 26, are weak
+Deployment target macOS 15, still set by `fluid.canary-1b-v2@int4`: its int4
+weight payloads need CoreML's macOS 15 runtime and no other precision is
+published for that model. That row is no longer listed (see Engines below) but
+its engine is still built and still runs from an id typed in full, so the floor
+stays. Nothing else needs it - FluidAudio itself declares macOS 14 and has no OS
+gate in any engine used here. The Apple engines need macOS 26, are weak
 linked, and report why when they are unavailable. arm64 only: FluidAudio's sources use Float16, which is
 unavailable on x86_64 macOS, and its CoreML pipelines want the Neural Engine in
 any case.
@@ -130,11 +132,36 @@ rates. A run that scored no rows exits 1 rather than reporting 0.00%.
 See [docs/engines.md](docs/engines.md) for the capability flags and
 [docs/catalog.md](docs/catalog.md) for the inventory; `speech catalog` prints it.
 Four engine families: the two Apple modules (`apple.transcriber`,
-`apple.dictation`; macOS 26 and up), fourteen FluidAudio CoreML rows (`fluid.*`),
+`apple.dictation`; macOS 26 and up), thirteen FluidAudio CoreML rows (`fluid.*`),
 thirteen GGUF rows through transcribe.cpp (`ggml.*`), and five MLX rows
 (`mlx.*`). The first three are compiled in; the MLX rows run in a separate
 `speech-mlx` process and are the one family a build can be missing, which
 [docs/mlx-helper.md](docs/mlx-helper.md) specifies.
+
+### One row is built but not listed
+
+`fluid.canary-1b-v2@int4` is the fourteenth FluidAudio row. The engine is still
+compiled in and an id typed in full still downloads, loads and transcribes, but
+the row is absent from `speech catalog` and `speech engines` so that nothing
+offers it. It was measured against `ggml.canary-1b-v2@q4_k_m`, which is the same
+NVIDIA weights quantized to 4 bits as a GGUF, over the whole of FLEURS per
+language:
+
+| language | int4 WER | q4_k_m WER | int4 RTFx | q4_k_m RTFx |
+| --- | --- | --- | --- | --- |
+| de_de | 6.96 | 4.59 | 7.7 | 59.5 |
+| en_us | 6.36 | 5.04 | 7.6 | 63.1 |
+| es_419 | 6.03 | 3.10 | 5.4 | 49.8 |
+| pl_pl | 11.77 | 7.19 | 6.0 | 49.3 |
+
+Those are M5 figures, on the hardware where the conversion works. On M1 and M1
+Pro the CoreML runtime fails to compile part of the graph for the Neural Engine
+("ANECCompile() FAILED"), takes 85 minutes to give up, and then runs 88% of each
+decoder step on a single BNNS thread: RTFx 3.7 and 3.4 GB of peak memory, where
+the GGUF row measures 36.3 and 0.89 GB on the same machine. The two M1-class
+machines produced byte-identical Neural Engine figures, so this is a property of
+that ANE generation and that conversion, not of one Mac. FluidAudio labels the
+conversion beta; if a later one fixes it, the row can come back.
 
 Live mode is documented in [docs/live.md](docs/live.md) and covers fourteen rows
 across three engines; `speech engines` marks every row that can stream with a

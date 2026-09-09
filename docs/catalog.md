@@ -45,7 +45,9 @@ It deliberately does **not** carry languages, capability flags or the macOS floo
 
 The label is descriptive and never evaluative: it says which build a row is, not whether it is any good. A test enforces that too.
 
-The two halves are joined in `Sources/speech/Verbs/CatalogVerb.swift`, the one place where SpeechCore, SpeechApple, SpeechFluid and SpeechGGML are all visible. That join checks three things and refuses to write the file if any fails: a catalog row with no engine is a row nobody can run, an engine with no catalog row is a model that never gets reported, and a row whose repository or file name disagrees with the engine that would fetch it is a 404 halfway through a progress bar. The third check covers both `ggml` and `fluid` rows, each against its own engine's answer. The listing degrades with a warning instead, because one bad row must not cost a caller the other twenty-three.
+The two halves are joined in `Sources/speech/Verbs/CatalogVerb.swift`, the one place where SpeechCore, SpeechApple, SpeechFluid and SpeechGGML are all visible. That join checks three things and refuses to write the file if any fails: a catalog row with no engine is a row nobody can run, an engine with no catalog row is a model that never gets reported, and a row whose repository or file name disagrees with the engine that would fetch it is a 404 halfway through a progress bar. The third check covers both `ggml` and `fluid` rows, each against its own engine's answer. The listing degrades with a warning instead, because one bad row must not cost a caller the other thirty-two.
+
+The second check is also why a row cannot be retired from the inventory alone. `fluid.canary-1b-v2@int4` is deliberately unlisted - the measurements are in the README - and doing that meant dropping it from `Catalog.canaryRows` and from `FluidEngineFactory.catalogRows` in the same commit. Drop it from only the first and the join reports an engine nobody can see; drop it from only the second and the row has no engine. The engine itself stays compiled in, so the id still works when it is typed in full.
 
 ## File format
 

@@ -102,10 +102,18 @@ Neural Engine rather than in process footprint, so peak RSS cannot see it and
 They are also the only rows that accept a custom vocabulary, which they
 implement by spotting terms with a separate small CTC model.
 
-Fourteen rows: two Parakeet v3 precisions, three Nemotron streaming chunk tiers,
-one Canary precision, two Parakeet Unified precisions, four Parakeet Unified
-streaming latency tiers, and two helpers that transcribe nothing - the CTC
-spotter behind custom vocabulary, and the Silero detector below.
+Thirteen rows: two Parakeet v3 precisions, three Nemotron streaming chunk tiers,
+two Parakeet Unified precisions, four Parakeet Unified streaming latency tiers,
+and two helpers that transcribe nothing - the CTC spotter behind custom
+vocabulary, and the Silero detector below.
+
+A fourteenth, `fluid.canary-1b-v2@int4`, is built but unlisted. It is dropped
+from `Catalog.canaryRows` and from `FluidEngineFactory.catalogRows` together,
+which is what keeps the join below from reporting it as an engine with no
+catalog row; `make` still builds it, so the id still works when typed in full.
+The measurements are in the README: the GGUF build of the same weights is 1.3 to
+2.9 WER points better and 8x faster on an M5, and on M1-class hardware the ANE
+compile fails outright after 85 minutes and leaves the row at RTFx 3.7.
 
 ### `fluid.silero-vad`, the row that produces no text
 
@@ -267,7 +275,9 @@ recording in a single request took `mlx.parakeet-tdt-0.6b-v3` to 21.91 GB at
 Both libraries would run lower - FluidAudio declares macOS 14 and transcribe.cpp
 macOS 13 - but the binary's deployment target is macOS 15, set by
 `fluid.canary-1b-v2@int4`, whose int4 weight payloads need CoreML's macOS 15
-runtime and which has no other published precision.
+runtime and which has no other published precision. Unlisting that row did not
+lower the floor: its engine is still compiled in and still loads an installed
+copy, so the runtime requirement is still in the binary.
 
 A build without those targets simply has no `fluid` or `ggml` entry in the
 engine registry and reports `unavailable` for those ids, rather than failing to
