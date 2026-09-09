@@ -17,12 +17,37 @@ into both binaries rather than copied into either.
 It produces `build/speech-mlx` and the resource bundles that have to sit beside
 it, then proves the result completes a handshake before calling itself done.
 
-Two prerequisites, both one-time per machine:
+Two prerequisites, both one-time per machine. The script offers to install the
+first for you; XcodeGen you install yourself:
 
 ```
-xcodebuild -downloadComponent MetalToolchain    # about 688 MB
+xcodebuild -downloadComponent MetalToolchain    # about 688 MB, offered by the script
 brew install xcodegen                           # only to regenerate the project
 ```
+
+Before building anything, the script runs `xcrun metal --version`. The compiler
+has to be executed rather than located: Xcode leaves a stub at that path whether
+or not the component is installed, so merely finding `metal` proves nothing. When
+that fails and the message says the component is what is missing, the script
+offers the download - and only then. A compiler stopped by something a download
+cannot fix (an unaccepted license, a `DEVELOPER_DIR` pointing at nothing) is
+reported with the tool's own message instead, as is Command Line Tools rather
+than a full Xcode as the active developer directory, which has no `xcodebuild`
+to fetch anything with.
+
+Decline the offer, or run with no terminal to ask on, and it prints the command
+and exits non-zero rather than hanging on a question nobody can see. "No
+terminal to ask on" means either stream: the question goes to stderr, so
+`2> build.log` counts as no terminal even from an interactive shell, and so, on
+the safe side, does `2>&1 | tee build.log`. `--download-metal-toolchain` answers
+that question with yes in advance, terminal or not - with the one exception
+below, where there is no question to answer.
+
+One state it will not guess at, flag or no flag: xcrun answers with Xcode's stub
+whether or not the component is installed when it cannot write its lookup cache
+and has no entry yet for this developer directory - a sandbox or container with
+a read-only per-user temp directory. The script says so and stops, rather than
+spending 688 MB on what may already be there.
 
 ## Why this is an Xcode project
 
