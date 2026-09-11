@@ -33,6 +33,11 @@ public enum GGMLEngineFactory {
         _ spec: EngineSpec, segmenter: any AudioSegmenter
     ) throws -> any TranscriptionEngine {
         guard let row = GGMLCatalog.row(model: spec.model) else {
+            // A catalog entry that exists but could not be used says why,
+            // rather than claiming the model is unknown.
+            if let problem = GGMLCatalog.problems.first(where: { $0.id == "ggml.\(spec.model)" }) {
+                throw SpeechError.usage("the catalog entry is unusable: \(problem.message)")
+            }
             throw SpeechError.usage(
                 "unknown ggml model '\(spec.model)'"
                 + " (have: \(implementedModels.joined(separator: ", ")))")
@@ -47,9 +52,16 @@ public enum GGMLEngineFactory {
     /// naming rule that nothing compares.
     public static func weights(for model: String, variant: String?) -> (repo: String, file: String)? {
         guard let row = GGMLCatalog.row(model: model),
-              let quant = try? GGMLCatalog.quant(for: row, variant: variant)
+              let quant = try? GGMLCatalog.quant(for: row, variant: variant),
+              let file = row.fileName(quant: quant)
         else { return nil }
-        return (row.repo, row.fileName(quant: quant))
+        return (row.repo, file)
+    }
+
+    /// The `ggml` catalog entries this engine cannot use: the entry's
+    /// `<engine>.<model>` key and why.
+    public static var catalogProblems: [(key: String, message: String)] {
+        GGMLCatalog.problems.map { (key: $0.id, message: $0.message) }
     }
 
     /// Capabilities without building the engine, for `speech engines`.

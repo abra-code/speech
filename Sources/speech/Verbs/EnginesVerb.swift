@@ -115,7 +115,9 @@ func knownEngines() -> [KnownEngine] {
             available: mlxReason == nil, reason: mlxReason)
     }
 
-    return apple + fluid + ggml + mlx
+    // A hidden catalog entry is buildable - an id typed in full still runs -
+    // but unlisted, and this is a listing.
+    return (apple + fluid + ggml + mlx).filter { !Catalog.isHidden(id: $0.id) }
 }
 
 /// The published flag names live on `EngineCapabilities` so that this verb, the

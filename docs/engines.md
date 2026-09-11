@@ -107,10 +107,10 @@ two Parakeet Unified precisions, four Parakeet Unified streaming latency tiers,
 and two helpers that transcribe nothing - the CTC spotter behind custom
 vocabulary, and the Silero detector below.
 
-A fourteenth, `fluid.canary-1b-v2@int4`, is built but unlisted. It is dropped
-from `Catalog.canaryRows` and from `FluidEngineFactory.catalogRows` together,
-which is what keeps the join below from reporting it as an engine with no
-catalog row; `make` still builds it, so the id still works when typed in full.
+A fourteenth, `fluid.canary-1b-v2@int4`, is built but unlisted. Its entry in
+`catalog/fluid.json` is `"hidden": true`, which leaves it out of both sides of
+the join below, so neither check reports it; `make` still builds it, so the id
+still works when typed in full.
 The measurements are in the README: the GGUF build of the same weights is 1.3 to
 2.9 WER points better and 8x faster on an M5, and on M1-class hardware the ANE
 compile fails outright after 85 minutes and leaves the row at RTFx 3.7.
@@ -196,7 +196,8 @@ energy minima, stitching the transcripts back with offset timestamps.
 
 Its xcframework is dynamic, unlike FluidAudio's static dependency, so
 `CTranscribe.framework` ships beside `build/speech` and whoever embeds one
-embeds both.
+embeds both - along with `speech-catalog/`, the built-in model catalog, which
+`speech` refuses to start without (docs/catalog.md).
 
 ## `mlx.*` - mlx-audio-swift 0.1.3 on mlx-swift 0.31.6, Metal, in another process
 

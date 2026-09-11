@@ -16,6 +16,7 @@ import SpeechCore
 import SpeechApple
 import SpeechFluid
 import SpeechGGML
+import SpeechMLX
 
 /// What the join found wrong. A row and an engine can disagree in three ways,
 /// and all three are build-time mistakes in this repository rather than
@@ -50,10 +51,20 @@ func catalogJoin() -> (entries: [CatalogFileRow], engines: [String: KnownEngine]
     var engines: [String: KnownEngine] = [:]
     for engine in knownEngines() { engines[engine.id] = engine }
 
+    // Entries that loaded but that their engine cannot use - a ggml model with
+    // no file, an mlx model with no type. Reported once, with the reason,
+    // instead of as "has no engine" for each of their rows.
+    let unusable = GGMLEngineFactory.catalogProblems + MLXEngineFactory.catalogProblems
+    let unusableKeys = Set(unusable.map(\.key))
+
     var entries: [CatalogFileRow] = []
-    var problems: [CatalogJoinProblem] = []
+    var problems: [CatalogJoinProblem] = unusable.map {
+        CatalogJoinProblem(id: $0.key, message: $0.message)
+    }
     var joined: Set<String> = []
     for row in Catalog.rows {
+        let key = String(row.id.prefix(while: { $0 != "@" }))
+        if unusableKeys.contains(key) { continue }
         guard let engine = engines[row.id] else {
             problems.append(CatalogJoinProblem(
                 id: row.id, message: "catalog row '\(row.id)' has no engine in this build"))
@@ -69,7 +80,7 @@ func catalogJoin() -> (entries: [CatalogFileRow], engines: [String: KnownEngine]
     for orphan in engines.keys.sorted() where !joined.contains(orphan) {
         problems.append(CatalogJoinProblem(
             id: orphan,
-            message: "engine '\(orphan)' has no catalog row; add one to Catalog.swift"))
+            message: "engine '\(orphan)' has no catalog row; add one to the catalog"))
     }
     return (entries, engines, problems)
 }
@@ -173,6 +184,17 @@ func catalogJSON(_ entry: CatalogEntry) -> [String: Any] {
     return out
 }
 
+func catalogSourcesJSON() -> [String: Any] {
+    let catalog = Catalog.current
+    var out: [String: Any] = [:]
+    if let builtin = catalog.builtinDirectory { out["builtin"] = builtin.path }
+    if let user = catalog.userDirectory {
+        out["user"] = user.path
+        out["user_exists"] = FileManager.default.fileExists(atPath: user.path)
+    }
+    return out
+}
+
 func runCatalog(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String]) async throws {
     var scanner = ArgScanner(verb: "catalog", arguments)
     var wantTSV = false
@@ -194,6 +216,13 @@ func runCatalog(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [Strin
                   --tsv   Write the inventory as models.catalog.tsv instead. The
                           checked-in copy at docs/models.catalog.tsv is this
                           output; test.sh regenerates it and fails on a change.
+
+                The rows are JSON documents: the built-in ones in speech-catalog/
+                beside this binary, then any *.json in the user catalog directory
+                ($SPEECH_CATALOG_DIR, default ~/Library/Application Support/
+                Speech/Catalog). A user entry with the same engine and model as a
+                built-in one replaces it, "hidden": true unlists one, and a new
+                engine and model adds one. The format is in docs/catalog.md.
                 """)
             return
         case "--tsv":
@@ -247,6 +276,9 @@ func runCatalog(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [Strin
             // told apart rather than looking like a contradiction.
             "environment": SpeechEnvironment.json(),
             "models_dir": globals.modelsDirectory.path,
+            // Where the rows came from, so a caller can find the file to edit
+            // and tell a user's addition from a built-in row.
+            "catalog": catalogSourcesJSON(),
             "rows": entries.map(catalogJSON),
         ]
         sink.document(try CLIHelpers.jsonString(payload, compact: true))

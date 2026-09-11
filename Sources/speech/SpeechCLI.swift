@@ -146,8 +146,29 @@ struct SpeechCLI {
             exit(2)
         }
 
+        // The catalog is the built-in documents beside this binary merged with
+        // the user's own. A missing built-in catalog is a packaging error and
+        // stops every verb here, with where it looked, rather than surfacing
+        // later as "unknown model" for an id that is perfectly ordinary.
+        let catalog: LoadedCatalog
+        do {
+            catalog = try LoadedCatalog.load(
+                builtin: try Catalog.builtinDirectory(), user: Catalog.userDirectory())
+        } catch let error as SpeechError {
+            writeErr("\(kProgram): \(error.message)\n")
+            exit(error.exitCode)
+        } catch {
+            writeErr("\(kProgram): \(error.localizedDescription)\n")
+            exit(1)
+        }
+        Catalog.install(catalog)
+
         let sink = EventSink(
             mode: globals.sinkMode, logURL: globals.logURL, verbose: globals.verbose)
+        // A bad entry in a user's own file costs that entry, not the run, and
+        // says so on every run until it is fixed - a model that silently
+        // vanished from the list would be worse.
+        for problem in catalog.problems { sink.warning(problem, code: "catalog") }
 
         do {
             try await verb.run(globals, sink, Array(arguments.dropFirst()))

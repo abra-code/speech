@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "note": "MLX checkpoints run by the speech-mlx helper. What a row downloads is a list of files, not a repository: an mlx-community repository holds files the loader never opens, and one row's files do not all come from one repository. files are fetched from the row's source; files_from names other repositories and what to take from each. type is what the helper calls the architecture, sent with load so the helper does not guess (the NeMo configs the Parakeet rows ship carry no model_type). languages, language_id and segment_timestamps are advisory until the weights are read. max_seconds is the longest buffer handed to the helper in one request (0 for no limit); speech cuts anything longer at a silence. chunk_seconds is passed through on every transcribe: mlx-audio-swift's default of 1200 seconds builds a roughly 7 GB KV cache (its issue #248).",
+  "models": [
+    {
+      "engine": "mlx",
+      "model": "parakeet-tdt-0.6b-v3",
+      "family": "parakeet",
+      "note": "Parakeet does not chunk internally, so whatever it is handed it encodes at once. Measured on one hour of continuous speech: no ceiling costs 21.91 GB and runs at 41.9x, a two-minute ceiling costs 4.55 GB and runs at 153.4x. The 25 languages are the same as the ggml build of this checkpoint, so the two are comparable cell by cell.",
+      "source": "mlx-community/parakeet-tdt-0.6b-v3",
+      "type": "parakeet",
+      "files": ["config.json", "model.safetensors", "tokenizer.model", "tokenizer.vocab", "vocab.txt"],
+      "languages": [
+        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
+        "lv", "lt", "mt", "pl", "pt", "ro", "ru", "sk", "sl", "es", "sv", "uk"
+      ],
+      "language_id": true,
+      "segment_timestamps": true,
+      "max_seconds": 120,
+      "params_m": 600,
+      "precision": "bf16",
+      "size_bytes": 2509041541,
+      "label": "Parakeet TDT 0.6B v3 (MLX, bf16)"
+    },
+    {
+      "engine": "mlx",
+      "model": "parakeet-tdt_ctc-110m",
+      "family": "parakeet",
+      "note": "English only; small enough to run this engine end to end without a 2.5 GB download. No internal chunking, like the row above.",
+      "source": "mlx-community/parakeet-tdt_ctc-110m",
+      "type": "parakeet",
+      "files": ["config.json", "model.safetensors", "tokenizer.model", "tokenizer.vocab", "vocab.txt"],
+      "languages": ["en"],
+      "language_id": false,
+      "segment_timestamps": true,
+      "max_seconds": 120,
+      "params_m": 110,
+      "precision": "bf16",
+      "size_bytes": 458958626,
+      "label": "Parakeet TDT-CTC 110M (MLX, bf16)"
+    },
+    {
+      "engine": "mlx",
+      "model": "whisper-large-v3-turbo",
+      "family": "whisper",
+      "note": "The MLX conversion ships only config.json and weights.safetensors; the loader goes to the network for tokenizer assets when tokenizer.json is absent, which the helper refuses. So the eight tokenizer files (the list mlx-audio-swift's own downloadTokenizerAssets fetches) come from openai/whisper-large-v3-turbo - the turbo repository, not the whisper-large-v3 the library would pick by vocabulary size. Whisper reports one span per 30-second decoding window, so segment timestamps mean something much coarser here than for Parakeet. The 300 s ceiling: one hour peaked at 5.27 GB without it against 4.31 GB with it, for the same transcript at the same speed; it also makes language detection per five minutes rather than per file.",
+      "source": "mlx-community/whisper-large-v3-turbo",
+      "type": "whisper",
+      "files": ["config.json", "weights.safetensors"],
+      "files_from": {
+        "openai/whisper-large-v3-turbo": [
+          "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
+          "added_tokens.json", "vocab.json", "merges.txt", "normalizer.json",
+          "generation_config.json"
+        ]
+      },
+      "languages": [
+        "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca",
+        "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr",
+        "gl", "gu", "haw", "ha", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it",
+        "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo", "lt", "lv",
+        "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne", "nl", "nn", "no",
+        "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn",
+        "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr",
+        "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh"
+      ],
+      "language_id": true,
+      "segment_timestamps": true,
+      "max_seconds": 300,
+      "params_m": 809,
+      "precision": "fp16",
+      "size_bytes": 1618594759,
+      "label": "Whisper large-v3-turbo (MLX, fp16)"
+    },
+    {
+      "engine": "mlx",
+      "model": "qwen3-asr-1.7b",
+      "family": "qwen3-asr",
+      "note": "Two variants of the five mlx-community publishes, lined up with the q8_0 and q4_k_m pair the other engines are measured at; bf16 exists and is 4.1 GB. No tokenizer.json: this family tokenizes from vocab.json plus merges.txt, and the helper writes a tokenizer.json of its own the first time it reads the directory. One span per decoding chunk. The 300 s ceiling is not only memory: max_tokens is one budget spent across every chunk of a request (MLX Audio issue #249), so a long buffer drops its tail in silence - one hour of speech measured 21.66% WER without the ceiling against 15.13% with it, and 5.17 GB against 4.01 GB.",
+      "type": "qwen3_asr",
+      "files": [
+        "chat_template.json", "config.json", "generation_config.json", "merges.txt",
+        "model.safetensors", "model.safetensors.index.json", "preprocessor_config.json",
+        "tokenizer_config.json", "vocab.json"
+      ],
+      "languages": [
+        "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
+        "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa",
+        "el", "ro", "hu", "mk"
+      ],
+      "language_id": true,
+      "segment_timestamps": true,
+      "chunk_seconds": 30,
+      "max_seconds": 300,
+      "params_m": 1700,
+      "variants": [
+        { "variant": "8bit", "source": "mlx-community/Qwen3-ASR-1.7B-8bit", "precision": "int8", "size_bytes": 2467856503, "label": "Qwen3-ASR 1.7B (MLX, 8-bit)" },
+        { "variant": "4bit", "source": "mlx-community/Qwen3-ASR-1.7B-4bit", "precision": "int4", "size_bytes": 1607630579, "label": "Qwen3-ASR 1.7B (MLX, 4-bit)" }
+      ]
+    }
+  ]
+}

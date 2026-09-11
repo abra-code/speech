@@ -48,6 +48,10 @@ public enum MLXEngineFactory {
         _ spec: EngineSpec, segmenter: any AudioSegmenter
     ) throws -> any TranscriptionEngine {
         guard let row = MLXCatalog.row(model: spec.model, variant: spec.variant) else {
+            if let entry = Catalog.model(engine: "mlx", model: spec.model),
+               case .failure(let problem) = MLXCatalog.make(entry) {
+                throw SpeechError.usage("the catalog entry is unusable: \(problem.message)")
+            }
             guard MLXCatalog.models.contains(spec.model) else {
                 throw SpeechError.usage(
                     "unknown mlx model '\(spec.model)'"
@@ -69,6 +73,12 @@ public enum MLXEngineFactory {
     public static func assets(for model: String, variant: String?) -> (repo: String, files: [String])? {
         guard let row = MLXCatalog.row(model: model, variant: variant) else { return nil }
         return (row.repo, row.assets.map(\.file))
+    }
+
+    /// The `mlx` catalog entries this engine cannot use: the entry's
+    /// `<engine>.<model>` key and why.
+    public static var catalogProblems: [(key: String, message: String)] {
+        MLXCatalog.problems.map { (key: $0.key, message: $0.message) }
     }
 
     /// The download size a row declares, for the shared catalog.

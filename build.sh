@@ -107,6 +107,17 @@ else
     exit 1
 fi
 
+# The built-in model catalog travels beside the binary the same way: `speech`
+# reads speech-catalog/*.json at startup and refuses to run without it. Swapped
+# in whole, so a reader never sees half of the old files and half of the new.
+cat_dir="speech-catalog"
+rm -rf "build/$cat_dir.new"
+cp -R catalog "build/$cat_dir.new"
+rm -rf "build/$cat_dir.old"
+[ -d "build/$cat_dir" ] && mv "build/$cat_dir" "build/$cat_dir.old"
+mv "build/$cat_dir.new" "build/$cat_dir"
+rm -rf "build/$cat_dir.old"
+
 mv build/speech.new build/speech
 
 if [ -d "$bin_path/speech.dSYM" ]; then

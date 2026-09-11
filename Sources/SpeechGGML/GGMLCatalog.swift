@@ -1,5 +1,5 @@
-// GGMLCatalog.swift - which GGUF rows exist, where their weights come from, and
-// what a complete download looks like on disk.
+// GGMLCatalog.swift - the `ggml` models the catalog carries, where their
+// weights come from, and what a complete download looks like on disk.
 //
 // A `ggml` row is one file. That makes this far simpler than the FluidAudio
 // store, which had to reverse-engineer three different directory conventions
@@ -7,28 +7,32 @@
 // else, and the only question worth asking is whether that file is a GGUF and
 // whether the transfer finished.
 //
-// The naming rule is mechanical and was checked against every repository this
-// catalog names: the repo is `handy-computer/<stem>-gguf` and the file is
-// `<stem>-<QUANT>.gguf` with the quantization upper-cased. The catalog id keeps
-// the quant lower-cased (`@q8_0`) because ids are path components and the rest
-// of the program lower-cases them; the two cases are bridged here and nowhere
-// else.
+// The models are data - the `"engine": "ggml"` entries of the catalog - and
+// each variant names its own repository file. There used to be a naming rule
+// here instead (`handy-computer/<stem>-gguf`, `<stem>-<QUANT>.gguf`); it held
+// for every model the rule was written against and for no other, and a model
+// from anywhere else is exactly what the catalog now has to accept.
 
 import Foundation
 import SpeechCore
 
-/// One family in the `ggml` catalog.
+/// One variant of a `ggml` model: the quantization an id names, and the file.
+struct GGMLVariant: Sendable, Equatable {
+    /// Lower-case, as it appears in an id.
+    let quant: String
+    /// The file inside the model's repository, in the repository's own casing.
+    let file: String
+}
+
+/// One model in the `ggml` catalog.
 struct GGMLRow: Sendable {
     /// The `<model>` part of the catalog id, always lower-case.
     let model: String
-    /// The Hugging Face repository stem, in the repository's own casing -
-    /// `Qwen3-ASR-1.7B`, not `qwen3-asr-1.7b`. HF paths are case-sensitive and
-    /// the two differ for half these rows.
-    let repoStem: String
-    /// Offered quantizations, best first. Lower-case, as they appear in an id.
-    let quants: [String]
-    /// BCP-47 primary subtags, read from the model's own GGUF metadata with
-    /// `speech`'s probe rather than copied from a model card.
+    /// The Hugging Face repository the files come from.
+    let repo: String
+    /// Offered quantizations, best first. The first is the default.
+    let variants: [GGMLVariant]
+    /// BCP-47 tags as the model spells them, from the catalog entry.
     ///
     /// Advisory, exactly like the Apple rows' list: it is what the catalog
     /// shows before anything is downloaded, and it can lag the weights. The
@@ -41,27 +45,11 @@ struct GGMLRow: Sendable {
     let languageID: Bool
     /// The model has a streaming decoder, so `speech stream` can drive it.
     ///
-    /// Advisory, like `languages`: it is what the catalog can say about a row
-    /// that has not been downloaded. The gate is the loaded model's own
-    /// `supportsStreaming`, checked in `makeLiveSession`, because only that one
-    /// cannot be stale.
-    ///
-    /// Measured 2026-09-05 by loading the eight installed GGUFs and printing
-    /// `Model.capabilities`. Two of the seven families stream, and which two is
-    /// worth knowing before reading the flags below: the fast multilingual row
-    /// `parakeet-tdt-0.6b-v3` is **not** one of them, so on this engine live
-    /// mode means either an English-only model or the one row that lost to
-    /// Apple in all three languages in spike 2.
-    ///
-    /// **Per family, not per quantization**, and one variant inherits rather
-    /// than reports: `nemotron-3.5-asr-streaming-0.6b@q4_k_m` was not among the
-    /// eight on disk, so its `live` flag comes from the q8_0 measurement. That
-    /// is a reasonable assumption - streaming support is an architecture
-    /// property, not a quantization one - but it is an assumption, and it
-    /// matters here more than usual because a wrong stream configuration on
-    /// this exact family fails by returning an empty transcript while reporting
-    /// success. The gate is still the loaded model, so a q4_k_m that turns out
-    /// not to stream refuses in `makeLiveSession` rather than going silent.
+    /// Advisory, like `languages`: the gate is the loaded model's own
+    /// `supportsStreaming`, checked in `makeLiveSession`. Streaming support is
+    /// an architecture property, so one measured variant speaks for the model -
+    /// and a variant that turns out not to stream refuses in `makeLiveSession`
+    /// rather than going silent.
     let streaming: Bool
     /// Word-level timings are available. Whisper is segment-only; Qwen3-ASR and
     /// Moonshine have no timestamps at all.
@@ -69,138 +57,93 @@ struct GGMLRow: Sendable {
     /// Segment-level timings are available.
     let segmentTimestamps: Bool
 
-    var repo: String { "handy-computer/\(repoStem)-gguf" }
-
-    /// The repository file for a quantization: `<stem>-<QUANT>.gguf`.
-    func fileName(quant: String) -> String {
-        "\(repoStem)-\(quant.uppercased()).gguf"
-    }
+    /// Offered quantizations, in catalog order.
+    var quants: [String] { variants.map(\.quant) }
 
     /// The default quantization when an id carries no `@variant`.
-    var defaultQuant: String { quants[0] }
+    var defaultQuant: String { variants[0].quant }
+
+    /// The repository file for a quantization this model offers.
+    func fileName(quant: String) -> String? {
+        variants.first { $0.quant == quant }?.file
+    }
+
+    /// A catalog entry as a `ggml` row, or why it cannot be one.
+    static func make(_ entry: CatalogModel) -> Result<GGMLRow, GGMLCatalog.Problem> {
+        func problem(_ message: String) -> Result<GGMLRow, GGMLCatalog.Problem> {
+            .failure(GGMLCatalog.Problem(id: entry.key, message: "\(entry.key): \(message)"))
+        }
+        guard entry.variants?.isEmpty == false else {
+            return problem("a ggml model needs 'variants', one per quantization")
+        }
+        var variants: [GGMLVariant] = []
+        for variant in entry.declaredVariants {
+            guard let quant = variant.variant else { return problem("a variant has no name") }
+            guard (variant.source ?? entry.source) == entry.source else {
+                return problem("variant '\(quant)' names its own 'source';"
+                    + " a ggml model's files all come from the model's repository")
+            }
+            guard let file = variant.file ?? entry.file else {
+                return problem("variant '\(quant)' has no 'file'")
+            }
+            guard file.lowercased().hasSuffix(".gguf") else {
+                return problem("variant '\(quant)': '\(file)' is not a .gguf file")
+            }
+            // A repository path, which may have directories in it, but never
+            // one that climbs out: the name is sent to the Hugging Face API and
+            // compared against its listing, and nothing good comes of "..".
+            let parts = file.split(separator: "/", omittingEmptySubsequences: false)
+            guard !file.hasPrefix("/"), !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." })
+            else {
+                return problem("variant '\(quant)': '\(file)' is not a plain repository path")
+            }
+            variants.append(GGMLVariant(quant: quant, file: file))
+        }
+        guard let repo = entry.source, !repo.isEmpty else {
+            return problem("a ggml model needs 'source', the Hugging Face repository")
+        }
+        return .success(GGMLRow(
+            model: entry.model,
+            repo: repo,
+            variants: variants,
+            languages: entry.languages ?? [],
+            languageID: entry.languageID ?? false,
+            streaming: entry.streaming ?? false,
+            wordTimestamps: entry.wordTimestamps ?? false,
+            segmentTimestamps: entry.segmentTimestamps ?? false))
+    }
 }
 
 enum GGMLCatalog {
+    /// A catalog entry the ggml engine cannot use, and why.
+    struct Problem: Error, Sendable, Equatable {
+        let id: String
+        let message: String
+    }
+
     /// The weights file inside a row directory. Renamed from the repository's
-    /// own name on the way in, so nothing downstream has to know the naming
-    /// rule and a row is self-describing.
+    /// own name on the way in, so nothing downstream has to know the file name
+    /// and a row is self-describing.
     static let weightsName = "model.gguf"
 
-    /// Every row this build implements.
-    ///
-    /// Every field below was read out of the GGUF itself by loading it and
-    /// printing `Model.capabilities` - not copied from a model card. Doing it
-    /// that way corrected four assumptions in one pass: Canary has **no
-    /// timestamps at all** and a 400-second ceiling, Nemotron **does** identify
-    /// its own language, Qwen3-ASR caps a run at about 87 minutes, and
-    /// `parakeet-tdt-0.6b-v3` reports 25 languages here where the CoreML row
-    /// advertises 28.
-    ///
-    /// The language strings are stored exactly as the model spells them,
-    /// region tags and all, because that spelling is not decoration: Nemotron
-    /// accepts `pl-PL` and rejects `pl`, while Canary, Qwen3-ASR and Whisper
-    /// accept `pl` and reject `pl-PL`. See `GGMLEngine.resolveLanguage`.
-    static let rows: [GGMLRow] = [
-        GGMLRow(
-            model: "parakeet-tdt-0.6b-v3",
-            repoStem: "parakeet-tdt-0.6b-v3",
-            quants: ["q8_0", "q4_k_m"],
-            languages: [
-                "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
-                "lv", "lt", "mt", "pl", "pt", "ro", "ru", "sk", "sl", "es", "sv", "uk",
-            ],
-            languageID: true,
-            streaming: false,
-            wordTimestamps: true,
-            segmentTimestamps: true),
-        GGMLRow(
-            model: "parakeet-unified-en-0.6b",
-            repoStem: "parakeet-unified-en-0.6b",
-            quants: ["q8_0"],
-            languages: ["en"],
-            languageID: false,
-            streaming: true,
-            wordTimestamps: true,
-            segmentTimestamps: true),
-        GGMLRow(
-            model: "canary-1b-v2",
-            repoStem: "canary-1b-v2",
-            quants: ["q8_0", "q4_k_m"],
-            languages: [
-                "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
-                "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
-            ],
-            // No language identification, and the failure is not an error but a
-            // translation: Polish audio with no hint came back as fluent
-            // English prose about the same subject. `resolveLanguage` therefore
-            // refuses to run this row without one.
-            languageID: false,
-            streaming: false,
-            wordTimestamps: false,
-            segmentTimestamps: false),
-        GGMLRow(
-            model: "qwen3-asr-1.7b",
-            repoStem: "Qwen3-ASR-1.7B",
-            quants: ["q8_0", "q4_k_m"],
-            languages: [
-                "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
-                "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa",
-                "el", "ro", "hu", "mk",
-            ],
-            languageID: true,
-            streaming: false,
-            wordTimestamps: false,
-            segmentTimestamps: false),
-        GGMLRow(
-            model: "qwen3-asr-0.6b",
-            repoStem: "Qwen3-ASR-0.6B",
-            quants: ["q8_0", "q4_k_m"],
-            languages: [
-                "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
-                "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa",
-                "el", "ro", "hu", "mk",
-            ],
-            languageID: true,
-            streaming: false,
-            wordTimestamps: false,
-            segmentTimestamps: false),
-        GGMLRow(
-            model: "whisper-large-v3-turbo",
-            repoStem: "whisper-large-v3-turbo",
-            quants: ["q8_0", "q4_k_m"],
-            languages: [
-                "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca",
-                "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr",
-                "gl", "gu", "haw", "ha", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it",
-                "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo", "lt", "lv",
-                "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne", "nl", "nn", "no",
-                "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn",
-                "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr",
-                "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh",
-            ],
-            languageID: true,
-            streaming: false,
-            wordTimestamps: false,
-            segmentTimestamps: true),
-        GGMLRow(
-            model: "nemotron-3.5-asr-streaming-0.6b",
-            repoStem: "nemotron-3.5-asr-streaming-0.6b",
-            quants: ["q8_0", "q4_k_m"],
-            // Region tags, and they are load-bearing: this row rejects "pl".
-            languages: [
-                "en-US", "en-GB", "es-US", "es-ES", "fr-FR", "fr-CA", "it-IT", "pt-BR", "pt-PT",
-                "nl-NL", "de-DE", "tr-TR", "ru-RU", "ar-AR", "hi-IN", "ja-JP", "ko-KR", "vi-VN",
-                "uk-UA", "pl-PL", "sv-SE", "cs-CZ", "nb-NO", "da-DK", "bg-BG", "fi-FI", "hr-HR",
-                "sk-SK", "zh-CN", "hu-HU", "ro-RO", "et-EE",
-            ],
-            languageID: true,
-            streaming: true,
-            wordTimestamps: true,
-            segmentTimestamps: true),
-    ]
+    /// Every usable `ggml` model in the catalog, in catalog order.
+    static var rows: [GGMLRow] {
+        Catalog.models(engine: "ggml").compactMap { try? GGMLRow.make($0).get() }
+    }
+
+    /// The `ggml` entries that could not be used, for `speech catalog` to
+    /// report. An entry with no file would otherwise simply be missing from
+    /// every listing, which is the silent failure a hand-edited file invites.
+    static var problems: [Problem] {
+        Catalog.models(engine: "ggml").compactMap {
+            guard case .failure(let problem) = GGMLRow.make($0) else { return nil }
+            return problem
+        }
+    }
 
     static func row(model: String) -> GGMLRow? {
-        rows.first { $0.model == model }
+        guard let entry = Catalog.model(engine: "ggml", model: model) else { return nil }
+        return try? GGMLRow.make(entry).get()
     }
 
     /// Every `(model, variant)` this build can construct, in catalog order.
@@ -211,7 +154,7 @@ enum GGMLCatalog {
     }
 
     /// Resolve a catalog id's `@variant` into a quantization this row offers.
-    /// A bare id takes the row's best quantization rather than being rejected,
+    /// A bare id takes the row's first quantization rather than being rejected,
     /// matching how `fluid.parakeet-v3` means `@int8`.
     static func quant(for row: GGMLRow, variant: String?) throws -> String {
         guard let variant else { return row.defaultQuant }

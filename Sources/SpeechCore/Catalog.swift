@@ -15,15 +15,16 @@
 // and the numbers that would inform it are machine-specific and age with every
 // OS and dependency bump. That decision belongs to Speech.app, which can
 // re-measure on the machine it is running on and against the user's own
-// recordings. The declaration order of the arrays below is grouped for reading;
-// the order callers see is computed by `ordered`, further down.
+// recordings. The order callers see is computed by `ordered`, further down.
 //
-// Also not here: languages, capability flags and the macOS floor. Those are the
-// engine's own answers, read out of a GGUF or a CoreML bundle when the model
-// loads and reported through `EngineCapabilities`. Stage 2 found four
-// capability facts that the published model cards had wrong, so a second copy
-// in a static table is a copy that will eventually lie. The join happens in the
-// one place both are visible, the `speech` executable.
+// The rows themselves are data: the JSON documents in the repository's
+// `catalog/`, installed beside the binary as `speech-catalog/`, plus whatever a
+// user adds. See CatalogData.swift for the format and the merge.
+//
+// Capability facts in those documents are advisory. The authority is the
+// engine's own answer, read out of a GGUF or a CoreML bundle when the model
+// loads and reported through `EngineCapabilities`: stage 2 found four
+// capability facts that the published model cards had wrong.
 
 import Foundation
 
@@ -31,15 +32,26 @@ import Foundation
 /// model at a different precision, on a different runtime, or at a different
 /// streaming chunk size. Reported so that a caller can group them; the grouping
 /// implies no order.
-public enum CatalogFamily: String, Sendable, Codable, CaseIterable {
-    case apple
-    case canary
-    case nemotron
-    case parakeet
-    case parakeetUnified = "parakeet-unified"
-    case qwen3ASR = "qwen3-asr"
-    case silero
-    case whisper
+///
+/// An open set, not an enum: a model a user adds brings its own family - for a
+/// GGUF, the architecture the file names - and a closed list would have to be
+/// edited before such a model could exist. The names below are the ones the
+/// built-in catalog uses, kept as constants for the code that refers to them.
+public struct CatalogFamily: RawRepresentable, Hashable, Sendable, Codable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    public static let apple = CatalogFamily(rawValue: "apple")
+    public static let canary = CatalogFamily(rawValue: "canary")
+    public static let nemotron = CatalogFamily(rawValue: "nemotron")
+    public static let parakeet = CatalogFamily(rawValue: "parakeet")
+    public static let parakeetUnified = CatalogFamily(rawValue: "parakeet-unified")
+    public static let qwen3ASR = CatalogFamily(rawValue: "qwen3-asr")
+    public static let silero = CatalogFamily(rawValue: "silero")
+    public static let whisper = CatalogFamily(rawValue: "whisper")
 }
 
 /// Not every installable row transcribes. The CTC spotter is downloaded and
@@ -106,8 +118,123 @@ public struct CatalogRow: Sendable, Equatable {
 }
 
 public enum Catalog {
-    /// Every row this build can run, grouped by family so that a caller can
-    /// show the builds of one model together.
+    // MARK: - The loaded catalog
+
+    private static let lock = NSLock()
+    private nonisolated(unsafe) static var installed: LoadedCatalog?
+
+    /// The catalog every lookup reads. Loaded from the built-in directory on
+    /// first use; the `speech` executable replaces it at startup with the
+    /// built-in catalog merged with the user's own. A library default that
+    /// read the user's files would make every test depend on what is in the
+    /// developer's Application Support. Tests never call `install`: Swift
+    /// Testing runs them in parallel, and one that swapped this value would
+    /// change what every other test reads. They load into a `LoadedCatalog`
+    /// value instead.
+    ///
+    /// When the built-in catalog cannot be found this is an empty catalog whose
+    /// one problem says why, rather than a crash: the executable checks it at
+    /// startup and refuses to run, and a library caller can read the problem.
+    public static var current: LoadedCatalog {
+        lock.withLock {
+            if let installed { return installed }
+            let loaded: LoadedCatalog
+            do {
+                loaded = try LoadedCatalog.load(builtin: try builtinDirectory())
+            } catch let error as SpeechError {
+                loaded = LoadedCatalog(models: [], problems: [error.message])
+            } catch {
+                loaded = LoadedCatalog(models: [], problems: ["\(error)"])
+            }
+            installed = loaded
+            return loaded
+        }
+    }
+
+    /// Replaces the catalog every lookup reads.
+    public static func install(_ catalog: LoadedCatalog) {
+        lock.withLock { installed = catalog }
+    }
+
+    /// Where the built-in catalog is: `$SPEECH_BUILTIN_CATALOG_DIR`, else
+    /// `speech-catalog/` beside the running binary, else - in a debug build
+    /// only - the repository's own `catalog/`, which is what `swift test` and
+    /// `swift run` find.
+    ///
+    /// The source-tree fallback is debug-only on purpose: a release build that
+    /// was packaged without its catalog must fail on the developer's machine
+    /// too, rather than quietly reading the checkout it was built from.
+    public static func builtinDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        executableDirectory: URL? = Bundle.main.executableURL?
+            .resolvingSymlinksInPath().deletingLastPathComponent()
+    ) throws -> URL {
+        let manager = FileManager.default
+        var isDirectory: ObjCBool = false
+        if let override = environment["SPEECH_BUILTIN_CATALOG_DIR"], !override.isEmpty {
+            let url = URL(fileURLWithPath: override)
+            guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue
+            else {
+                throw SpeechError.runtime(
+                    "SPEECH_BUILTIN_CATALOG_DIR is set to \(override), which is not a directory")
+            }
+            return url
+        }
+        if let executableDirectory {
+            let beside = executableDirectory.appendingPathComponent(builtinDirectoryName)
+            if manager.fileExists(atPath: beside.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return beside
+            }
+        }
+        #if DEBUG
+        let sourceTree = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()    // SpeechCore
+            .deletingLastPathComponent()    // Sources
+            .deletingLastPathComponent()    // the repository
+            .appendingPathComponent("catalog")
+        if manager.fileExists(atPath: sourceTree.path, isDirectory: &isDirectory),
+           isDirectory.boolValue {
+            return sourceTree
+        }
+        #endif
+        throw SpeechError.runtime(
+            "no \(builtinDirectoryName) beside "
+            + (executableDirectory?.path ?? "the running binary")
+            + ". Build with ./build.sh, which installs it, or set SPEECH_BUILTIN_CATALOG_DIR")
+    }
+
+    /// The directory name the build installs beside the binary.
+    public static let builtinDirectoryName = "speech-catalog"
+
+    /// Where a user's own catalog documents live: `$SPEECH_CATALOG_DIR`, else
+    /// `Catalog` beside the default model store in Application Support.
+    public static func userDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        if let override = environment["SPEECH_CATALOG_DIR"], !override.isEmpty {
+            return URL(fileURLWithPath: override)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Speech/Catalog", isDirectory: true)
+    }
+
+    // MARK: - Lookups
+
+    /// Every model entry of one engine, hidden ones included, in catalog order.
+    /// Engines read these: a hidden variant is unlisted, not unbuildable.
+    public static func models(engine: String) -> [CatalogModel] {
+        current.models.filter { $0.engine == engine }
+    }
+
+    /// The model entry an engine and model name refer to.
+    public static func model(engine: String, model: String) -> CatalogModel? {
+        current.models.first { $0.engine == engine && $0.model == model }
+    }
+
+    /// Every listed row this build can run, grouped by family so that a caller
+    /// can show the builds of one model together.
     ///
     /// The order is computed rather than chosen, and that is the point. An
     /// order somebody picked would be read as a ranking no matter what the
@@ -117,9 +244,21 @@ public enum Catalog {
     /// nothing about. So families sort alphabetically, and within a family rows
     /// sort by engine and then by descending download size. `orderIsMechanical`
     /// in the tests keeps it that way.
-    public static let rows: [CatalogRow] = ordered(
-        appleRows + canaryRows + nemotronRows + parakeetRows + parakeetUnifiedRows
-            + qwen3Rows + sileroRows + whisperRows)
+    public static var rows: [CatalogRow] {
+        ordered(current.models.flatMap { model in
+            model.declaredVariants.filter { !model.isHidden($0) }.map { model.row($0) }
+        })
+    }
+
+    /// Whether an id names a variant the catalog carries but does not list.
+    public static func isHidden(id: String) -> Bool {
+        for model in current.models {
+            for variant in model.declaredVariants where model.id(variant: variant.variant) == id {
+                return model.isHidden(variant)
+            }
+        }
+        return false
+    }
 
     /// Families alphabetically; within a family, engine then largest build
     /// first, with an unknown size last and the id breaking any remaining tie.
@@ -137,372 +276,15 @@ public enum Catalog {
         }
     }
 
-    // MARK: - Apple
-
-    static let appleRows: [CatalogRow] = [
-        CatalogRow(
-            id: "apple.transcriber",
-            family: .apple,
-            precision: "system",
-            label: "Apple long-form (built in)"),
-        CatalogRow(
-            id: "apple.dictation",
-            family: .apple,
-            precision: "system",
-            label: "Apple dictation (built in)"),
-    ]
-
-    // MARK: - Canary
-
-    // `fluid.canary-1b-v2@int4` is deliberately absent, and this is the one
-    // exclusion in the file that is not "no engine can build it". The engine
-    // still exists and still builds, so an id typed in full downloads and runs;
-    // it is only unlisted, which is why the note lives here rather than in
-    // `CanaryEngine`.
-    //
-    // The reason is not a preference between rows, which this file does not
-    // express. It is that FluidInference's int4 CoreML conversion of these
-    // weights is beaten by the GGUF build of the same weights on every axis
-    // measured, and is broken on M1-generation hardware. Against
-    // `ggml.canary-1b-v2@q4_k_m` over FLEURS, all 647 to 908 rows per language:
-    //
-    //     language   int4 WER   q4_k_m WER   int4 RTFx   q4_k_m RTFx
-    //     de_de          6.96         4.59         7.7          59.5
-    //     en_us          6.36         5.04         7.6          63.1
-    //     es_419         6.03         3.10         5.4          49.8
-    //     pl_pl         11.77         7.19         6.0          49.3
-    //
-    // Those are M5 figures, where the conversion works as intended. On M1 and
-    // M1 Pro the ANE compiler fails on part of the graph - "ANECCompile()
-    // FAILED", after 85 minutes of trying, byte-identical on both chips - and
-    // leaves 149 MB of a 570 MB model on the Neural Engine with the rest on
-    // single-threaded BNNS: RTFx 3.7 and 3.4 GB of memory against the GGUF's
-    // 36.3 and 0.89 GB. FluidAudio labels the conversion beta.
-    //
-    // If a later conversion fixes this, the row goes back and this note goes
-    // with it. Re-measure before believing that, and re-measure on an M1.
-    static let canaryRows: [CatalogRow] = [
-        CatalogRow(
-            id: "ggml.canary-1b-v2@q8_0",
-            family: .canary,
-            source: "handy-computer/canary-1b-v2-gguf",
-            file: "canary-1b-v2-Q8_0.gguf",
-            parametersM: 1000,
-            precision: "q8_0",
-            sizeBytes: 1_144_290_016,
-            label: "Canary 1B v2 (Q8_0)"),
-        CatalogRow(
-            id: "ggml.canary-1b-v2@q4_k_m",
-            family: .canary,
-            source: "handy-computer/canary-1b-v2-gguf",
-            file: "canary-1b-v2-Q4_K_M.gguf",
-            parametersM: 1000,
-            precision: "q4_k_m",
-            sizeBytes: 735_476_448,
-            label: "Canary 1B v2 (Q4_K_M)"),
-    ]
-
-    // MARK: - Whisper
-
-    static let whisperRows: [CatalogRow] = [
-        CatalogRow(
-            id: "mlx.whisper-large-v3-turbo",
-            family: .whisper,
-            source: "mlx-community/whisper-large-v3-turbo",
-            parametersM: 809,
-            precision: "fp16",
-            // Two files from that repository plus the eight tokenizer files
-            // from openai/whisper-large-v3-turbo, which the MLX conversion does
-            // not ship and the loader will not run without. `source` names
-            // where the weights come from; MLXCatalog owns the full list.
-            sizeBytes: 1_618_594_759,
-            label: "Whisper large-v3-turbo (MLX, fp16)"),
-        CatalogRow(
-            id: "ggml.whisper-large-v3-turbo@q8_0",
-            family: .whisper,
-            source: "handy-computer/whisper-large-v3-turbo-gguf",
-            file: "whisper-large-v3-turbo-Q8_0.gguf",
-            parametersM: 809,
-            precision: "q8_0",
-            sizeBytes: 886_381_760,
-            label: "Whisper large-v3-turbo (Q8_0)"),
-        CatalogRow(
-            id: "ggml.whisper-large-v3-turbo@q4_k_m",
-            family: .whisper,
-            source: "handy-computer/whisper-large-v3-turbo-gguf",
-            file: "whisper-large-v3-turbo-Q4_K_M.gguf",
-            parametersM: 809,
-            precision: "q4_k_m",
-            sizeBytes: 536_069_728,
-            label: "Whisper large-v3-turbo (Q4_K_M)"),
-    ]
-
-    // MARK: - Parakeet
-
-    static let parakeetRows: [CatalogRow] = [
-        CatalogRow(
-            id: "mlx.parakeet-tdt-0.6b-v3",
-            family: .parakeet,
-            source: "mlx-community/parakeet-tdt-0.6b-v3",
-            parametersM: 600,
-            precision: "bf16",
-            sizeBytes: 2_509_041_541,
-            label: "Parakeet TDT 0.6B v3 (MLX, bf16)"),
-        CatalogRow(
-            id: "mlx.parakeet-tdt_ctc-110m",
-            family: .parakeet,
-            source: "mlx-community/parakeet-tdt_ctc-110m",
-            parametersM: 110,
-            precision: "bf16",
-            sizeBytes: 458_958_626,
-            label: "Parakeet TDT-CTC 110M (MLX, bf16)"),
-        CatalogRow(
-            id: "ggml.parakeet-tdt-0.6b-v3@q8_0",
-            family: .parakeet,
-            source: "handy-computer/parakeet-tdt-0.6b-v3-gguf",
-            file: "parakeet-tdt-0.6b-v3-Q8_0.gguf",
-            parametersM: 600,
-            precision: "q8_0",
-            sizeBytes: 739_508_576,
-            label: "Parakeet v3 (Q8_0)"),
-        CatalogRow(
-            id: "fluid.parakeet-v3@int8",
-            family: .parakeet,
-            source: "FluidInference/parakeet-tdt-0.6b-v3-coreml",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 483_257_242,
-            label: "Parakeet v3 (int8)"),
-        CatalogRow(
-            id: "ggml.parakeet-tdt-0.6b-v3@q4_k_m",
-            family: .parakeet,
-            source: "handy-computer/parakeet-tdt-0.6b-v3-gguf",
-            file: "parakeet-tdt-0.6b-v3-Q4_K_M.gguf",
-            parametersM: 600,
-            precision: "q4_k_m",
-            sizeBytes: 485_425_504,
-            label: "Parakeet v3 (Q4_K_M)"),
-        CatalogRow(
-            id: "fluid.parakeet-v3@int4",
-            family: .parakeet,
-            source: "FluidInference/parakeet-tdt-0.6b-v3-coreml",
-            parametersM: 600,
-            precision: "int4",
-            sizeBytes: 335_897_098,
-            label: "Parakeet v3 (int4)"),
-        CatalogRow(
-            id: "fluid.parakeet-ctc-110m",
-            family: .parakeet,
-            role: .helper,
-            source: "FluidInference/parakeet-ctc-110m-coreml",
-            parametersM: 110,
-            precision: "int8",
-            sizeBytes: 102_803_869,
-            label: "Parakeet CTC 110M (spotter)"),
-    ]
-
-    // MARK: - Parakeet Unified (English only)
-
-    static let parakeetUnifiedRows: [CatalogRow] = [
-        CatalogRow(
-            id: "fluid.parakeet-unified@int8",
-            family: .parakeetUnified,
-            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 614_082_275,
-            label: "Parakeet Unified EN (int8)"),
-        CatalogRow(
-            id: "ggml.parakeet-unified-en-0.6b@q8_0",
-            family: .parakeetUnified,
-            source: "handy-computer/parakeet-unified-en-0.6b-gguf",
-            file: "parakeet-unified-en-0.6b-Q8_0.gguf",
-            parametersM: 600,
-            precision: "q8_0",
-            sizeBytes: 731_357_568,
-            label: "Parakeet Unified EN (Q8_0)"),
-        CatalogRow(
-            id: "fluid.parakeet-unified@fp16",
-            family: .parakeetUnified,
-            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
-            parametersM: 600,
-            precision: "fp16",
-            sizeBytes: 1_205_620_423,
-            label: "Parakeet Unified EN (fp16)"),
-        // The streaming export of the same checkpoint, one row per published
-        // [left, chunk, right] attention context. The mask is baked into the
-        // encoder at conversion time, so the tier is a different 591 MB bundle
-        // rather than a setting - which is why these are rows and not a mode of
-        // the two above, and why installing one does not install another. The
-        // number in the id is the theoretical latency in milliseconds: chunk
-        // plus look-ahead, the delay before the encoder can see a whole word.
-        CatalogRow(
-            id: "fluid.parakeet-unified@stream-2080",
-            family: .parakeetUnified,
-            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 609_440_571,
-            label: "Parakeet Unified EN streaming 2.08 s (int8)"),
-        CatalogRow(
-            id: "fluid.parakeet-unified@stream-1120",
-            family: .parakeetUnified,
-            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 608_834_659,
-            label: "Parakeet Unified EN streaming 1.12 s (int8)"),
-        CatalogRow(
-            id: "fluid.parakeet-unified@stream-640",
-            family: .parakeetUnified,
-            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 608_531_778,
-            label: "Parakeet Unified EN streaming 0.64 s (int8)"),
-        CatalogRow(
-            id: "fluid.parakeet-unified@stream-320",
-            family: .parakeetUnified,
-            source: "FluidInference/parakeet-unified-en-0.6b-coreml",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 608_330_968,
-            label: "Parakeet Unified EN streaming 0.32 s (int8)"),
-    ]
-
-    // MARK: - Qwen3-ASR
-
-    static let qwen3Rows: [CatalogRow] = [
-        CatalogRow(
-            id: "mlx.qwen3-asr-1.7b@8bit",
-            family: .qwen3ASR,
-            source: "mlx-community/Qwen3-ASR-1.7B-8bit",
-            parametersM: 1_700,
-            precision: "int8",
-            sizeBytes: 2_467_856_503,
-            label: "Qwen3-ASR 1.7B (MLX, 8-bit)"),
-        CatalogRow(
-            id: "mlx.qwen3-asr-1.7b@4bit",
-            family: .qwen3ASR,
-            source: "mlx-community/Qwen3-ASR-1.7B-4bit",
-            parametersM: 1_700,
-            precision: "int4",
-            sizeBytes: 1_607_630_579,
-            label: "Qwen3-ASR 1.7B (MLX, 4-bit)"),
-        CatalogRow(
-            id: "ggml.qwen3-asr-1.7b@q8_0",
-            family: .qwen3ASR,
-            source: "handy-computer/Qwen3-ASR-1.7B-gguf",
-            file: "Qwen3-ASR-1.7B-Q8_0.gguf",
-            parametersM: 1700,
-            precision: "q8_0",
-            sizeBytes: 2_185_030_624,
-            label: "Qwen3-ASR 1.7B (Q8_0)"),
-        CatalogRow(
-            id: "ggml.qwen3-asr-1.7b@q4_k_m",
-            family: .qwen3ASR,
-            source: "handy-computer/Qwen3-ASR-1.7B-gguf",
-            file: "Qwen3-ASR-1.7B-Q4_K_M.gguf",
-            parametersM: 1700,
-            precision: "q4_k_m",
-            sizeBytes: 1_319_830_496,
-            label: "Qwen3-ASR 1.7B (Q4_K_M)"),
-        CatalogRow(
-            id: "ggml.qwen3-asr-0.6b@q8_0",
-            family: .qwen3ASR,
-            source: "handy-computer/Qwen3-ASR-0.6B-gguf",
-            file: "Qwen3-ASR-0.6B-Q8_0.gguf",
-            parametersM: 600,
-            precision: "q8_0",
-            sizeBytes: 850_423_456,
-            label: "Qwen3-ASR 0.6B (Q8_0)"),
-        CatalogRow(
-            id: "ggml.qwen3-asr-0.6b@q4_k_m",
-            family: .qwen3ASR,
-            source: "handy-computer/Qwen3-ASR-0.6B-gguf",
-            file: "Qwen3-ASR-0.6B-Q4_K_M.gguf",
-            parametersM: 600,
-            precision: "q4_k_m",
-            sizeBytes: 589_560_480,
-            label: "Qwen3-ASR 0.6B (Q4_K_M)"),
-    ]
-
-    // MARK: - Silero
-
-    static let sileroRows: [CatalogRow] = [
-        // The only row here that produces no text at all. It is a catalog row
-        // because it is downloaded, measured, listed and deleted exactly like a
-        // model, and `--segment vad` cannot run until it is installed - which
-        // is a download instruction a user has to be able to find.
-        //
-        // No parameter count: Silero publishes none for this export, and the
-        // field is in millions, so the only number that could go here is a zero
-        // that would read as "unknown" anyway.
-        CatalogRow(
-            id: "fluid.silero-vad",
-            family: .silero,
-            role: .helper,
-            source: "FluidInference/silero-vad-coreml",
-            precision: "mixed",
-            sizeBytes: 1_063_427,
-            label: "Silero VAD 256 ms (v6.2.1)"),
-    ]
-
-    // MARK: - Nemotron
-
-    static let nemotronRows: [CatalogRow] = [
-        CatalogRow(
-            id: "ggml.nemotron-3.5-asr-streaming-0.6b@q8_0",
-            family: .nemotron,
-            source: "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf",
-            file: "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf",
-            parametersM: 600,
-            precision: "q8_0",
-            sizeBytes: 751_094_240,
-            label: "Nemotron 3.5 streaming (Q8_0)"),
-        CatalogRow(
-            id: "ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m",
-            family: .nemotron,
-            source: "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf",
-            file: "nemotron-3.5-asr-streaming-0.6b-Q4_K_M.gguf",
-            parametersM: 600,
-            precision: "q4_k_m",
-            sizeBytes: 495_831_520,
-            label: "Nemotron 3.5 streaming (Q4_K_M)"),
-        CatalogRow(
-            id: "fluid.nemotron-multilingual@2240",
-            family: .nemotron,
-            source: "FluidInference/Nemotron-3.5-ASR-Streaming-Multilingual-0.6b-CoreML",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 664_846_846,
-            label: "Nemotron 3.5 streaming (2.24 s chunks)"),
-        CatalogRow(
-            id: "fluid.nemotron-multilingual@1120",
-            family: .nemotron,
-            source: "FluidInference/Nemotron-3.5-ASR-Streaming-Multilingual-0.6b-CoreML",
-            parametersM: 600,
-            precision: "int8",
-            sizeBytes: 664_144_423,
-            label: "Nemotron 3.5 streaming (1.12 s chunks)"),
-        CatalogRow(
-            id: "fluid.nemotron-multilingual@560",
-            family: .nemotron,
-            source: "FluidInference/Nemotron-3.5-ASR-Streaming-Multilingual-0.6b-CoreML",
-            parametersM: 600,
-            precision: "int8",
-            label: "Nemotron 3.5 streaming (0.56 s chunks)"),
-    ]
-
-    /// The row for a catalog id, or nil when the id names something the catalog
-    /// does not carry. Lookup is case-sensitive because catalog ids are, and a
-    /// lenient match here would let `models download` install to one directory
-    /// and `catalog` describe another.
+    /// The listed row for a catalog id, or nil when the id names something the
+    /// catalog does not list. Lookup is case-sensitive because catalog ids are,
+    /// and a lenient match here would let `models download` install to one
+    /// directory and `catalog` describe another.
     public static func row(id: String) -> CatalogRow? {
         rows.first { $0.id == id }
     }
 
-    /// The rows of one family, in the array's order.
+    /// The rows of one family, in catalog order.
     public static func rows(family: CatalogFamily) -> [CatalogRow] {
         rows.filter { $0.family == family }
     }

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "models": [
+    {
+      "engine": "apple",
+      "model": "transcriber",
+      "family": "apple",
+      "precision": "system",
+      "label": "Apple long-form (built in)"
+    },
+    {
+      "engine": "apple",
+      "model": "dictation",
+      "family": "apple",
+      "precision": "system",
+      "label": "Apple dictation (built in)"
+    }
+  ]
+}

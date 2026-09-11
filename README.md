@@ -19,7 +19,8 @@ are stage 6.
 
 ## Build
 
-    ./build.sh              # produces build/speech (arm64, ad-hoc signed)
+    ./build.sh              # produces build/speech (arm64, ad-hoc signed), with
+                            # CTranscribe.framework and speech-catalog/ beside it
     ./test.sh               # builds, runs the unit tests and the CLI smoke tests
     ./build-speech-mlx.sh   # optional: produces build/speech-mlx, for the mlx.* rows
 

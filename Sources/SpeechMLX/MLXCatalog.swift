@@ -1,12 +1,10 @@
-// MLXCatalog.swift - which MLX checkpoints this build knows how to fetch and
-// hand to the helper, and where each one's files come from.
+// MLXCatalog.swift - which MLX checkpoints the catalog carries for the helper,
+// and where each one's files come from.
 //
-// The same shape as GGMLCatalog and for the same reason: the engine owns its
-// own downloads, so the naming rule has to live beside the engine that will
-// use it rather than in the shared catalog, which carries only what a caller
-// needs in order to list and choose. `theTwoCatalogsAgreeOnWhichRowsExist` and
-// `theTwoCatalogsAgreeOnTheFacts` in the tests join the two, so a row cannot
-// exist in one and not the other, or name a different repository in each.
+// The models are data - the `"engine": "mlx"` entries of the catalog - and this
+// file turns them into rows the engine can install and load. It used to hold
+// the rows as Swift, beside a second copy in the shared catalog and two tests
+// whose job was proving the copies agreed; there is one copy now.
 //
 // WHAT A ROW DOWNLOADS IS A LIST OF FILES, NOT A REPOSITORY. Two reasons, both
 // measured rather than anticipated. An `mlx-community` ASR repository holds
@@ -120,176 +118,79 @@ public enum MLXCatalog {
         }
     }
 
-    public static let rows: [MLXRow] = [
-        // Parakeet's own alignment is what makes it worth measuring here: of
-        // the eight types the helper implements, only the two NeMo families
-        // return real spans rather than one per decoding window.
-        MLXRow(
-            model: "parakeet-tdt-0.6b-v3",
-            repo: "mlx-community/parakeet-tdt-0.6b-v3",
-            assets: parakeetAssets(repo: "mlx-community/parakeet-tdt-0.6b-v3"),
-            type: "parakeet",
-            // The same 25 the `ggml` row of this model names, so the two rows
-            // are comparable cell by cell. The checkpoint is the same one.
-            languages: [
-                "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
-                "lv", "lt", "mt", "pl", "pt", "ro", "ru", "sk", "sl", "es", "sv", "uk",
-            ],
-            languageID: true,
-            segmentTimestamps: true,
-            // Parakeet does not chunk internally - it has no `chunk_seconds` -
-            // so whatever it is handed, it encodes at once. Measured on one
-            // hour of continuous speech: no ceiling costs 21.91 GB and drops
-            // throughput to 41.9x, where a two-minute ceiling costs 4.55 GB and
-            // runs at 153.4x. The cut lands on the quietest frame in a window
-            // before the limit, so on speech with pauses it falls in one.
-            maxSeconds: 120,
-            parametersM: 600,
-            precision: "bf16",
-            sizeBytes: 2_509_041_541,
-            label: "Parakeet TDT 0.6B v3 (MLX, bf16)"),
-
-        // English only, and here because it is small enough to run this engine
-        // end to end without a two-and-a-half-gigabyte download - which is what
-        // it was used for while the protocol was being built.
-        MLXRow(
-            model: "parakeet-tdt_ctc-110m",
-            repo: "mlx-community/parakeet-tdt_ctc-110m",
-            assets: parakeetAssets(repo: "mlx-community/parakeet-tdt_ctc-110m"),
-            type: "parakeet",
-            languages: ["en"],
-            languageID: false,
-            segmentTimestamps: true,
-            // The same reason as the row above: no internal chunking.
-            maxSeconds: 120,
-            parametersM: 110,
-            precision: "bf16",
-            sizeBytes: 458_958_626,
-            label: "Parakeet TDT-CTC 110M (MLX, bf16)"),
-
-        // Whisper reports one span per 30-second decoding window rather than
-        // per utterance, so `segmentTimestamps` is true and means something
-        // much coarser here than it does for Parakeet. `done.synthesized` is
-        // what tells the two apart at run time.
-        MLXRow(
-            model: "whisper-large-v3-turbo",
-            repo: "mlx-community/whisper-large-v3-turbo",
-            assets: [
-                MLXAsset(repo: "mlx-community/whisper-large-v3-turbo", file: "config.json"),
-                MLXAsset(repo: "mlx-community/whisper-large-v3-turbo", file: "weights.safetensors"),
-            ] + whisperTokenizerAssets,
-            type: "whisper",
-            languages: [
-                "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca",
-                "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr",
-                "gl", "gu", "haw", "ha", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it",
-                "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo", "lt", "lv",
-                "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne", "nl", "nn", "no",
-                "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn",
-                "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr",
-                "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh",
-            ],
-            languageID: true,
-            segmentTimestamps: true,
-            // Whisper cuts its own input into 30-second windows, so this is
-            // not what keeps it from encoding an hour at once - but the mel
-            // spectrogram and the segment list are built over whatever it is
-            // handed, and one hour peaked at 5.27 GB against 4.31 GB with this
-            // ceiling, for the same transcript at the same speed.
-            //
-            // It has one consequence worth knowing: this build detects the
-            // language once per request, from the first 30-second window, and
-            // reuses it for the rest of that request. So a ceiling makes
-            // detection per five minutes rather than per file, and a chunk
-            // that opens on music or on a quoted sentence in another language
-            // decodes that whole chunk in the language it heard first.
-            // `--language` settles it, and 4B.5 recorded separately that the
-            // hint is accepted rather than obeyed.
-            maxSeconds: 300,
-            parametersM: 809,
-            precision: "fp16",
-            sizeBytes: 1_618_594_759,
-            label: "Whisper large-v3-turbo (MLX, fp16)"),
-
-        // Two variants rather than the five mlx-community publishes, and the
-        // two chosen are the ones that line up with the q8_0 and q4_k_m pair
-        // every other family here is measured at. bf16 exists and is 4.1 GB;
-        // adding it is a row, not a change.
-        qwen3Row(
-            variant: "8bit", precision: "int8",
-            sizeBytes: 2_467_856_503, label: "Qwen3-ASR 1.7B (MLX, 8-bit)"),
-        qwen3Row(
-            variant: "4bit", precision: "int4",
-            sizeBytes: 1_607_630_579, label: "Qwen3-ASR 1.7B (MLX, 4-bit)"),
-    ]
-
-    /// Everything the Whisper tokenizer needs, from the model's own upstream
-    /// repository, because the MLX conversion ships none of it.
-    ///
-    /// EIGHT FILES, AND THE FIRST ATTEMPT SHIPPED ONE. `tokenizer.json` alone
-    /// looked sufficient - it is what the loader tests for before deciding to
-    /// go to the network - and the load then failed with `missingConfig` out of
-    /// swift-transformers, which wants `tokenizer_config.json` as well. This is
-    /// the list mlx-audio-swift's own `downloadTokenizerAssets` fetches, which
-    /// is the only authority on it, and every one of these exists in the turbo
-    /// repository.
-    ///
-    /// From `openai/whisper-large-v3-turbo` rather than the `openai/whisper-large-v3`
-    /// the library would have picked: the library chooses by vocabulary size,
-    /// which is 51,866 for both, and this row is the turbo model.
-    private static let whisperTokenizerAssets: [MLXAsset] = [
-        "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
-        "added_tokens.json", "vocab.json", "merges.txt", "normalizer.json",
-        "generation_config.json",
-    ].map { MLXAsset(repo: "openai/whisper-large-v3-turbo", file: $0) }
-
-    /// The five files an mlx-community NeMo conversion actually needs. The
-    /// repository also holds a README and a .gitattributes, which the loader
-    /// never opens.
-    private static func parakeetAssets(repo: String) -> [MLXAsset] {
-        ["config.json", "model.safetensors", "tokenizer.model", "tokenizer.vocab", "vocab.txt"]
-            .map { MLXAsset(repo: repo, file: $0) }
+    /// Every usable `mlx` row in the catalog, one per variant, in catalog order.
+    public static var rows: [MLXRow] {
+        Catalog.models(engine: "mlx").flatMap { (try? make($0).get()) ?? [] }
     }
 
-    private static func qwen3Row(
-        variant: String, precision: String, sizeBytes: Int64, label: String
-    ) -> MLXRow {
-        let repo = "mlx-community/Qwen3-ASR-1.7B-\(variant)"
-        return MLXRow(
-            model: "qwen3-asr-1.7b",
-            variant: variant,
-            repo: repo,
-            // No tokenizer.json: this family tokenizes from vocab.json plus
-            // merges.txt, and the helper's loader writes a tokenizer.json of
-            // its own beside them the first time it reads the directory.
-            assets: [
-                "chat_template.json", "config.json", "generation_config.json", "merges.txt",
-                "model.safetensors", "model.safetensors.index.json", "preprocessor_config.json",
-                "tokenizer_config.json", "vocab.json",
-            ].map { MLXAsset(repo: repo, file: $0) },
-            type: "qwen3_asr",
-            languages: [
-                "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
-                "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa",
-                "el", "ro", "hu", "mk",
-            ],
-            languageID: true,
-            // One span per decoding chunk, which is not an utterance boundary.
-            segmentTimestamps: true,
-            // The library's own default here is 1200 seconds. See MLXRow.
-            chunkSeconds: 30,
-            // Not only memory, for this family. `max_tokens` is a single
-            // budget spent across every chunk of one request - MLX Audio issue
-            // #249 - so a long buffer runs out of tokens and the tail is
-            // dropped in silence. Measured on one hour of continuous speech:
-            // 21.66% WER with no ceiling against 15.13% with this one, and
-            // 5.17 GB against 4.01 GB. The ceiling starts a fresh request, and
-            // a fresh budget, every five minutes.
-            maxSeconds: 300,
-            parametersM: 1_700,
-            precision: precision,
-            sizeBytes: sizeBytes,
-            label: label)
+    /// The `mlx` entries that could not be used, and why.
+    public static var problems: [Problem] {
+        Catalog.models(engine: "mlx").compactMap {
+            guard case .failure(let problem) = make($0) else { return nil }
+            return problem
+        }
+    }
+
+    public struct Problem: Error, Sendable, Equatable {
+        /// The entry's `<engine>.<model>`.
+        public let key: String
+        public let message: String
+    }
+
+    /// A catalog entry as its rows, one per variant, or why it cannot be used.
+    ///
+    /// `files` come from the variant's repository, the model's when the
+    /// variant names none; `files_from` adds files from other repositories,
+    /// taken in repository-name order so the asset list is the same on every
+    /// run. Every row needs `type`, a repository and at least one file.
+    public static func make(_ entry: CatalogModel) -> Result<[MLXRow], Problem> {
+        func problem(_ message: String) -> Result<[MLXRow], Problem> {
+            .failure(Problem(key: entry.key, message: "\(entry.key): \(message)"))
+        }
+        guard let type = entry.type, !type.isEmpty else {
+            return problem("an mlx model needs 'type', the helper's name for its architecture")
+        }
+        guard let files = entry.files, !files.isEmpty else {
+            return problem("an mlx model needs 'files', the files to fetch from its repository")
+        }
+        let extra = entry.filesFrom ?? [:]
+        for file in files + extra.values.flatMap({ $0 }) where !isPlainFileName(file) {
+            return problem("'\(file)' is not a plain file name")
+        }
+        var out: [MLXRow] = []
+        for variant in entry.declaredVariants {
+            let row = entry.row(variant)
+            guard let repo = row.source, !repo.isEmpty else {
+                return problem("\(row.id) has no 'source' repository")
+            }
+            let assets = files.map { MLXAsset(repo: repo, file: $0) }
+                + extra.keys.sorted().flatMap { other in
+                    (extra[other] ?? []).map { MLXAsset(repo: other, file: $0) }
+                }
+            out.append(MLXRow(
+                model: entry.model,
+                variant: variant.variant,
+                repo: repo,
+                assets: assets,
+                type: type,
+                languages: entry.languages ?? [],
+                languageID: entry.languageID ?? false,
+                segmentTimestamps: entry.segmentTimestamps ?? false,
+                chunkSeconds: entry.chunkSeconds,
+                maxSeconds: entry.maxSeconds ?? 0,
+                parametersM: row.parametersM ?? 0,
+                precision: row.precision,
+                sizeBytes: row.sizeBytes ?? 0,
+                label: row.label))
+        }
+        return .success(out)
+    }
+
+    /// A file name the store can hold as one directory entry. The loader opens
+    /// these by name inside the row directory, so a path with a separator in
+    /// it would be fetched to one place and looked for in another.
+    static func isPlainFileName(_ name: String) -> Bool {
+        !name.isEmpty && !name.contains("/") && !name.hasPrefix(".")
     }
 
     public static func row(model: String, variant: String?) -> MLXRow? {

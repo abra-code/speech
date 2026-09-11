@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "note": "transcribe.cpp GGUF models. One file per variant. languages, language_id, streaming, word_timestamps and segment_timestamps are advisory: they are what the catalog shows before a download, read out of each GGUF by loading it and printing Model.capabilities (not copied from a model card - that pass corrected four model-card claims). The loaded model's own answers gate at run time. Language strings are stored exactly as the model spells them: Nemotron accepts pl-PL and rejects pl, while Canary, Qwen3-ASR and Whisper accept pl and reject pl-PL. The first variant is the default for an id with no @variant.",
+  "models": [
+    {
+      "engine": "ggml",
+      "model": "parakeet-tdt-0.6b-v3",
+      "family": "parakeet",
+      "source": "handy-computer/parakeet-tdt-0.6b-v3-gguf",
+      "params_m": 600,
+      "languages": [
+        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
+        "lv", "lt", "mt", "pl", "pt", "ro", "ru", "sk", "sl", "es", "sv", "uk"
+      ],
+      "language_id": true,
+      "streaming": false,
+      "word_timestamps": true,
+      "segment_timestamps": true,
+      "variants": [
+        { "variant": "q8_0", "file": "parakeet-tdt-0.6b-v3-Q8_0.gguf", "precision": "q8_0", "size_bytes": 739508576, "label": "Parakeet v3 (Q8_0)" },
+        { "variant": "q4_k_m", "file": "parakeet-tdt-0.6b-v3-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 485425504, "label": "Parakeet v3 (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "parakeet-unified-en-0.6b",
+      "family": "parakeet-unified",
+      "source": "handy-computer/parakeet-unified-en-0.6b-gguf",
+      "params_m": 600,
+      "languages": ["en"],
+      "language_id": false,
+      "streaming": true,
+      "word_timestamps": true,
+      "segment_timestamps": true,
+      "variants": [
+        { "variant": "q8_0", "file": "parakeet-unified-en-0.6b-Q8_0.gguf", "precision": "q8_0", "size_bytes": 731357568, "label": "Parakeet Unified EN (Q8_0)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "canary-1b-v2",
+      "family": "canary",
+      "note": "No language identification, and the failure is not an error but a translation: Polish audio with no hint came back as fluent English prose about the same subject. The engine therefore refuses to run this model without --language. No timestamps at all, and a 400-second ceiling per run.",
+      "source": "handy-computer/canary-1b-v2-gguf",
+      "params_m": 1000,
+      "languages": [
+        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
+        "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk"
+      ],
+      "language_id": false,
+      "streaming": false,
+      "word_timestamps": false,
+      "segment_timestamps": false,
+      "variants": [
+        { "variant": "q8_0", "file": "canary-1b-v2-Q8_0.gguf", "precision": "q8_0", "size_bytes": 1144290016, "label": "Canary 1B v2 (Q8_0)" },
+        { "variant": "q4_k_m", "file": "canary-1b-v2-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 735476448, "label": "Canary 1B v2 (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "qwen3-asr-1.7b",
+      "family": "qwen3-asr",
+      "note": "No timestamps; caps a run at about 87 minutes.",
+      "source": "handy-computer/Qwen3-ASR-1.7B-gguf",
+      "params_m": 1700,
+      "languages": [
+        "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
+        "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa",
+        "el", "ro", "hu", "mk"
+      ],
+      "language_id": true,
+      "streaming": false,
+      "word_timestamps": false,
+      "segment_timestamps": false,
+      "variants": [
+        { "variant": "q8_0", "file": "Qwen3-ASR-1.7B-Q8_0.gguf", "precision": "q8_0", "size_bytes": 2185030624, "label": "Qwen3-ASR 1.7B (Q8_0)" },
+        { "variant": "q4_k_m", "file": "Qwen3-ASR-1.7B-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 1319830496, "label": "Qwen3-ASR 1.7B (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "qwen3-asr-0.6b",
+      "family": "qwen3-asr",
+      "source": "handy-computer/Qwen3-ASR-0.6B-gguf",
+      "params_m": 600,
+      "languages": [
+        "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
+        "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa",
+        "el", "ro", "hu", "mk"
+      ],
+      "language_id": true,
+      "streaming": false,
+      "word_timestamps": false,
+      "segment_timestamps": false,
+      "variants": [
+        { "variant": "q8_0", "file": "Qwen3-ASR-0.6B-Q8_0.gguf", "precision": "q8_0", "size_bytes": 850423456, "label": "Qwen3-ASR 0.6B (Q8_0)" },
+        { "variant": "q4_k_m", "file": "Qwen3-ASR-0.6B-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 589560480, "label": "Qwen3-ASR 0.6B (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "whisper-large-v3-turbo",
+      "family": "whisper",
+      "note": "Segment timestamps only, no word timings.",
+      "source": "handy-computer/whisper-large-v3-turbo-gguf",
+      "params_m": 809,
+      "languages": [
+        "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca",
+        "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr",
+        "gl", "gu", "haw", "ha", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it",
+        "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo", "lt", "lv",
+        "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne", "nl", "nn", "no",
+        "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn",
+        "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr",
+        "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh"
+      ],
+      "language_id": true,
+      "streaming": false,
+      "word_timestamps": false,
+      "segment_timestamps": true,
+      "variants": [
+        { "variant": "q8_0", "file": "whisper-large-v3-turbo-Q8_0.gguf", "precision": "q8_0", "size_bytes": 886381760, "label": "Whisper large-v3-turbo (Q8_0)" },
+        { "variant": "q4_k_m", "file": "whisper-large-v3-turbo-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 536069728, "label": "Whisper large-v3-turbo (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "nemotron-3.5-asr-streaming-0.6b",
+      "family": "nemotron",
+      "note": "Region tags, and they are load-bearing: this model rejects pl. The streaming flag was measured on q8_0; q4_k_m inherits it, since streaming is an architecture property - the loaded model still has the final word.",
+      "source": "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf",
+      "params_m": 600,
+      "languages": [
+        "en-US", "en-GB", "es-US", "es-ES", "fr-FR", "fr-CA", "it-IT", "pt-BR", "pt-PT",
+        "nl-NL", "de-DE", "tr-TR", "ru-RU", "ar-AR", "hi-IN", "ja-JP", "ko-KR", "vi-VN",
+        "uk-UA", "pl-PL", "sv-SE", "cs-CZ", "nb-NO", "da-DK", "bg-BG", "fi-FI", "hr-HR",
+        "sk-SK", "zh-CN", "hu-HU", "ro-RO", "et-EE"
+      ],
+      "language_id": true,
+      "streaming": true,
+      "word_timestamps": true,
+      "segment_timestamps": true,
+      "variants": [
+        { "variant": "q8_0", "file": "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf", "precision": "q8_0", "size_bytes": 751094240, "label": "Nemotron 3.5 streaming (Q8_0)" },
+        { "variant": "q4_k_m", "file": "nemotron-3.5-asr-streaming-0.6b-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 495831520, "label": "Nemotron 3.5 streaming (Q4_K_M)" }
+      ]
+    }
+  ]
+}

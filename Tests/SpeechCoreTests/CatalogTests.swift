@@ -304,11 +304,13 @@ struct CatalogFileTests {
 
         // Too few columns.
         #expect(throws: SpeechError.self) { _ = try CatalogFile.parse("a\tb\tc") }
-        // An unknown family, an unknown role, and an id whose prefix disagrees
+        // A malformed family, an unknown role, and an id whose prefix disagrees
         // with the engine column: each is a hand edit that would otherwise
-        // produce a plausible-looking row nobody can run.
+        // produce a plausible-looking row nobody can run. (An unknown family is
+        // fine - a user-added model brings its own - but not one that would
+        // group apart from its twin by case.)
         for (find, replace) in [
-            ("\twhisper\t", "\tvoxtral\t"),
+            ("\twhisper\t", "\tWhisper\t"),
             ("\ttranscriber\t", "\tornament\t"),
             ("ggml.example@q8_0", "fluid.example@q8_0"),
             ("\t42\t", "\tmany\t"),

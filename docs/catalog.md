@@ -16,26 +16,79 @@ The order of the rows is computed rather than chosen - families alphabetically, 
 
 ## Where the inventory lives
 
-The inventory is Swift, in `Sources/SpeechCore/Catalog.swift`, and `docs/models.catalog.tsv` is a generated export of it.
+The inventory is data: JSON documents, one per engine, in the repository's `catalog/` directory. `build.sh` installs them beside the binary as `build/speech-catalog/`, the same way `CTranscribe.framework` and `speech-mlx` travel with it, and `speech` reads them at startup. A user's own documents add to them or override them - see [Catalog documents](#catalog-documents) below.
 
-That is the opposite of what the development plan's step 3.1 proposed - a TSV bundled as a SwiftPM resource and parsed at startup - and the reason is the shape of this program's deliverable. `build/speech` is contractually a single ad-hoc-signed binary that other repositories copy on its own; a resource bundle is a second artifact that has to travel with it, which is exactly the mistake that made every stage 2 build die at launch until `build.sh` learned to carry `CTranscribe.framework` along. `Bundle.module` is worse than a missing dylib: it traps rather than returning nil, and because it is a lazy `static let` it traps on first use rather than at launch, so a copied binary would abort partway through a session.
+They are not a SwiftPM resource. `Bundle.module` traps rather than returning nil when its bundle is missing, and because it is a lazy `static let` it traps on first use rather than at launch. `speech` finds `speech-catalog/` the way it finds `speech-mlx`: beside the resolved binary, or wherever `SPEECH_BUILTIN_CATALOG_DIR` points. A debug build (`swift run`, `swift test`) also falls back to the repository's own `catalog/`; a release build does not, so a package shipped without its catalog fails on the developer's machine too. Without a built-in catalog every verb stops at startup and says where it looked.
 
-Generating the file rather than reading it keeps one source of truth and still gives a script a file to read:
+`docs/models.catalog.tsv` is a generated export of the merged inventory joined with what each engine reports, which keeps one source of truth and still gives a script a file to read:
 
 - `speech catalog --tsv` writes it.
 - `docs/models.catalog.tsv` is the checked-in copy. Speech.app copies it into its own Resources so a script can read family names and ids without launching the binary.
-- `test.sh` regenerates it and compares the data lines, so it cannot drift.
+- `test.sh` regenerates it and compares the data lines, so it cannot drift. It points `SPEECH_CATALOG_DIR` at an empty directory first, so a developer's own entries never end up in the checked-in file.
 
 The file opens with a `# Produced by:` block naming the tool version, the Mac, the macOS version and the version of every engine that answered - FluidAudio and transcribe.cpp, with Apple's engines being the OS itself. That block matters more than it looks: `languages`, `modes`, `caps` and `min_macos` are not properties of a model, they are what a particular engine version reported on a particular OS, and stage 2 found four cases where that differed from the published claim. `size_bytes` is one revision of one repository, and these repositories are requantized in place. Without the block a table from two builds reads as a table of contradictions.
 
 It also means the block changes whenever somebody on another machine regenerates the file, which is why `test.sh` compares the data lines and not the comments.
-- The unit tests parse the checked-in copy and compare it against the Swift table, and separately round-trip the whole inventory through the codec under Unix, Windows and classic Mac line endings.
+- The unit tests parse the checked-in copy and compare it against the built-in catalog, and separately round-trip the whole inventory through the codec under Unix, Windows and classic Mac line endings.
 
-To refresh it after editing the inventory:
+To refresh it after editing `catalog/`:
 
 ```sh
-./build.sh && build/speech catalog --tsv > docs/models.catalog.tsv
+./build.sh && SPEECH_CATALOG_DIR=/nonexistent build/speech catalog --tsv > docs/models.catalog.tsv
 ```
+
+## Catalog documents
+
+A document is one JSON object:
+
+```json
+{
+  "schema": 1,
+  "note": "free text for the reader; never interpreted",
+  "models": [
+    {
+      "engine": "ggml",
+      "model": "canary-1b-v2",
+      "family": "canary",
+      "source": "handy-computer/canary-1b-v2-gguf",
+      "params_m": 1000,
+      "languages": ["bg", "hr", "cs"],
+      "language_id": false,
+      "variants": [
+        { "variant": "q8_0", "file": "canary-1b-v2-Q8_0.gguf", "precision": "q8_0",
+          "size_bytes": 1144290016, "label": "Canary 1B v2 (Q8_0)" }
+      ]
+    }
+  ]
+}
+```
+
+Each entry is one model of one engine, with its variants beneath it. A variant's id is `<engine>.<model>@<variant>`; an entry with no `variants` is one row whose id has no `@`. A variant inherits every field it does not set, so `source`, `precision`, `params_m`, `size_bytes` and `label` may sit on either level.
+
+| field | level | meaning |
+| --- | --- | --- |
+| `engine`, `model`, `family` | model | required; lowercase letters, digits, `.`, `_`, `-`. `family` is any such name - a user-added model brings its own |
+| `role` | model | `transcriber` (the default) or `helper` |
+| `hidden` | both | `true` unlists the model or variant from `catalog` and `engines`; an id typed in full still builds and runs |
+| `note` | both | free text, never interpreted - where the reasons behind a number live |
+| `source` | both | the Hugging Face repository |
+| `file` | both | `ggml`: the GGUF file inside `source`, required per variant |
+| `params_m`, `precision`, `size_bytes`, `label` | both | as in the file format below; `precision` and `label` are required, one level or the other |
+| `languages`, `language_id`, `streaming`, `word_timestamps`, `segment_timestamps` | model | `ggml` and `mlx`: what the catalog shows before a download. Advisory - the loaded model's own answers gate. A flag left out is false |
+| `type` | model | `mlx`: the helper's architecture name, required |
+| `files` | model | `mlx`: files to fetch from the variant's `source`, required |
+| `files_from` | model | `mlx`: `{"other/repo": ["file", ...]}`, files from other repositories |
+| `chunk_seconds`, `max_seconds` | model | `mlx`: passed to the helper; the longest buffer per request |
+
+Decoding is strict, because these files are edited by hand: an unknown field is an error, since a misspelled `"langauges"` silently ignored would be a model that claims every language. A bad entry is dropped with a warning naming its file, and the rest load; a file that is not JSON, or whose `schema` is not 1, is skipped whole with a warning. A field added by a later build does not change the schema: an older build reports it as unknown and drops only that entry. The built-in documents travel with their binary, so this only affects a user's own file shared across builds.
+
+`fluid` and `apple` entries only describe: which of their models exist is fixed by the engine (FluidAudio names its own repositories), and `speech catalog` reports an entry its engine cannot build. `ggml` and `mlx` entries are the models: a new entry with a repository and file names is a new row, with no code change.
+
+### A user's own documents
+
+`speech` then reads every `*.json` in `$SPEECH_CATALOG_DIR`, by default `~/Library/Application Support/Speech/Catalog`, in name order. An entry with the same `engine` and `model` as a built-in one replaces it whole, in its place; a new one is appended. So a user can hide a built-in model, correct one, or add another quantization by copying the entry from `speech-catalog/` and editing it. When two user files define the same model, the later name wins and a warning says so. Problems in user files are warnings on every run until they are fixed; they never stop a run.
+
+`speech --json catalog` reports both directories under `catalog`, so a caller can find the file to edit.
 
 ## What a row is, and what it is not
 
@@ -47,7 +100,7 @@ The label is descriptive and never evaluative: it says which build a row is, not
 
 The two halves are joined in `Sources/speech/Verbs/CatalogVerb.swift`, the one place where SpeechCore, SpeechApple, SpeechFluid and SpeechGGML are all visible. That join checks three things and refuses to write the file if any fails: a catalog row with no engine is a row nobody can run, an engine with no catalog row is a model that never gets reported, and a row whose repository or file name disagrees with the engine that would fetch it is a 404 halfway through a progress bar. The third check covers both `ggml` and `fluid` rows, each against its own engine's answer. The listing degrades with a warning instead, because one bad row must not cost a caller the other thirty-two.
 
-The second check is also why a row cannot be retired from the inventory alone. `fluid.canary-1b-v2@int4` is deliberately unlisted - the measurements are in the README - and doing that meant dropping it from `Catalog.canaryRows` and from `FluidEngineFactory.catalogRows` in the same commit. Drop it from only the first and the join reports an engine nobody can see; drop it from only the second and the row has no engine. The engine itself stays compiled in, so the id still works when it is typed in full.
+A row is retired from the listing with `"hidden": true` rather than by deleting it. `fluid.canary-1b-v2@int4` is unlisted that way - the measurements are in its `note` in `catalog/fluid.json` - and the engine still builds it, so the id works when it is typed in full. Hidden ids are left out of both sides of the join, so neither check reports them.
 
 ## File format
 
@@ -60,8 +113,8 @@ The parser normalizes CRLF and CR before splitting. Swift makes `\r\n` a single 
 | column | meaning |
 | --- | --- |
 | `id` | `<engine>.<model>[@<variant>]`, the catalog id used everywhere else in the tool |
-| `family` | `apple`, `canary`, `nemotron`, `parakeet`, `parakeet-unified`, `qwen3-asr`, `whisper` |
-| `engine` | `apple`, `fluid` or `ggml`; redundant with the id's prefix, written so a script can grep one column, and checked against the id on parse |
+| `family` | the built-in catalog uses `apple`, `canary`, `nemotron`, `parakeet`, `parakeet-unified`, `qwen3-asr`, `silero`, `whisper`; a user-added model may bring any lowercase name |
+| `engine` | `apple`, `fluid`, `ggml` or `mlx`; redundant with the id's prefix, written so a script can grep one column, and checked against the id on parse |
 | `role` | `transcriber` or `helper` |
 | `source` | Hugging Face repository the weights come from, `-` for the Apple rows |
 | `file` | the single GGUF file inside `source`, `ggml` rows only |
@@ -92,6 +145,7 @@ For a `ggml` row that is one GGUF and the two agree. For a `fluid` row they do n
 {
   "machine": {"chip": "Apple M5", "memory_bytes": 25769803776, "macos": "26.6.2"},
   "models_dir": "/Users/.../Application Support/speech/models",
+  "catalog": {"builtin": ".../build/speech-catalog", "user": "/Users/.../Application Support/Speech/Catalog", "user_exists": false},
   "rows": [
     {
       "id": "ggml.canary-1b-v2@q8_0",

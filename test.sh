@@ -26,6 +26,11 @@ TMP="Tests/tmp"
 rm -rf "$TMP"
 mkdir -p "$TMP"
 
+# The built-in catalog only. A developer's own entries in Application Support
+# would change `catalog --tsv` and fail the diff against the checked-in copy for
+# a reason that has nothing to do with the build.
+export SPEECH_CATALOG_DIR="$TMP/no-user-catalog"
+
 # Failure counter in a file: an assertion may run inside a pipeline, and a
 # pipeline stage is a subshell whose variable updates are lost to the parent.
 FAILLOG="$TMP/.failures"

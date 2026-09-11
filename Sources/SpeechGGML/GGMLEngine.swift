@@ -185,7 +185,9 @@ actor GGMLEngine: TranscriptionEngine {
 
     /// Fetches the weights. Only `speech models download` calls this.
     func install(progress: @escaping LoadProgressHandler) async throws {
-        let file = row.fileName(quant: quant)
+        guard let file = row.fileName(quant: quant) else {
+            throw SpeechError.runtime("'\(id)': the catalog names no file for @\(quant)")
+        }
         progress(LoadProgress(phase: .listing, file: file))
         let listing = try await HuggingFace.tree(repo: row.repo)
         guard let entry = listing.first(where: { $0.path == file }) else {
@@ -334,7 +336,7 @@ actor GGMLEngine: TranscriptionEngine {
             // driven this way looks like a working live session in front of a
             // silent room. This is the fourth capability in this engine whose
             // published or default behavior turned out not to match the
-            // weights; see the table in `GGMLCatalog.rows`.
+            // weights; see the note at the top of catalog/ggml.json.
             //
             // A future family that accepts the same extension may want a
             // different value, and will need its own measurement rather than
