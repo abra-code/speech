@@ -87,7 +87,7 @@ Global options: `--json` (JSONL events on stdout, see [docs/protocol.md](docs/pr
 
 ## Supported input
 
-Anything AVFoundation opens: wav, aiff, caf, m4a, mp3, mov, mp4, m4v. A movie's
+Anything AVFoundation opens: wav, aiff, caf, flac, m4a, mp3, mov, mp4, m4v. A movie's
 audio is decoded from all of its audio tracks, mixed down to 16 kHz mono. webm,
 mkv, ogg and opus are reported as unsupported rather than half-handled.
 
@@ -105,17 +105,23 @@ A manifest is a UTF-8 TSV with no header:
 `tools/fetch-fleurs.sh pl_pl en_us de_de` downloads FLEURS test splits
 (CC-BY-4.0, no account needed) and writes a manifest for each.
 `tools/make-manifest.sh <folder>` pairs recordings with same-basename `.txt`
-references. Public sets rank models; your own recordings decide.
+references. `tools/fetch-librispeech.sh` downloads the LibriSpeech test-clean
+and test-other splits (openslr.org/12, CC-BY-4.0, about 350 MB each) into
+$SPEECH_CORPUS_DIR/LibriSpeech and writes a manifest for each. Public sets
+rank models; your own recordings decide.
 
 `tools/language-battery.py` runs the whole matrix for one or more languages:
 every transcriber row whose loaded model claims the language, against that
-language's FLEURS split, resumable at the cell so a multi-day run survives being
-interrupted. It picks the models from `speech catalog --json` rather than a
-list, so a new catalog row joins the matrix by existing.
+language's FLEURS split - or, for `librispeech-test-clean` and
+`librispeech-test-other`, against that LibriSpeech split in English.
+Resumable at the cell so a multi-day run survives being interrupted. It picks
+the models from `speech catalog --json` rather than a list, so a new catalog
+row joins the matrix by existing.
 
     tools/language-battery.py --list                 # the 102 FLEURS languages, and who claims each
     tools/language-battery.py --plan cs_cz uk_ua     # the cells, the downloads, the hours
     tools/language-battery.py --caffeinate --download cs_cz uk_ua
+    tools/language-battery.py --plan librispeech-test-clean   # English-only second corpus
 
 Scoring normalizes to NFC, lowercases in the reference language's locale, and
 replaces punctuation and symbols with spaces - keeping an apostrophe that sits

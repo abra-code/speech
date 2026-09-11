@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Score every model that claims a language against that language's FLEURS split.
+"""Score every model that claims a language against that language's test split:
+FLEURS, or LibriSpeech for English (`librispeech-test-clean`, `librispeech-test-other`).
 
 This is the general form of the one-off matrices that produced spikes 1, 2 and
 4B (Private/spike-*-runs/run.sh), which each hard-coded their models and the
@@ -43,6 +44,14 @@ per cell and prints them in a table. Which model to offer a user is Speech.app's
 decision, made from measurements taken on the user's own machine - see
 docs/catalog.md.
 
+LibriSpeech is the second corpus, English-only. `librispeech-test-clean` and
+`librispeech-test-other` name its splits the way a FLEURS directory names a
+language, and each scores every model that claims English - the splits are
+kept apart because test-other is the harder one and a joint number would hide
+that. tools/fetch-librispeech.sh downloads a split from openslr.org/12 into
+$SPEECH_CORPUS_DIR/LibriSpeech and writes the manifest the cells read; a run
+calls it on demand when the manifest is missing, as it does fetch-fleurs.sh.
+
 This is a Python program rather than a shell script because the work is: reading
 JSON, joining two tables, resolving language tags and formatting a report. The
 shell parts - the run loop and the subprocess calls - are the smaller half.
@@ -66,6 +75,7 @@ CAFFEINATED = "SPEECH_BATTERY_CAFFEINATED"
 
 REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 FETCH_FLEURS = os.path.join(REPO, "tools", "fetch-fleurs.sh")
+FETCH_LIBRISPEECH = os.path.join(REPO, "tools", "fetch-librispeech.sh")
 FLEURS_TREE = "https://huggingface.co/api/datasets/google/fleurs/tree/main/data"
 
 # Every directory under that tree, as of the 2022 release. FLEURS is a published,
@@ -127,6 +137,22 @@ LANGUAGE_ALIASES = {
     "id": ["in"],       # Indonesian, the older code
     "in": ["id"],
 }
+
+# LibriSpeech splits this battery knows, as found under
+# $SPEECH_CORPUS_DIR/LibriSpeech. test-other is read from the same books by
+# less clear speakers, so the two are ranked apart, never pooled.
+LIBRISPEECH_SPLITS = ("test-clean", "test-other")
+# The battery id for a split. It reads as a language in the table because the
+# table is keyed by language, and it sorts nowhere near a FLEURS directory.
+LIBRISPEECH_PREFIX = "librispeech-"
+# LibriSpeech is English-only, so every split is scored with this tag.
+LIBRISPEECH_TAG = "en-US"
+# What one LibriSpeech split holds, for planning one whose audio is not on
+# disk yet. Measured here: test-clean 2620 rows and 5.4h, test-other 2939 rows
+# and 5.3h. A plan over a missing split is an estimate either way; this keeps
+# it from vanishing from the total the way an unlisted split would.
+LIBRISPEECH_SPLIT_ROWS = 2800
+LIBRISPEECH_SPLIT_SECONDS = int(5.4 * 3600)
 
 # What one FLEURS test split holds, for planning a language whose audio has not
 # been downloaded yet. The three measured here are en_us 1.8h, pl_pl 2.1h and
@@ -196,6 +222,46 @@ def tag_for(fleurs_dir):
 
 def primary(tag):
     return tag.replace("_", "-").split("-")[0].lower()
+
+
+def librispeech_split(name):
+    """The LibriSpeech split a battery name asks for, or None.
+
+    `librispeech-test-clean` is the canonical spelling; `test-clean`,
+    `ls-test-clean` and the `_`- and `/`-separated forms mean the same, so a
+    hand-typed run does not fail on the prefix. Anything else - in particular
+    every FLEURS directory - is not one.
+    """
+    wanted = name.strip().lower().replace("_", "-").replace("/", "-")
+    for prefix in (LIBRISPEECH_PREFIX, "ls-"):
+        if wanted.startswith(prefix):
+            wanted = wanted[len(prefix):]
+            break
+    if wanted in LIBRISPEECH_SPLITS:
+        return wanted
+    return None
+
+
+def librispeech_id(split):
+    """The battery id for a LibriSpeech split: what the table is keyed by."""
+    return LIBRISPEECH_PREFIX + split
+
+
+def is_librispeech(fleurs_dir):
+    """Whether a resolved battery id names a LibriSpeech split, not FLEURS."""
+    return librispeech_split(fleurs_dir) is not None
+
+
+def corpus_tag(fleurs_dir):
+    """The language tag a battery id is scored with.
+
+    FLEURS ids go through tag_for; LibriSpeech is English-only, so its splits
+    all score as en-US. One function so rows_for, the planners, the runner and
+    the summary cannot disagree about which.
+    """
+    if is_librispeech(fleurs_dir):
+        return LIBRISPEECH_TAG
+    return tag_for(fleurs_dir)
 
 
 def script_of(name):
@@ -297,6 +363,15 @@ def resolve_language(name):
     wanted = name.strip().replace("_", "-").lower()
     if not wanted:
         return None, "empty language name"
+    # LibriSpeech before FLEURS: `test-clean` is not a FLEURS directory and
+    # must not fall through to the "does not name a language" refusal.
+    split = librispeech_split(name)
+    if split is not None:
+        canonical = librispeech_id(split)
+        if name.strip().lower().replace("_", "-") == canonical:
+            return canonical, None
+        return canonical, ("%s: a LibriSpeech split; scoring it as %s in English (%s)"
+                           % (name.strip(), canonical, LIBRISPEECH_TAG))
     # A tag is subtags joined by separators and nothing else. The check is a
     # shape test rather than a blocklist because the value becomes a path
     # component under --out and the corpus directory, and because anything
@@ -442,7 +517,7 @@ def rows_for(catalog, fleurs_dir, engines, exclude, wildcard):
     a published claim, which is why this is read from the catalog rather than
     from a table here.
     """
-    want = tag_for(fleurs_dir)
+    want = corpus_tag(fleurs_dir)
     chosen = []
     for row in catalog["rows"]:
         if row.get("role") != "transcriber" or not row.get("available", True):
@@ -475,7 +550,7 @@ def explicit_rows(catalog, model_ids, fleurs_dir):
     missing.
     """
     known = {row["id"]: row for row in catalog["rows"]}
-    want = tag_for(fleurs_dir)
+    want = corpus_tag(fleurs_dir)
     chosen = []
     for rid in model_ids:
         row = known.get(rid)
@@ -498,6 +573,8 @@ def audio_seconds(corpus_dir, fleurs_dir):
     audio_seconds `speech eval` reports to the second, so the time estimate does
     not have to guess at an average utterance length.
     """
+    if is_librispeech(fleurs_dir):
+        return librispeech_audio(corpus_dir, fleurs_dir)
     path = os.path.join(corpus_dir, "fleurs", fleurs_dir, "test.tsv")
     total, rows = 0, 0
     try:
@@ -532,6 +609,93 @@ def fetch_split(corpus_dir, fleurs_dir):
     return done.returncode == 0
 
 
+def flac_seconds(path):
+    """Duration of a FLAC file from its STREAMINFO header, or None.
+
+    The first metadata block of a LibriSpeech file is STREAMINFO, which
+    carries the sample rate and total sample count. Reading 42 bytes beats
+    decoding 7 seconds of audio, and --plan scans thousands of files.
+    """
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(42)
+    except OSError:
+        return None
+    if len(head) < 42 or head[0:4] != b"fLaC":
+        return None
+    if head[4] & 0x7f != 0:
+        return None
+    rate = int.from_bytes(head[18:21], "big") >> 4
+    total = int.from_bytes(head[21:26], "big") & 0xfffffffff
+    if not rate or not total:
+        return None
+    return total / rate
+
+
+def librispeech_audio(corpus_dir, fleurs_dir):
+    """Exact total over the manifest's own FLAC files; (0.0, 0) when absent.
+
+    LibriSpeech ships no sample-count column, so the durations come from the
+    headers instead. Only files the manifest actually scores are counted, and
+    one unreadable header is skipped rather than zeroing the whole split.
+    """
+    split = librispeech_split(fleurs_dir)
+    manifest = os.path.join(corpus_dir, "LibriSpeech", split, "manifest.tsv")
+    try:
+        with open(manifest, encoding="utf-8", errors="replace") as handle:
+            paths = [line.split("\t")[0] for line in handle if line.strip()]
+    except OSError:
+        return 0.0, 0
+    total, rows = 0.0, 0
+    for path in paths:
+        seconds = flac_seconds(path)
+        if seconds is None:
+            continue
+        total += seconds
+        rows += 1
+    return total, rows
+
+
+def fetch_librispeech(corpus_dir, fleurs_dir):
+    """tools/fetch-librispeech.sh, with its output left on the terminal."""
+    environment = dict(os.environ, SPEECH_CORPUS_DIR=corpus_dir)
+    try:
+        done = subprocess.run([FETCH_LIBRISPEECH, librispeech_split(fleurs_dir)],
+                              stdin=subprocess.DEVNULL, env=environment)
+    except OSError as error:
+        print("!! could not run %s: %s" % (FETCH_LIBRISPEECH, error))
+        return False
+    return done.returncode == 0
+
+
+def usable_librispeech_manifest(corpus_dir, fleurs_dir, allow_fetch):
+    """The manifest for a LibriSpeech split, fetching it if that is allowed.
+
+    Returns its path, or None if this split cannot be measured. There is no
+    test.tsv to repair against, so a non-empty manifest is accepted as is:
+    the fetcher joins .trans.txt entries to matching .flac files and refuses
+    to publish an empty one itself. It downloads the audio only when the split
+    directory is absent, so on a split already on disk it just builds the
+    manifest.
+    """
+    split = librispeech_split(fleurs_dir)
+    manifest = os.path.join(corpus_dir, "LibriSpeech", split, "manifest.tsv")
+
+    if not (os.path.exists(manifest) and os.path.getsize(manifest) > 0):
+        if not allow_fetch:
+            print("!! no manifest at %s and --no-fetch was given; skipping %s"
+                  % (manifest, fleurs_dir))
+            return None
+        print("-- fetching %s with tools/fetch-librispeech.sh" % fleurs_dir)
+        if not fetch_librispeech(corpus_dir, fleurs_dir):
+            print("!! could not fetch %s; skipping it" % fleurs_dir)
+            return None
+        if not (os.path.exists(manifest) and os.path.getsize(manifest) > 0):
+            print("!! still no manifest at %s; skipping %s" % (manifest, fleurs_dir))
+            return None
+    return manifest
+
+
 def usable_manifest(corpus_dir, fleurs_dir, allow_fetch):
     """The manifest for a split, fetching or repairing it if that is allowed.
 
@@ -543,6 +707,8 @@ def usable_manifest(corpus_dir, fleurs_dir, allow_fetch):
     what a bare existence test accepts, forever after. Checking only after a
     fetch would never see the case this exists for.
     """
+    if is_librispeech(fleurs_dir):
+        return usable_librispeech_manifest(corpus_dir, fleurs_dir, allow_fetch)
     split = os.path.join(corpus_dir, "fleurs", fleurs_dir)
     manifest = os.path.join(split, "manifest.tsv")
 
@@ -835,7 +1001,7 @@ def summarize(out_dir):
         return fields[columns[name]]
 
     for language, limit in sorted(groups):
-        unspaced = primary(tag_for(language)) in UNSPACED
+        unspaced = primary(corpus_tag(language)) in UNSPACED
         print()
         print("== %s%s%s" % (
             language,
@@ -1022,7 +1188,7 @@ def fleurs_languages():
 
 
 def command_list(options, catalog):
-    """Every FLEURS language with the number of catalog rows that claim it."""
+    """Every FLEURS language and LibriSpeech split, with the rows that claim each."""
     names = fleurs_languages()
     if names is None:
         # Offline, or Hugging Face is down. Falling back to what is already
@@ -1057,12 +1223,33 @@ def command_list(options, catalog):
             "%d/%d" % (installed, len(rows)) if rows else "-",
             " ".join(engines) if engines else "(none claims it)",
             "%d rows, %s" % (count, human_time(seconds)) if count else "not fetched"))
+
+    print()
+    print("%-22s %-7s %-9s %-22s %s" % ("librispeech", "tag", "models", "engines", "corpus"))
+    for split in LIBRISPEECH_SPLITS:
+        name = librispeech_id(split)
+        rows = [row for row, _ in rows_for(catalog, name, [], [], False)]
+        installed = sum(1 for row in rows if row.get("installed"))
+        seconds, count = audio_seconds(options.corpus_dir, name)
+        engines = sorted({row.get("engine", "?") for row in rows})
+        if count:
+            corpus = "%d rows, %s" % (count, human_time(seconds))
+        elif os.path.isdir(os.path.join(options.corpus_dir, "LibriSpeech", split)):
+            corpus = "no manifest - run tools/fetch-librispeech.sh %s" % split
+        else:
+            corpus = "not fetched"
+        print("%-22s %-7s %-9s %-22s %s" % (
+            name, LIBRISPEECH_TAG,
+            "%d/%d" % (installed, len(rows)) if rows else "-",
+            " ".join(engines) if engines else "(none claims it)",
+            corpus))
     return 0
 
 
 def command_plan(options, catalog):
     rtfx = known_rtfx(rtfx_sources(options.out))
-    total_seconds, missing, cells, guessed = 0.0, {}, 0, False
+    total_seconds, missing, cells = 0.0, {}, 0
+    guessed_fleurs, guessed_librispeech = False, False
 
     for fleurs_dir in options.languages:
         seconds, rows = audio_seconds(options.corpus_dir, fleurs_dir)
@@ -1070,8 +1257,15 @@ def command_plan(options, catalog):
         if not known_size:
             # A split that is not on disk yet still has to appear in the total,
             # or the headline number is short by however many languages have not
-            # been downloaded - the exact case --plan exists to answer.
-            seconds, rows, guessed = FLEURS_SPLIT_SECONDS, FLEURS_SPLIT_ROWS, True
+            # been downloaded - the exact case --plan exists to answer. Each
+            # corpus counts at its own middle: a 5.4h LibriSpeech guess at a
+            # 2.5h FLEURS size would be wrong by half a day across two splits.
+            if is_librispeech(fleurs_dir):
+                seconds, rows = LIBRISPEECH_SPLIT_SECONDS, LIBRISPEECH_SPLIT_ROWS
+                guessed_librispeech = True
+            else:
+                seconds, rows = FLEURS_SPLIT_SECONDS, FLEURS_SPLIT_ROWS
+                guessed_fleurs = True
         if options.limit:
             # The limit takes the first n rows, so scale by the row fraction
             # rather than assuming every utterance is the mean length. This has
@@ -1085,7 +1279,7 @@ def command_plan(options, catalog):
             chosen = [row for row, _ in rows_for(catalog, fleurs_dir, options.engines,
                                                  options.exclude, options.wildcard)]
         print("== %s (%s)  %s of audio%s" % (
-            fleurs_dir, tag_for(fleurs_dir), human_time(seconds),
+            fleurs_dir, corpus_tag(fleurs_dir), human_time(seconds),
             "" if known_size else " (estimated; the split is not on disk yet)"))
         for row in chosen:
             cells += 1
@@ -1105,11 +1299,16 @@ def command_plan(options, catalog):
         print()
 
     footer = ""
-    if guessed:
+    if guessed_fleurs:
         each = FLEURS_SPLIT_SECONDS
         if options.limit:
             each = each * min(options.limit, FLEURS_SPLIT_ROWS) / FLEURS_SPLIT_ROWS
-        footer = " (splits not yet fetched counted at %s each)" % human_time(each)
+        footer += " (unfetched FLEURS splits counted at %s each)" % human_time(each)
+    if guessed_librispeech:
+        each = LIBRISPEECH_SPLIT_SECONDS
+        if options.limit:
+            each = each * min(options.limit, LIBRISPEECH_SPLIT_ROWS) / LIBRISPEECH_SPLIT_ROWS
+        footer += " (unfetched LibriSpeech splits counted at %s each)" % human_time(each)
     print("%d cells, about %s of compute%s" % (cells, human_time(total_seconds), footer))
     if missing:
         print("%d model%s to download, %s:" % (
@@ -1192,7 +1391,7 @@ def command_run(options, catalog):
     print()
 
     for fleurs_dir in options.languages:
-        tag = tag_for(fleurs_dir)
+        tag = corpus_tag(fleurs_dir)
         manifest = usable_manifest(options.corpus_dir, fleurs_dir, not options.no_fetch)
         if manifest is None:
             continue
@@ -1269,7 +1468,7 @@ def parse_arguments(argv):
         prog=os.path.basename(argv[0]),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Score every model that claims a language against that "
-                    "language's FLEURS test split.",
+                    "language's test split: FLEURS, or LibriSpeech for English.",
         epilog="Languages are positional arguments, one or more of them, each a\n"
                "language tag: es, es-ES, pt-BR, zh. FLEURS' own directory names\n"
                "(es_419, cmn_hans_cn) work too. FLEURS ships one split per\n"
@@ -1278,27 +1477,37 @@ def parse_arguments(argv):
                "prints them all, with how many models claim each and which\n"
                "engines.\n"
                "\n"
+               "librispeech-test-clean and librispeech-test-other name the two\n"
+               "LibriSpeech splits instead: English-only, ranked apart, with\n"
+               "test-other the harder one. `test-clean` and `ls-test-clean`\n"
+               "mean the same. A split that is not on disk is downloaded from\n"
+               "openslr.org/12 (about 350 MB each) by tools/fetch-librispeech.sh.\n"
+               "\n"
                "examples:\n"
                "  # every language, how many models claim it, whether it is downloaded\n"
                "  tools/language-battery.py --list\n"
                "  # what a Spanish run would cost, in cells, hours and gigabytes\n"
                "  tools/language-battery.py --plan es\n"
+               "  # what the clean LibriSpeech split would cost\n"
+               "  tools/language-battery.py --plan librispeech-test-clean\n"
                "  # run it on all 4 engines. Audio is fetched as needed either way;\n"
                "  # --download is what also pulls the model weights that are missing\n"
                "  tools/language-battery.py --caffeinate --download es 2>&1 | tee battery-es.log\n"
                "  # a quicker look: two engines, two languages, 50 utterances each\n"
                "  tools/language-battery.py --engines \"apple mlx\" --limit 50 es pt\n"
                "\n"
-               "SPEECH_CORPUS_DIR  where FLEURS lives (default ~/Corpora)\n"
+               "SPEECH_CORPUS_DIR  where the corpora live (default ~/Corpora)\n"
                "SPEECH_MODELS_DIR  where model weights live, read by `speech` itself")
 
     parser.add_argument("languages", nargs="*", metavar="language",
-                        help="one or more language tags (es, pt-BR, zh) or FLEURS "
-                             "directory names (es_419); every model that claims the "
-                             "language is scored against its FLEURS test split. "
+                        help="one or more language tags (es, pt-BR, zh), FLEURS "
+                             "directory names (es_419), or LibriSpeech splits "
+                             "(librispeech-test-clean); every model that claims the "
+                             "language is scored against its test split. "
                              "--list to see them all")
     parser.add_argument("--list", action="store_true",
-                        help="list FLEURS languages and how many models claim each, then exit")
+                        help="list FLEURS languages and LibriSpeech splits with how "
+                             "many models claim each, then exit")
     parser.add_argument("--plan", action="store_true",
                         help="print the matrix, the missing downloads and a time estimate; run nothing")
     parser.add_argument("--out", metavar="DIR",
@@ -1393,9 +1602,11 @@ def main(argv):
         if not options.languages:
             parser.print_usage(sys.stderr)
             die("no languages given. A language is a positional argument, written as a\n"
-                "language tag - es, es-ES, pt-BR, zh - or as a FLEURS directory name:\n"
+                "language tag - es, es-ES, pt-BR, zh - as a FLEURS directory name, or as\n"
+                "a LibriSpeech split:\n"
                 "\n"
                 "    tools/language-battery.py --plan es\n"
+                "    tools/language-battery.py --plan librispeech-test-clean\n"
                 "\n"
                 "--list prints all %d languages, --help the rest of the options."
                 % len(FLEURS_DIRECTORIES), status=2)

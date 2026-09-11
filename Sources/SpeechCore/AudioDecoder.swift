@@ -10,7 +10,9 @@
 //
 // AVFoundation is the only decoder in the tool. That is a decision from part 2
 // of the plan (no ffmpeg, no Python), and it costs us webm, mkv, ogg and opus,
-// which are reported as unsupported rather than half-handled.
+// which are reported as unsupported rather than half-handled. FLAC decodes
+// through the same path - measured on LibriSpeech's 16 kHz mono FLAC - so it
+// is supported input, not converted first.
 
 import AVFoundation
 import Foundation
@@ -23,7 +25,7 @@ public enum AudioDecoder {
     /// Containers AVFoundation will not open, listed so the error can say what
     /// to do instead of "operation could not be completed".
     private static let knownUnsupportedExtensions: Set<String> = [
-        "webm", "mkv", "ogg", "oga", "opus", "flac", "wma", "amr",
+        "webm", "mkv", "ogg", "oga", "opus", "wma", "amr",
     ]
 
     public static func decode(url: URL) async throws -> [Float] {

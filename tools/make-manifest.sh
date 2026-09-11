@@ -35,7 +35,7 @@ for media in "$folder"/*; do
     # "0 skipped" is the worst possible answer.
     lower=$(printf '%s' "$media" | LC_ALL=C tr 'A-Z' 'a-z')
     case "$lower" in
-        *.wav|*.aiff|*.aif|*.caf|*.m4a|*.mp3|*.mov|*.mp4|*.m4v) ;;
+        *.wav|*.aiff|*.aif|*.caf|*.flac|*.m4a|*.mp3|*.mov|*.mp4|*.m4v) ;;
         *) continue ;;
     esac
     base=$(basename "$media")
