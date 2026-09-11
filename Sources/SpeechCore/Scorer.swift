@@ -14,6 +14,12 @@
 //      folded to U+0027 - "don't" and "don\u{2019}t" are the same word, and
 //      counting that as an error would measure typography, not recognition.
 //   4. Collapse whitespace, split on it.
+//   5. For languages without word spaces (zh, ja, th and friends), CER
+//      ignores spaces: FLEURS spaces every Han character in its Mandarin
+//      references while engines emit natural text, so counting spaces
+//      puts a ~47% floor under a perfect transcript. WER is left alone
+//      and stays meaningless there; the battery already sorts those
+//      languages by CER.
 //
 // Numbers are deliberately NOT normalized: "21" and "twenty one" score as
 // errors against each other. FLEURS supplies a spelled-out `transcription`
@@ -100,6 +106,14 @@ public enum Scorer {
         "\u{0027}", "\u{2019}", "\u{02BC}", "\u{2018}",
     ]
 
+    /// Primary subtags whose orthography puts no spaces between words.
+    /// Same set as UNSPACED in tools/language-battery.py, which sorts these
+    /// languages by CER. Kept here so CER can be valid for them: without it
+    /// a correct Mandarin hypothesis scores ~47% CER against FLEURS'
+    /// character-spaced references, entirely from space deletions.
+    private static let unspacedPrimaries: Set<String> =
+        ["zh", "cmn", "yue", "ja", "th", "km", "lo", "my", "bo"]
+
     public static func normalize(_ text: String, language: String? = nil) -> String {
         let locale = language.map { Locale(identifier: Language.canonical($0)) }
         let lowered = text.precomposedStringWithCanonicalMapping
@@ -164,9 +178,22 @@ public enum Scorer {
 
         // CER keeps the single spaces between tokens: word boundaries are part
         // of what a character-level score is measuring, and dropping them would
-        // score "atone" and "at one" as identical.
-        let referenceCharacters = Array(referenceNormalized)
-        let hypothesisCharacters = Array(hypothesisNormalized)
+        // score "atone" and "at one" as identical. Unspaced languages are the
+        // exception: their references and hypotheses disagree about spaces by
+        // convention (FLEURS spaces every Han character, engines do not), so
+        // spaces are removed on both sides before the character alignment.
+        // WER is deliberately left alone and stays meaningless there.
+        let unspaced = language.map { Language.primarySubtag($0) }
+            .map { unspacedPrimaries.contains($0) } ?? false
+        let referenceCharacters: [Character]
+        let hypothesisCharacters: [Character]
+        if unspaced {
+            referenceCharacters = Array(referenceNormalized.filter { $0 != " " })
+            hypothesisCharacters = Array(hypothesisNormalized.filter { $0 != " " })
+        } else {
+            referenceCharacters = Array(referenceNormalized)
+            hypothesisCharacters = Array(hypothesisNormalized)
+        }
 
         return Score(
             word: align(reference: referenceTokens, hypothesis: hypothesisTokens),

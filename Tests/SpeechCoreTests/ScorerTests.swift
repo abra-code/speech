@@ -151,4 +151,43 @@ struct ScorerTests {
         #expect(counts.deletions == 0)
         #expect(counts.insertions == 0)
     }
+
+    @Test("CER ignores spaces for unspaced languages, where FLEURS spaces every Han character")
+    func unspacedCerIgnoresSpaces() {
+        // The battery's Mandarin references look like the first string while
+        // engines emit the second. Without the exemption this scores ~44% CER
+        // on a perfect transcript; with it the answer is zero.
+        let perfect = Scorer.score(
+            reference: "在 昆 达 里 尼 瑜 伽 中 昆 达 里 尼 能 量 启 迪 能 量 通 过 瑜 伽 姿 势 呼 吸 练 习 念 语 和 视 觉 形 象 被 唤 醒",
+            hypothesis: "在昆达里尼瑜伽中，昆达里尼能量、启迪能量通过瑜伽姿势、呼吸练习、念语和视觉形象被唤醒。",
+            language: "zh-CN")
+        #expect(perfect.cer == 0)
+        // The tag spelling does not matter: bare, regional, and FLEURS
+        // directory spellings all take the same path.
+        for tag in ["zh", "zh-CN", "cmn_hans_cn"] {
+            let score = Scorer.score(
+                reference: "他 受 到 了 新 加 坡 副 总 理 黄 根 成 的 欢 迎",
+                hypothesis: "他受到了新加坡副总理黄根成的欢迎。",
+                language: tag)
+            #expect(score.cer == 0)
+        }
+        // One duplicated character is one character error over the spaceless
+        // reference, not one plus thirty space deletions.
+        let typo = Scorer.score(
+            reference: "他 受 到 了 新 加 坡 副 总 理 黄 根 成 的 欢 迎",
+            hypothesis: "他受到了新加坡副总理黄根成的欢迎迎。",
+            language: "zh-CN")
+        #expect(typo.character.edits == 1)
+        #expect(typo.cer == 1.0 / 16.0)
+    }
+
+    @Test("CER still counts spaces for spaced languages")
+    func spacedCerKeepsSpaces() {
+        let score = Scorer.score(reference: "at one", hypothesis: "atone")
+        #expect(score.character.deletions == 1)
+        #expect(score.character.edits == 1)
+        // An explicit language that is not unspaced changes nothing.
+        let tagged = Scorer.score(reference: "at one", hypothesis: "atone", language: "en-US")
+        #expect(tagged.cer == score.cer)
+    }
 }

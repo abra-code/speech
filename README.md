@@ -120,7 +120,10 @@ list, so a new catalog row joins the matrix by existing.
 Scoring normalizes to NFC, lowercases in the reference language's locale, and
 replaces punctuation and symbols with spaces - keeping an apostrophe that sits
 between two letters, and folding the typographic form onto the ASCII one, so
-that a recognizer is not charged for its typography. Numbers are **not**
+that a recognizer is not charged for its typography. For languages written
+without spaces between words - Chinese, Japanese, Thai and the like - CER also
+ignores spaces, because FLEURS puts a space between every Han character while
+engines write natural text; WER means nothing there. Numbers are **not**
 normalized, which is why the FLEURS tooling takes the spelled-out
 `transcription` column.
 
