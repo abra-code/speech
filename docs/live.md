@@ -335,7 +335,7 @@ committed span, which is an estimate and is named as one in the code. **Stage
 4.3's voice activity detection replaces all of this**: utterance boundaries
 belong to the audio, not to the text.
 
-Two of the seven ggml families have a streaming decoder, and which two matters:
+Two of the seven built-in ggml families have a streaming decoder (Granite Speech, added later, has none), and which two matters:
 
 | row | streams | note |
 | --- | --- | --- |
@@ -353,8 +353,9 @@ cleanly, reports `state == .finished` and `lastStatus == nil`, commits every
 millisecond of audio, and returns an empty string - a live session that looks
 like it is working in front of a silent room. Measured 2026-09-05: only
 `attContextRight: 0` produces a transcript; 1, 2, 4 and 8 throw; 13 and the
-default silently produce nothing. The value is pinned in
-`GGMLEngine.streamExtension(for:)` with the table.
+default silently produce nothing. The value is the model's `stream` setting in
+`catalog/ggml.json`, with the table in its note; `GGMLEngine.streamExtension(for:)`
+keeps the same value as the fallback for a model added without one.
 
 ## The `fluid` rows
 

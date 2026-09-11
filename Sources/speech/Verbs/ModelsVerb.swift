@@ -21,6 +21,7 @@ func runModels(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         text += "  list                    What is on disk, with sizes\n"
         text += "  status <id>             One row: state, path and size\n"
         text += "  download <id>           Fetch a row's weights\n"
+        text += "  add <owner/repo>        Register a transcribe.cpp model the catalog lacks\n"
         text += "  delete <id>             Remove a row's files\n"
         text += "  install-locale <bcp47>  Install Apple's speech assets for a locale (for example pl-PL)\n"
         text += "\nA catalog id is <engine>.<model>[@<variant>], for example fluid.parakeet-v3@int8.\n"
@@ -43,6 +44,7 @@ func runModels(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
     case "list": try await modelsList(globals, sink, rest, usage: usage)
     case "status": try await modelsStatus(globals, sink, rest, usage: usage)
     case "download": try await modelsDownload(globals, sink, rest, usage: usage)
+    case "add": try await modelsAdd(globals, sink, rest)
     case "delete": try modelsDelete(globals, sink, rest, usage: usage)
     case "install-locale": try await modelsInstallLocale(globals, sink, rest, usage: usage)
     default:

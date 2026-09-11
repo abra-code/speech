@@ -27,7 +27,7 @@ import Foundation
 
 /// One variant of a catalog model: the part of an id after the `@`, and every
 /// field that differs between builds of the same model.
-public struct CatalogVariant: Sendable, Equatable, Decodable {
+public struct CatalogVariant: Sendable, Equatable, Codable {
     /// nil for a model that has no variants, whose id carries no `@`.
     public var variant: String?
     public var source: String?
@@ -74,12 +74,117 @@ public struct CatalogVariant: Sendable, Equatable, Decodable {
         hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden)
         note = try c.decodeIfPresent(String.self, forKey: .note)
     }
+
+    /// Absent fields are left out rather than written as null, so a file this
+    /// program writes reads like one a person wrote.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encodeIfPresent(variant, forKey: .variant)
+        try c.encodeIfPresent(source, forKey: .source)
+        try c.encodeIfPresent(file, forKey: .file)
+        try c.encodeIfPresent(parametersM, forKey: .parametersM)
+        try c.encodeIfPresent(precision, forKey: .precision)
+        try c.encodeIfPresent(sizeBytes, forKey: .sizeBytes)
+        try c.encodeIfPresent(label, forKey: .label)
+        try c.encodeIfPresent(hidden, forKey: .hidden)
+        try c.encodeIfPresent(note, forKey: .note)
+    }
+}
+
+/// How a `ggml` model's streaming decoder is driven: which transcribe.cpp
+/// stream extension to pass, and its settings.
+///
+/// Data rather than code because the right values are measurements of one
+/// model, not properties of a family - `nemotron-3.5-asr-streaming-0.6b` works
+/// only with `att_context_right` 0, and the library's own default returns an
+/// empty transcript while reporting success. An entry without this keeps the
+/// engine's built-in choice (see `GGMLEngine.streamExtension`).
+public struct CatalogStream: Sendable, Equatable, Codable {
+    /// `none`, `parakeet_buffered`, `parakeet_stream` or `voxtral_realtime`.
+    public var kind: String
+    /// `parakeet_stream`.
+    public var attContextRight: Int32?
+    /// `parakeet_buffered`, in milliseconds.
+    public var leftMs: Int32?
+    public var chunkMs: Int32?
+    public var rightMs: Int32?
+    /// `voxtral_realtime`.
+    public var numDelayTokens: Int32?
+    public var minDecodeIntervalMs: Int32?
+
+    public init(
+        kind: String, attContextRight: Int32? = nil, leftMs: Int32? = nil, chunkMs: Int32? = nil,
+        rightMs: Int32? = nil, numDelayTokens: Int32? = nil, minDecodeIntervalMs: Int32? = nil
+    ) {
+        self.kind = kind
+        self.attContextRight = attContextRight
+        self.leftMs = leftMs
+        self.chunkMs = chunkMs
+        self.rightMs = rightMs
+        self.numDelayTokens = numDelayTokens
+        self.minDecodeIntervalMs = minDecodeIntervalMs
+    }
+
+    enum Key: String, CodingKey, CaseIterable {
+        case kind
+        case attContextRight = "att_context_right"
+        case leftMs = "left_ms"
+        case chunkMs = "chunk_ms"
+        case rightMs = "right_ms"
+        case numDelayTokens = "num_delay_tokens"
+        case minDecodeIntervalMs = "min_decode_interval_ms"
+    }
+
+    /// The settings each kind takes. A setting given to the wrong kind would
+    /// otherwise be silently ignored, which is the failure this whole format is
+    /// strict about.
+    public static let settings: [String: Set<String>] = [
+        "none": [],
+        "parakeet_buffered": ["left_ms", "chunk_ms", "right_ms"],
+        "parakeet_stream": ["att_context_right"],
+        "voxtral_realtime": ["num_delay_tokens", "min_decode_interval_ms"],
+    ]
+
+    public init(from decoder: Decoder) throws {
+        try CatalogDecoding.rejectUnknownKeys(decoder, known: Key.allCases.map(\.rawValue))
+        let c = try decoder.container(keyedBy: Key.self)
+        kind = try c.decode(String.self, forKey: .kind)
+        attContextRight = try c.decodeIfPresent(Int32.self, forKey: .attContextRight)
+        leftMs = try c.decodeIfPresent(Int32.self, forKey: .leftMs)
+        chunkMs = try c.decodeIfPresent(Int32.self, forKey: .chunkMs)
+        rightMs = try c.decodeIfPresent(Int32.self, forKey: .rightMs)
+        numDelayTokens = try c.decodeIfPresent(Int32.self, forKey: .numDelayTokens)
+        minDecodeIntervalMs = try c.decodeIfPresent(Int32.self, forKey: .minDecodeIntervalMs)
+        guard let allowed = Self.settings[kind] else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: c,
+                debugDescription: "unknown stream kind '\(kind)'"
+                    + " (want \(Self.settings.keys.sorted().joined(separator: ", ")))")
+        }
+        let given = c.allKeys.map(\.stringValue).filter { $0 != "kind" }
+        if let stray = given.sorted().first(where: { !allowed.contains($0) }) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: c,
+                debugDescription: "'\(stray)' is not a setting of stream kind '\(kind)'")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(kind, forKey: .kind)
+        try c.encodeIfPresent(attContextRight, forKey: .attContextRight)
+        try c.encodeIfPresent(leftMs, forKey: .leftMs)
+        try c.encodeIfPresent(chunkMs, forKey: .chunkMs)
+        try c.encodeIfPresent(rightMs, forKey: .rightMs)
+        try c.encodeIfPresent(numDelayTokens, forKey: .numDelayTokens)
+        try c.encodeIfPresent(minDecodeIntervalMs, forKey: .minDecodeIntervalMs)
+    }
 }
 
 /// One model entry: an engine, a model name, what family it is a build of, and
 /// its variants. Fields set here apply to every variant that does not set its
 /// own.
-public struct CatalogModel: Sendable, Equatable, Decodable {
+public struct CatalogModel: Sendable, Equatable, Codable {
     public var engine: String
     public var model: String
     public var family: CatalogFamily
@@ -116,6 +221,10 @@ public struct CatalogModel: Sendable, Equatable, Decodable {
     public var chunkSeconds: Double?
     public var maxSeconds: Double?
 
+    // ggml: how the streaming decoder is driven, when the engine's own choice
+    // is not the right one for this model.
+    public var stream: CatalogStream?
+
     /// nil means one implicit variant with no name.
     public var variants: [CatalogVariant]?
 
@@ -126,7 +235,8 @@ public struct CatalogModel: Sendable, Equatable, Decodable {
         label: String? = nil, languages: [String]? = nil, languageID: Bool? = nil,
         streaming: Bool? = nil, wordTimestamps: Bool? = nil, segmentTimestamps: Bool? = nil,
         type: String? = nil, files: [String]? = nil, filesFrom: [String: [String]]? = nil,
-        chunkSeconds: Double? = nil, maxSeconds: Double? = nil, variants: [CatalogVariant]? = nil
+        chunkSeconds: Double? = nil, maxSeconds: Double? = nil, stream: CatalogStream? = nil,
+        variants: [CatalogVariant]? = nil
     ) {
         self.engine = engine
         self.model = model
@@ -150,12 +260,13 @@ public struct CatalogModel: Sendable, Equatable, Decodable {
         self.filesFrom = filesFrom
         self.chunkSeconds = chunkSeconds
         self.maxSeconds = maxSeconds
+        self.stream = stream
         self.variants = variants
     }
 
     enum Key: String, CodingKey, CaseIterable {
         case engine, model, family, role, hidden, note, source, file, precision, label
-        case languages, streaming, type, files, variants
+        case languages, streaming, type, files, stream, variants
         case parametersM = "params_m"
         case sizeBytes = "size_bytes"
         case languageID = "language_id"
@@ -191,7 +302,39 @@ public struct CatalogModel: Sendable, Equatable, Decodable {
         filesFrom = try c.decodeIfPresent([String: [String]].self, forKey: .filesFrom)
         chunkSeconds = try c.decodeIfPresent(Double.self, forKey: .chunkSeconds)
         maxSeconds = try c.decodeIfPresent(Double.self, forKey: .maxSeconds)
+        stream = try c.decodeIfPresent(CatalogStream.self, forKey: .stream)
         variants = try c.decodeIfPresent([CatalogVariant].self, forKey: .variants)
+    }
+
+    /// Absent fields are left out, and `role` and `hidden` only when they are
+    /// not the default, so a file this program writes reads like one a person
+    /// wrote.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(engine, forKey: .engine)
+        try c.encode(model, forKey: .model)
+        try c.encode(family, forKey: .family)
+        if role != .transcriber { try c.encode(role, forKey: .role) }
+        if hidden { try c.encode(hidden, forKey: .hidden) }
+        try c.encodeIfPresent(note, forKey: .note)
+        try c.encodeIfPresent(source, forKey: .source)
+        try c.encodeIfPresent(file, forKey: .file)
+        try c.encodeIfPresent(parametersM, forKey: .parametersM)
+        try c.encodeIfPresent(precision, forKey: .precision)
+        try c.encodeIfPresent(sizeBytes, forKey: .sizeBytes)
+        try c.encodeIfPresent(label, forKey: .label)
+        try c.encodeIfPresent(languages, forKey: .languages)
+        try c.encodeIfPresent(languageID, forKey: .languageID)
+        try c.encodeIfPresent(streaming, forKey: .streaming)
+        try c.encodeIfPresent(wordTimestamps, forKey: .wordTimestamps)
+        try c.encodeIfPresent(segmentTimestamps, forKey: .segmentTimestamps)
+        try c.encodeIfPresent(type, forKey: .type)
+        try c.encodeIfPresent(files, forKey: .files)
+        try c.encodeIfPresent(filesFrom, forKey: .filesFrom)
+        try c.encodeIfPresent(chunkSeconds, forKey: .chunkSeconds)
+        try c.encodeIfPresent(maxSeconds, forKey: .maxSeconds)
+        try c.encodeIfPresent(stream, forKey: .stream)
+        try c.encodeIfPresent(variants, forKey: .variants)
     }
 
     /// The engine and model, which is what a user entry replaces a built-in one
@@ -294,7 +437,7 @@ public struct CatalogModel: Sendable, Equatable, Decodable {
     /// Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or
     /// digit. Ids are path components in the model store and keys in every
     /// report, so the shape is fixed here rather than trusted.
-    static func isName(_ text: String) -> Bool {
+    public static func isName(_ text: String) -> Bool {
         guard let first = text.unicodeScalars.first,
               ("a"..."z").contains(first) || ("0"..."9").contains(first)
         else { return false }
@@ -387,15 +530,55 @@ public struct LoadedCatalog: Sendable {
     public var problems: [String]
     public var builtinDirectory: URL?
     public var userDirectory: URL?
+    /// The file each model entry came from, by `<engine>.<model>`. What lets
+    /// `speech models add` tell its own file apart from one a person wrote.
+    public var origins: [String: URL]
 
     public init(
         models: [CatalogModel], problems: [String] = [],
-        builtinDirectory: URL? = nil, userDirectory: URL? = nil
+        builtinDirectory: URL? = nil, userDirectory: URL? = nil, origins: [String: URL] = [:]
     ) {
         self.models = models
         self.problems = problems
         self.builtinDirectory = builtinDirectory
         self.userDirectory = userDirectory
+        self.origins = origins
+    }
+
+    /// This catalog with one entry added, or replacing the entry of the same
+    /// engine and model in place.
+    public func replacing(_ model: CatalogModel, from origin: URL? = nil) -> LoadedCatalog {
+        var copy = self
+        if let index = copy.models.firstIndex(where: { $0.key == model.key }) {
+            copy.models[index] = model
+        } else {
+            copy.models.append(model)
+        }
+        copy.origins[model.key] = origin
+        return copy
+    }
+
+    /// A catalog document holding the given entries, as it would be written:
+    /// pretty-printed with sorted keys, so the same entries always produce the
+    /// same bytes, and ending with a newline.
+    public static func documentData(models: [CatalogModel], note: String? = nil) throws -> Data {
+        struct Document: Encodable {
+            let schema = 1
+            let note: String?
+            let models: [CatalogModel]
+            enum CodingKeys: String, CodingKey { case schema, note, models }
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(schema, forKey: .schema)
+                try c.encodeIfPresent(note, forKey: .note)
+                try c.encode(models, forKey: .models)
+            }
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        var data = try encoder.encode(Document(note: note, models: models))
+        data.append(0x0A)
+        return data
     }
 
     /// Reads the built-in directory, then a user directory over it.
@@ -419,6 +602,7 @@ public struct LoadedCatalog: Sendable {
                     continue
                 }
                 catalog.models.append(model)
+                catalog.origins[model.key] = file
             }
         }
         guard !catalog.models.isEmpty else {
@@ -444,11 +628,7 @@ public struct LoadedCatalog: Sendable {
                         + " this one, later by name, is used")
                 }
                 userKeys[model.key] = file.lastPathComponent
-                if let index = catalog.models.firstIndex(where: { $0.key == model.key }) {
-                    catalog.models[index] = model
-                } else {
-                    catalog.models.append(model)
-                }
+                catalog = catalog.replacing(model, from: file)
             }
         }
         return catalog

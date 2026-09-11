@@ -56,6 +56,9 @@ struct GGMLRow: Sendable {
     let wordTimestamps: Bool
     /// Segment-level timings are available.
     let segmentTimestamps: Bool
+    /// How to drive the streaming decoder, when the catalog says; nil keeps
+    /// the engine's own choice. See `GGMLEngine.streamExtension`.
+    let stream: CatalogStream?
 
     /// Offered quantizations, in catalog order.
     var quants: [String] { variants.map(\.quant) }
@@ -110,7 +113,8 @@ struct GGMLRow: Sendable {
             languageID: entry.languageID ?? false,
             streaming: entry.streaming ?? false,
             wordTimestamps: entry.wordTimestamps ?? false,
-            segmentTimestamps: entry.segmentTimestamps ?? false))
+            segmentTimestamps: entry.segmentTimestamps ?? false,
+            stream: entry.stream))
     }
 }
 

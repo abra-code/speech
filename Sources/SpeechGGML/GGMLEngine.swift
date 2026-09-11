@@ -66,7 +66,7 @@ actor GGMLEngine: TranscriptionEngine {
         self.capabilities = EngineCapabilities(
             batch: true,
             // Per row, from the GGUF's own `supportsStreaming`. Only two of the
-            // seven families here have a streaming decoder, and the gate is the
+            // built-in families have a streaming decoder, and the gate is the
             // loaded model rather than this flag - see `makeLiveSession`.
             live: row.streaming,
             wordTimestamps: row.wordTimestamps,
@@ -181,6 +181,36 @@ actor GGMLEngine: TranscriptionEngine {
     /// the rule; this stays as a name the tests already use.
     static func matchLanguage(_ requested: String, in supported: [String]) -> String? {
         Language.match(requested, in: supported)
+    }
+
+    /// Loads the weights, reads what they say about themselves, and releases
+    /// them. For `speech models add`, which writes a catalog entry from the
+    /// answers instead of from a model card.
+    ///
+    /// Not `prepare`: that also resolves a language, and a model with no
+    /// language identification refuses without one - which is a fact to record
+    /// here, not a reason to fail.
+    func probe() async throws -> GGMLProbe {
+        if model == nil { try await load(progress: { _ in }) }
+        guard let model, let loaded else {
+            throw SpeechError.runtime("'\(id)': the model did not load")
+        }
+        let kind = loaded.maxTimestampKind
+        let probe = GGMLProbe(
+            architecture: model.arch,
+            variant: model.variant,
+            languages: loaded.languages,
+            languageID: loaded.supportsLanguageDetect,
+            streaming: loaded.supportsStreaming,
+            // The finest granularity the family can produce; `.auto` is never
+            // reported here, only requested.
+            wordTimestamps: kind == .word || kind == .token,
+            segmentTimestamps: kind == .segment || kind == .word || kind == .token,
+            maxAudioSeconds: loaded.maxAudioMs > 0 ? Double(loaded.maxAudioMs) / 1000 : nil)
+        // Released before returning: ggml asserts at exit on a model that still
+        // holds Metal buffers.
+        await unload()
+        return probe
     }
 
     /// Fetches the weights. Only `speech models download` calls this.
@@ -305,11 +335,50 @@ actor GGMLEngine: TranscriptionEngine {
             catalogID: id,
             language: language,
             runOptions: runOptions,
-            streamExtension: Self.streamExtension(for: model),
+            streamExtension: try Self.streamExtension(for: model, configured: row.stream, id: id),
             segmentation: options.segmentation)
     }
 
-    /// The family-specific stream extension this model accepts, if any.
+    /// The stream extension for this model: the catalog's, when the entry names
+    /// one, else the engine's own choice below.
+    ///
+    /// A configured kind the loaded model does not accept is refused rather
+    /// than dropped: the entry is a claim about these weights, and quietly
+    /// streaming with the library's defaults instead is the exact failure the
+    /// Nemotron measurement below records - an empty transcript reported as a
+    /// success.
+    static func streamExtension(
+        for model: Model, configured: CatalogStream?, id: String
+    ) throws -> StreamExtension? {
+        guard let configured else { return streamExtension(for: model) }
+        let chosen: StreamExtension
+        switch configured.kind {
+        case "none":
+            return nil
+        case "parakeet_buffered":
+            chosen = .parakeetBuffered(ParakeetBufferedStreamOptions(
+                leftMs: configured.leftMs, chunkMs: configured.chunkMs, rightMs: configured.rightMs))
+        case "parakeet_stream":
+            chosen = .parakeetStream(ParakeetStreamOptions(attContextRight: configured.attContextRight))
+        case "voxtral_realtime":
+            chosen = .voxtralRealtime(VoxtralRealtimeStreamOptions(
+                numDelayTokens: configured.numDelayTokens,
+                minDecodeIntervalMs: configured.minDecodeIntervalMs))
+        default:
+            // The decoder refuses any other kind, so this is a catalog built in
+            // code rather than read from a file.
+            throw SpeechError.usage("'\(id)': unknown stream kind '\(configured.kind)' in the catalog")
+        }
+        guard model.accepts(chosen) else {
+            throw SpeechError.unavailable(
+                "'\(id)': the catalog asks for stream kind '\(configured.kind)',"
+                + " which this model does not accept; fix the entry's 'stream'")
+        }
+        return chosen
+    }
+
+    /// The family-specific stream extension this model accepts, if any, for an
+    /// entry whose catalog entry does not say.
     ///
     /// Asked of the model rather than kept in a table beside the row. The
     /// library exposes `accepts(_:)` for exactly this, and stage 2 spent a day
@@ -317,6 +386,11 @@ actor GGMLEngine: TranscriptionEngine {
     /// guesses - four of its entries were wrong. A family this build has never
     /// seen gets nil and the default stream parameters, which is the right
     /// answer for "we do not know" and not a failure.
+    ///
+    /// The built-in streaming entries now carry their settings in
+    /// catalog/ggml.json, so this is the fallback for a model added without
+    /// one - including another quantization of Nemotron added under its own
+    /// name, which is why the measured value below stays here too.
     static func streamExtension(for model: Model) -> StreamExtension? {
         let candidates: [StreamExtension] = [
             .parakeetBuffered(ParakeetBufferedStreamOptions()),

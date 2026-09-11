@@ -63,6 +63,7 @@ here, and 3 when a model is not installed.
 | `catalog` | Every way this build can run speech recognition, as text, JSON or TSV |
 | `models install-locale <bcp47>` | Install Apple's speech assets for a locale |
 | `models download/list/status/delete` | The model store |
+| `models add <owner/repo>` | Register a transcribe.cpp model the catalog does not describe: download it, load it, and record what it can do ([docs/catalog.md](docs/catalog.md)) |
 | `transcribe <media>` | Transcribe an audio or video file to txt, srt, vtt or json |
 | `stream` | Transcribe the microphone live, optionally refining each utterance with a second engine |
 | `eval` | Score a model against a manifest: WER, CER, RTFx, peak memory |
@@ -79,6 +80,7 @@ Global options: `--json` (JSONL events on stdout, see [docs/protocol.md](docs/pr
 
     speech info
     speech models install-locale pl-PL
+    speech models add handy-computer/granite-speech-4.1-2b-gguf --quant q4_k_m
     speech transcribe interview.mov --model apple.transcriber --format srt -o interview.srt
     speech transcribe notes.m4a --model apple.dictation --language pl-PL
     speech stream --model apple.transcriber --language en-US

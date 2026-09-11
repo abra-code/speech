@@ -79,6 +79,7 @@ Each entry is one model of one engine, with its variants beneath it. A variant's
 | `files` | model | `mlx`: files to fetch from the variant's `source`, required |
 | `files_from` | model | `mlx`: `{"other/repo": ["file", ...]}`, files from other repositories |
 | `chunk_seconds`, `max_seconds` | model | `mlx`: passed to the helper; the longest buffer per request |
+| `stream` | model | `ggml`: how the streaming decoder is driven - `{"kind": "parakeet_stream", "att_context_right": 0}`, `{"kind": "parakeet_buffered", "left_ms": ..., "chunk_ms": ..., "right_ms": ...}`, `{"kind": "voxtral_realtime", "num_delay_tokens": ..., "min_decode_interval_ms": ...}` or `{"kind": "none"}`. Each kind takes only its own settings. A kind the loaded model does not accept is refused when a live session starts, rather than quietly streamed with the library's defaults. Without it the engine picks the first extension the model accepts |
 
 Decoding is strict, because these files are edited by hand: an unknown field is an error, since a misspelled `"langauges"` silently ignored would be a model that claims every language. A bad entry is dropped with a warning naming its file, and the rest load; a file that is not JSON, or whose `schema` is not 1, is skipped whole with a warning. A field added by a later build does not change the schema: an older build reports it as unknown and drops only that entry. The built-in documents travel with their binary, so this only affects a user's own file shared across builds.
 
@@ -89,6 +90,22 @@ Decoding is strict, because these files are edited by hand: an unknown field is 
 `speech` then reads every `*.json` in `$SPEECH_CATALOG_DIR`, by default `~/Library/Application Support/Speech/Catalog`, in name order. An entry with the same `engine` and `model` as a built-in one replaces it whole, in its place; a new one is appended. So a user can hide a built-in model, correct one, or add another quantization by copying the entry from `speech-catalog/` and editing it. When two user files define the same model, the later name wins and a warning says so. Problems in user files are warnings on every run until they are fixed; they never stop a run.
 
 `speech --json catalog` reports both directories under `catalog`, so a caller can find the file to edit.
+
+### Adding a transcribe.cpp model
+
+transcribe.cpp loads any GGUF whose architecture it knows, from the file alone, and reports the model's own languages, language identification, streaming support and timestamp granularity. So a model nobody wrote an entry for does not need one written by hand:
+
+```sh
+speech models add handy-computer/granite-speech-4.1-2b-gguf              # its Q8_0
+speech models add handy-computer/granite-speech-4.1-2b-gguf --quant q4_k_m
+speech models add someone/some-model-gguf --file model.gguf --quant f16 --model some-model
+```
+
+It lists the repository's `.gguf` files and takes the one `--file` names, else the one `--quant` names, else the only one or the Q8_0 - and asks, listing what there is, rather than guessing between several. The id is `ggml.<model>@<quant>`, with the model name taken from the file name without its quantization unless `--model` says otherwise. It downloads the file into the model store exactly as `models download` would, loads it, and writes an entry recording what the loaded model said, with the family taken from the GGUF's architecture and a `note` saying where the entry came from. A file transcribe.cpp cannot load - an architecture it does not know, a language model rather than a speech model - is refused with the library's reason, and the download is removed; nothing is written.
+
+The entry goes to `<model>.json` in the user catalog directory, one file per model, which this command owns and rewrites. Adding another quantization of a model already in the catalog adds a variant to that entry; for a built-in model that means copying the built-in entry into the user file, which from then on replaces it. A model defined in a user file the command did not write is left alone, with a message saying to add the variant there by hand.
+
+Only Hugging Face repositories for now. A local GGUF would need a catalog field for a path, which a later build can add without a schema change.
 
 ## What a row is, and what it is not
 

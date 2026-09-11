@@ -32,6 +32,7 @@
       "streaming": true,
       "word_timestamps": true,
       "segment_timestamps": true,
+      "stream": { "kind": "parakeet_buffered" },
       "variants": [
         { "variant": "q8_0", "file": "parakeet-unified-en-0.6b-Q8_0.gguf", "precision": "q8_0", "size_bytes": 731357568, "label": "Parakeet Unified EN (Q8_0)" }
       ]
@@ -127,7 +128,7 @@
       "engine": "ggml",
       "model": "nemotron-3.5-asr-streaming-0.6b",
       "family": "nemotron",
-      "note": "Region tags, and they are load-bearing: this model rejects pl. The streaming flag was measured on q8_0; q4_k_m inherits it, since streaming is an architecture property - the loaded model still has the final word.",
+      "note": "Region tags, and they are load-bearing: this model rejects pl. The streaming flag was measured on q8_0; q4_k_m inherits it, since streaming is an architecture property - the loaded model still has the final word. att_context_right 0 is the only value that works, measured 2026-09-05 on q8_0: 0 gives the correct transcript, 1, 2, 4 and 8 make the library throw, and 13 or no value (the library default) give no error and no text, ever - a clean finish that commits every millisecond of audio and returns an empty string.",
       "source": "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf",
       "params_m": 600,
       "languages": [
@@ -140,9 +141,74 @@
       "streaming": true,
       "word_timestamps": true,
       "segment_timestamps": true,
+      "stream": { "kind": "parakeet_stream", "att_context_right": 0 },
       "variants": [
         { "variant": "q8_0", "file": "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf", "precision": "q8_0", "size_bytes": 751094240, "label": "Nemotron 3.5 streaming (Q8_0)" },
         { "variant": "q4_k_m", "file": "nemotron-3.5-asr-streaming-0.6b-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 495831520, "label": "Nemotron 3.5 streaming (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "granite-speech-4.1-2b",
+      "family": "granite-speech",
+      "note": "IBM Granite Speech 4.1 (ibm-granite/granite-speech-4.1-2b). Read from the loaded Q8_0 GGUF 2026-09-10: architecture granite_speech, no language identification (so --language is required, as for Canary), no timestamps, at most 377 s of audio per run (longer audio is cut at silences). No parameter count here: the name says 2B, and the Q8_0 file is the same size as the 1B-named 4.0 model's.",
+      "source": "handy-computer/granite-speech-4.1-2b-gguf",
+      "languages": ["en", "fr", "de", "es", "pt", "ja"],
+      "language_id": false,
+      "streaming": false,
+      "word_timestamps": false,
+      "segment_timestamps": false,
+      "variants": [
+        { "variant": "q8_0", "file": "granite-speech-4.1-2b-Q8_0.gguf", "precision": "q8_0", "size_bytes": 2559878848, "label": "Granite Speech 4.1 2B (Q8_0)" },
+        { "variant": "q4_k_m", "file": "granite-speech-4.1-2b-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 1602904800, "label": "Granite Speech 4.1 2B (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "granite-speech-4.1-2b-plus",
+      "family": "granite-speech",
+      "note": "Granite Speech 4.1 2B Plus. Read from the loaded Q8_0 GGUF 2026-09-10: architecture granite_speech, the one Granite build with word and segment timestamps, no language identification, no Japanese, at most 377 s of audio per run.",
+      "source": "handy-computer/granite-speech-4.1-2b-plus-gguf",
+      "languages": ["en", "fr", "de", "es", "pt"],
+      "language_id": false,
+      "streaming": false,
+      "word_timestamps": true,
+      "segment_timestamps": true,
+      "variants": [
+        { "variant": "q8_0", "file": "granite-speech-4.1-2b-plus-Q8_0.gguf", "precision": "q8_0", "size_bytes": 2345973152, "label": "Granite Speech 4.1 2B Plus (Q8_0)" },
+        { "variant": "q4_k_m", "file": "granite-speech-4.1-2b-plus-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 1489663424, "label": "Granite Speech 4.1 2B Plus (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "granite-speech-4.1-2b-nar",
+      "family": "granite-speech",
+      "note": "Granite Speech 4.1 2B, non-autoregressive decoder. Read from the loaded Q8_0 GGUF 2026-09-10: architecture granite_speech_nar, no language identification, no timestamps, no Japanese, at most 384 s of audio per run. About 1.6x the speed of the autoregressive build on 20-row spot checks.",
+      "source": "handy-computer/granite-speech-4.1-2b-nar-gguf",
+      "languages": ["en", "fr", "de", "es", "pt"],
+      "language_id": false,
+      "streaming": false,
+      "word_timestamps": false,
+      "segment_timestamps": false,
+      "variants": [
+        { "variant": "q8_0", "file": "granite-speech-4.1-2b-nar-Q8_0.gguf", "precision": "q8_0", "size_bytes": 2498105472, "label": "Granite Speech 4.1 2B NAR (Q8_0)" },
+        { "variant": "q4_k_m", "file": "granite-speech-4.1-2b-nar-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 1560008832, "label": "Granite Speech 4.1 2B NAR (Q4_K_M)" }
+      ]
+    },
+    {
+      "engine": "ggml",
+      "model": "granite-4.0-1b-speech",
+      "family": "granite-speech",
+      "note": "IBM Granite 4.0 1B Speech, the generation before 4.1. Read from the loaded Q8_0 GGUF 2026-09-10: architecture granite_speech, no language identification, no timestamps, at most 377 s of audio per run.",
+      "source": "handy-computer/granite-4.0-1b-speech-gguf",
+      "languages": ["en", "fr", "de", "es", "pt", "ja"],
+      "language_id": false,
+      "streaming": false,
+      "word_timestamps": false,
+      "segment_timestamps": false,
+      "variants": [
+        { "variant": "q8_0", "file": "granite-4.0-1b-speech-Q8_0.gguf", "precision": "q8_0", "size_bytes": 2559878848, "label": "Granite 4.0 1B Speech (Q8_0)" },
+        { "variant": "q4_k_m", "file": "granite-4.0-1b-speech-Q4_K_M.gguf", "precision": "q4_k_m", "size_bytes": 1602904800, "label": "Granite 4.0 1B Speech (Q4_K_M)" }
       ]
     }
   ]

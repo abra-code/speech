@@ -13,6 +13,37 @@
 import Foundation
 import SpeechCore
 
+/// What a loaded GGUF says about itself: the facts a catalog entry records.
+public struct GGMLProbe: Sendable, Equatable {
+    /// The GGUF's `general.architecture`, e.g. "parakeet" or "granite".
+    public let architecture: String
+    /// The GGUF's `stt.variant`, empty when it has none.
+    public let variant: String
+    /// Language tags exactly as the model spells them; empty means it names
+    /// none.
+    public let languages: [String]
+    public let languageID: Bool
+    public let streaming: Bool
+    public let wordTimestamps: Bool
+    public let segmentTimestamps: Bool
+    /// The longest audio one run accepts, nil for no limit.
+    public let maxAudioSeconds: Double?
+
+    public init(
+        architecture: String, variant: String, languages: [String], languageID: Bool,
+        streaming: Bool, wordTimestamps: Bool, segmentTimestamps: Bool, maxAudioSeconds: Double?
+    ) {
+        self.architecture = architecture
+        self.variant = variant
+        self.languages = languages
+        self.languageID = languageID
+        self.streaming = streaming
+        self.wordTimestamps = wordTimestamps
+        self.segmentTimestamps = segmentTimestamps
+        self.maxAudioSeconds = maxAudioSeconds
+    }
+}
+
 public enum GGMLEngineFactory {
     /// Every family this build implements, in catalog order.
     public static var implementedModels: [String] { GGMLCatalog.rows.map(\.model) }
@@ -62,6 +93,18 @@ public enum GGMLEngineFactory {
     /// `<engine>.<model>` key and why.
     public static var catalogProblems: [(key: String, message: String)] {
         GGMLCatalog.problems.map { (key: $0.id, message: $0.message) }
+    }
+
+    /// Loads an installed `ggml` row and reports what the weights say about
+    /// themselves, then releases them. Throws the library's own reason when it
+    /// cannot load the file - an architecture transcribe.cpp does not know
+    /// fails here, which is how `speech models add` tells a model it can run
+    /// from one it cannot.
+    public static func probe(_ spec: EngineSpec) async throws -> GGMLProbe {
+        guard let engine = try make(spec) as? GGMLEngine else {
+            throw SpeechError.runtime("'\(spec.catalogID)' is not a ggml row")
+        }
+        return try await engine.probe()
     }
 
     /// Capabilities without building the engine, for `speech engines`.
