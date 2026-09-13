@@ -127,6 +127,20 @@ row joins the matrix by existing.
     tools/language-battery.py --caffeinate --download cs_cz uk_ua
     tools/language-battery.py --plan librispeech-test-clean   # English-only second corpus
 
+`--live` measures the live path instead: `speech eval --live` on every row that
+can stream, with each row's audio played at the speed it was spoken, so a cell
+costs the length of its audio. Its cells and table go to `Private/live-battery`
+and add the median time to first partial, final lag and finish time, and the
+words a session lost at the end. Single sentences are the easy case for a live
+session, so the corpus to use is `librispeech-continuous-test-clean`: minute-long
+passages of one reader, joined from consecutive utterances of a LibriSpeech
+chapter by `tools/make-continuous-corpus.py`, which the battery runs on demand.
+The three `fluid.nemotron-multilingual` chunk tiers report no language list and
+need `--wildcard`.
+
+    tools/language-battery.py --plan --live --wildcard librispeech-continuous-test-clean
+    tools/language-battery.py --caffeinate --live --wildcard librispeech-continuous-test-clean
+
 `tools/battery-report.py` turns a finished battery into
 [docs/benchmarks/](docs/benchmarks/README.md): the models ranked by error rate
 within each corpus, the machine and the dependency versions that produced them,

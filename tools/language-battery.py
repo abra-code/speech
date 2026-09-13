@@ -52,6 +52,20 @@ that. tools/fetch-librispeech.sh downloads a split from openslr.org/12 into
 $SPEECH_CORPUS_DIR/LibriSpeech and writes the manifest the cells read; a run
 calls it on demand when the manifest is missing, as it does fetch-fleurs.sh.
 
+Live mode, --live, measures `speech eval --live` instead: each row's audio is
+played to a live session at the speed it was spoken, so a cell costs the length
+of its audio whatever the model's speed, and only rows that can stream are
+selected. It belongs with `librispeech-continuous-test-clean` (and -test-other):
+minute-long passages of one reader, joined from consecutive utterances of a
+chapter by tools/make-continuous-corpus.py, which a run calls on demand. Single
+sentences are the easy case for a live session - one boundary to find, and the
+audio ends where the speaker does - and on continuous speech the Parakeet
+Unified latency tiers ranked differently. Live cells and their table go to
+Private/live-battery and add the live measurements: the medians of time to first
+partial, final lag and finish time, trailing words lost and dropped buffers. The
+three fluid.nemotron-multilingual chunk tiers report no language list, so they
+still need --wildcard.
+
 This is a Python program rather than a shell script because the work is: reading
 JSON, joining two tables, resolving language tags and formatting a report. The
 shell parts - the run loop and the subprocess calls - are the smaller half.
@@ -66,6 +80,7 @@ import signal
 import subprocess
 import sys
 import time
+import wave
 
 # External tools by absolute path: this may run under a restricted PATH.
 CURL = "/usr/bin/curl"
@@ -154,6 +169,16 @@ LIBRISPEECH_TAG = "en-US"
 LIBRISPEECH_SPLIT_ROWS = 2800
 LIBRISPEECH_SPLIT_SECONDS = int(5.4 * 3600)
 
+# The continuous-speech corpora tools/make-continuous-corpus.py builds from a
+# LibriSpeech split, named `librispeech-continuous-<split>`. English, like their
+# source. The size is the builder's default, for planning one not built yet:
+# 20 passages, each closed by the utterance that crosses a minute, which came
+# to 21.6 minutes from test-clean.
+CONTINUOUS_PREFIX = "librispeech-continuous-"
+MAKE_CONTINUOUS = os.path.join(REPO, "tools", "make-continuous-corpus.py")
+CONTINUOUS_ROWS = 20
+CONTINUOUS_SECONDS = 22 * 60
+
 # What one FLEURS test split holds, for planning a language whose audio has not
 # been downloaded yet. The three measured here are en_us 1.8h, pl_pl 2.1h and
 # de_de 3.2h, so this is their middle rather than a floor: a plan that says four
@@ -178,6 +203,12 @@ UNSPACED = {"zh", "cmn", "yue", "ja", "th", "km", "lo", "my", "bo"}
 
 TABLE_COLUMNS = ["model", "language", "limit", "rows",
                  "wer", "cer", "rtfx", "peak_memory", "load_s"]
+# A live cell adds what only a live run measures: the medians of the three
+# latencies, and the two ways a session loses words without an error. Its rtfx
+# describes the playback clock, not the model, and is kept only so the two
+# tables share their first columns.
+LIVE_TABLE_COLUMNS = TABLE_COLUMNS + ["first_partial_s", "final_lag_s", "finish_s",
+                                      "trailing_words_lost", "dropped_buffers"]
 
 
 class Interrupted(Exception):
@@ -252,6 +283,32 @@ def is_librispeech(fleurs_dir):
     return librispeech_split(fleurs_dir) is not None
 
 
+def continuous_split(name):
+    """The LibriSpeech split a continuous-corpus name is built from, or None.
+
+    `librispeech-continuous-test-clean` is the canonical spelling, and
+    `continuous-test-clean` means the same. librispeech_split does not match
+    either, because what follows its prefix is not a split name.
+    """
+    wanted = name.strip().lower().replace("_", "-").replace("/", "-")
+    if wanted.startswith(LIBRISPEECH_PREFIX):
+        wanted = wanted[len(LIBRISPEECH_PREFIX):]
+    if not wanted.startswith("continuous-"):
+        return None
+    split = wanted[len("continuous-"):]
+    return split if split in LIBRISPEECH_SPLITS else None
+
+
+def continuous_id(split):
+    """The battery id for the continuous corpus built from a split."""
+    return CONTINUOUS_PREFIX + split
+
+
+def is_continuous(fleurs_dir):
+    """Whether a resolved battery id names a continuous-speech corpus."""
+    return continuous_split(fleurs_dir) is not None
+
+
 def corpus_tag(fleurs_dir):
     """The language tag a battery id is scored with.
 
@@ -259,7 +316,7 @@ def corpus_tag(fleurs_dir):
     all score as en-US. One function so rows_for, the planners, the runner and
     the summary cannot disagree about which.
     """
-    if is_librispeech(fleurs_dir):
+    if is_librispeech(fleurs_dir) or is_continuous(fleurs_dir):
         return LIBRISPEECH_TAG
     return tag_for(fleurs_dir)
 
@@ -363,6 +420,16 @@ def resolve_language(name):
     wanted = name.strip().replace("_", "-").lower()
     if not wanted:
         return None, "empty language name"
+    # The continuous corpora first, then LibriSpeech, then FLEURS: none of
+    # these names is a FLEURS directory, and each must not fall through to the
+    # "does not name a language" refusal.
+    split = continuous_split(name)
+    if split is not None:
+        canonical = continuous_id(split)
+        if name.strip().lower().replace("_", "-") == canonical:
+            return canonical, None
+        return canonical, ("%s: continuous speech built from LibriSpeech %s; scoring it as "
+                           "%s in English (%s)" % (name.strip(), split, canonical, LIBRISPEECH_TAG))
     # LibriSpeech before FLEURS: `test-clean` is not a FLEURS directory and
     # must not fall through to the "does not name a language" refusal.
     split = librispeech_split(name)
@@ -505,7 +572,7 @@ def load_catalog(speech):
         die("could not parse the catalog from %s: %s" % (speech, error))
 
 
-def rows_for(catalog, fleurs_dir, engines, exclude, wildcard):
+def rows_for(catalog, fleurs_dir, engines, exclude, wildcard, live=False):
     """Every transcriber row whose loaded model claims this language.
 
     Returns (row, tag) pairs, where the tag is the spelling THAT row understands.
@@ -521,6 +588,10 @@ def rows_for(catalog, fleurs_dir, engines, exclude, wildcard):
     chosen = []
     for row in catalog["rows"]:
         if row.get("role") != "transcriber" or not row.get("available", True):
+            continue
+        # --live measures the live path, which a batch-only row does not have;
+        # `speech eval --live` would refuse it cell by cell.
+        if live and "live" not in (row.get("modes") or []):
             continue
         rid = row["id"]
         if engines and row.get("engine") not in engines:
@@ -573,6 +644,8 @@ def audio_seconds(corpus_dir, fleurs_dir):
     audio_seconds `speech eval` reports to the second, so the time estimate does
     not have to guess at an average utterance length.
     """
+    if is_continuous(fleurs_dir):
+        return continuous_audio(corpus_dir, fleurs_dir)
     if is_librispeech(fleurs_dir):
         return librispeech_audio(corpus_dir, fleurs_dir)
     path = os.path.join(corpus_dir, "fleurs", fleurs_dir, "test.tsv")
@@ -696,6 +769,69 @@ def usable_librispeech_manifest(corpus_dir, fleurs_dir, allow_fetch):
     return manifest
 
 
+def continuous_manifest_path(corpus_dir, fleurs_dir):
+    return os.path.join(corpus_dir, "LibriSpeech", "continuous-" + continuous_split(fleurs_dir),
+                        "manifest.tsv")
+
+
+def continuous_audio(corpus_dir, fleurs_dir):
+    """Exact total over a continuous corpus's passages; (0.0, 0) when absent.
+
+    The builder writes 16-bit PCM, which the wave module reads, so the length is
+    each header's frame count rather than an estimate.
+    """
+    try:
+        with open(continuous_manifest_path(corpus_dir, fleurs_dir),
+                  encoding="utf-8", errors="replace") as handle:
+            paths = [line.split("\t")[0] for line in handle if line.strip()]
+    except OSError:
+        return 0.0, 0
+    total, rows = 0.0, 0
+    for path in paths:
+        try:
+            with wave.open(path, "rb") as reader:
+                total += reader.getnframes() / float(reader.getframerate())
+                rows += 1
+        except (OSError, EOFError, wave.Error):
+            continue
+    return total, rows
+
+
+def usable_continuous_manifest(corpus_dir, fleurs_dir, allow_fetch):
+    """The manifest for a continuous-speech corpus, building it if that is allowed.
+
+    Building needs the LibriSpeech split it is made from, which is fetched the
+    usual way first. What is built is the builder's default corpus - 20 passages
+    of about a minute, from different speakers. A different size is made by
+    running tools/make-continuous-corpus.py directly, and is then read as it is.
+    The builder decodes with this repository's build/speech; decoding does not
+    differ between builds, so a run with --speech elsewhere still gets the same
+    passages.
+
+    Building is not fetching: with the split already on disk it downloads
+    nothing, so --no-fetch still builds, and declines only the download of a
+    split that is absent.
+    """
+    manifest = continuous_manifest_path(corpus_dir, fleurs_dir)
+    if os.path.exists(manifest) and os.path.getsize(manifest) > 0:
+        return manifest
+    split = continuous_split(fleurs_dir)
+    if usable_librispeech_manifest(corpus_dir, librispeech_id(split), allow_fetch) is None:
+        return None
+    print("-- building %s with tools/make-continuous-corpus.py" % fleurs_dir)
+    environment = dict(os.environ, SPEECH_CORPUS_DIR=corpus_dir)
+    try:
+        done = subprocess.run([sys.executable, MAKE_CONTINUOUS, "--split", split],
+                              stdin=subprocess.DEVNULL, env=environment)
+    except OSError as error:
+        print("!! could not run %s: %s" % (MAKE_CONTINUOUS, error))
+        return None
+    if done.returncode != 0 or not (os.path.exists(manifest) and os.path.getsize(manifest) > 0):
+        print("!! could not build %s; skipping it" % fleurs_dir)
+        return None
+    return manifest
+
+
 def usable_manifest(corpus_dir, fleurs_dir, allow_fetch):
     """The manifest for a split, fetching or repairing it if that is allowed.
 
@@ -707,6 +843,8 @@ def usable_manifest(corpus_dir, fleurs_dir, allow_fetch):
     what a bare existence test accepts, forever after. Checking only after a
     fetch would never see the case this exists for.
     """
+    if is_continuous(fleurs_dir):
+        return usable_continuous_manifest(corpus_dir, fleurs_dir, allow_fetch)
     if is_librispeech(fleurs_dir):
         return usable_librispeech_manifest(corpus_dir, fleurs_dir, allow_fetch)
     split = os.path.join(corpus_dir, "fleurs", fleurs_dir)
@@ -883,17 +1021,22 @@ def remove(path):
 # The results table
 # ---------------------------------------------------------------------------
 
-def write_row(cell_dir, model, fleurs_dir, limit):
+def write_row(cell_dir, model, fleurs_dir, limit, live=False):
     """One measured cell as one line of the table.
 
     Called after a cell runs, and again for a cell that is already done but has
     no row - see rebuild_summaries for why that matters.
+
+    A live row adds the `live` object `speech eval --live` writes into
+    summary.json. A latency the run could not observe - no partials at all, as
+    fluid.parakeet-v3 never emits them - is "-" rather than a zero, which would
+    read as instant.
     """
     summary_path = os.path.join(cell_dir, "summary.json")
     try:
         with open(summary_path, encoding="utf-8") as handle:
             summary = json.load(handle)
-        line = "\t".join([
+        fields = [
             model, fleurs_dir, str(limit) if limit else "all",
             str(summary.get("rows")),
             "%.2f" % (summary.get("wer", 0) * 100),
@@ -901,7 +1044,24 @@ def write_row(cell_dir, model, fleurs_dir, limit):
             "%.1f" % summary.get("rtfx", 0),
             str(summary.get("peak_memory_bytes", 0)),
             "%.1f" % summary.get("load_seconds", 0),
-        ])
+        ]
+        if live:
+            measured = summary.get("live")
+            if not isinstance(measured, dict):
+                raise ValueError("a live cell's summary.json has no live object")
+
+            def seconds(key):
+                value = measured.get(key)
+                return "-" if value is None else "%.2f" % value
+
+            fields += [
+                seconds("median_first_partial_seconds"),
+                seconds("median_final_lag_seconds"),
+                seconds("median_finish_seconds"),
+                str(measured.get("trailing_words_lost", "-")),
+                str(measured.get("dropped_buffers", "-")),
+            ]
+        line = "\t".join(fields)
     except (OSError, ValueError, TypeError) as error:
         print("!! could not summarize %s into a table row: %s" % (summary_path, error),
               file=sys.stderr)
@@ -918,7 +1078,7 @@ def write_row(cell_dir, model, fleurs_dir, limit):
     return True
 
 
-def rebuild_summaries(out_dir):
+def rebuild_summaries(out_dir, live=False):
     """summaries.tsv is derived, never appended to.
 
     Each cell writes its own row.tsv and the table is rebuilt from those after
@@ -958,7 +1118,7 @@ def rebuild_summaries(out_dir):
     scratch = "%s.part.%d" % (log, os.getpid())
     try:
         with open(scratch, "w", encoding="utf-8") as handle:
-            handle.write("\t".join(TABLE_COLUMNS) + "\n")
+            handle.write("\t".join(LIVE_TABLE_COLUMNS if live else TABLE_COLUMNS) + "\n")
             for row in rows:
                 handle.write(row + "\n")
         os.replace(scratch, log)
@@ -967,7 +1127,7 @@ def rebuild_summaries(out_dir):
         print("!! could not write %s: %s" % (log, error), file=sys.stderr)
 
 
-def summarize(out_dir):
+def summarize(out_dir, live=False):
     """The results, grouped by language and by row limit, most accurate first.
 
     Sorting a finished measurement table is reading it, not ranking the catalog:
@@ -1007,7 +1167,11 @@ def summarize(out_dir):
             language,
             "" if limit == "all" else "   [first %s rows only]" % limit,
             "   [no spaces between words: read cer%, the wer% is not one]" if unspaced else ""))
-        print("%-45s %6s %7s %7s %8s %10s" % ("model", "rows", "wer%", "cer%", "rtfx", "peak"))
+        if live:
+            print("%-45s %6s %7s %7s %9s %7s %7s %5s %6s" % (
+                "model", "rows", "wer%", "cer%", "partial", "lag", "finish", "lost", "drops"))
+        else:
+            print("%-45s %6s %7s %7s %8s %10s" % ("model", "rows", "wer%", "cer%", "rtfx", "peak"))
         metric = "cer" if unspaced else "wer"
 
         def score(fields):
@@ -1017,6 +1181,14 @@ def summarize(out_dir):
                 return float("inf")
 
         for fields in sorted(groups[(language, limit)], key=score):
+            if live:
+                print("%-45s %6s %7s %7s %9s %7s %7s %5s %6s" % (
+                    column(fields, "model"), column(fields, "rows"),
+                    column(fields, "wer"), column(fields, "cer"),
+                    column(fields, "first_partial_s"), column(fields, "final_lag_s"),
+                    column(fields, "finish_s"), column(fields, "trailing_words_lost"),
+                    column(fields, "dropped_buffers")))
+                continue
             peak = column(fields, "peak_memory")
             print("%-45s %6s %7s %7s %8s %10s" % (
                 column(fields, "model"), column(fields, "rows"),
@@ -1028,9 +1200,9 @@ def summarize(out_dir):
 # One cell
 # ---------------------------------------------------------------------------
 
-def cell_slug(model, fleurs_dir, limit):
+def cell_slug(model, fleurs_dir, limit, live=False):
     slug = re.sub(r"[./@]", "_", model) + "__" + fleurs_dir
-    return slug + ("__n%d" % limit if limit else "")
+    return slug + ("__n%d" % limit if limit else "") + ("__live" if live else "")
 
 
 def run_cell(options, model, fleurs_dir, tag, manifest):
@@ -1040,7 +1212,7 @@ def run_cell(options, model, fleurs_dir, tag, manifest):
     disk, a malformed report - fails this one cell and lets the battery go on,
     because the alternative is a traceback four hours into a multi-day run.
     """
-    slug = cell_slug(model, fleurs_dir, options.limit)
+    slug = cell_slug(model, fleurs_dir, options.limit, options.live)
     cell_dir = os.path.join(options.out, slug)
     failed_marker = os.path.join(cell_dir, "failed")
     summary_path = os.path.join(cell_dir, "summary.json")
@@ -1069,8 +1241,8 @@ def run_cell(options, model, fleurs_dir, tag, manifest):
         # measurement.
         row_path = os.path.join(cell_dir, "row.tsv")
         if not os.path.exists(row_path) or os.path.getsize(row_path) == 0:
-            if write_row(cell_dir, model, fleurs_dir, options.limit):
-                rebuild_summaries(options.out)
+            if write_row(cell_dir, model, fleurs_dir, options.limit, options.live):
+                rebuild_summaries(options.out, options.live)
         return
 
     print("=== %s / %s  (%s)" % (model, tag, timestamp()))
@@ -1085,6 +1257,8 @@ def run_cell(options, model, fleurs_dir, tag, manifest):
                "--language", tag, "--report", cell_dir]
     if options.limit:
         command += ["--limit", str(options.limit)]
+    if options.live:
+        command += ["--live"]
 
     started = now()
     try:
@@ -1132,8 +1306,8 @@ def run_cell(options, model, fleurs_dir, tag, manifest):
 
     print("    %ds: %s" % (now() - started,
                            (tail(os.path.join(cell_dir, "stdout.txt"), 1) or [""])[0]))
-    if write_row(cell_dir, model, fleurs_dir, options.limit):
-        rebuild_summaries(options.out)
+    if write_row(cell_dir, model, fleurs_dir, options.limit, options.live):
+        rebuild_summaries(options.out, options.live)
 
 
 def write_failure(path, text):
@@ -1249,7 +1423,7 @@ def command_list(options, catalog):
 def command_plan(options, catalog):
     rtfx = known_rtfx(rtfx_sources(options.out))
     total_seconds, missing, cells = 0.0, {}, 0
-    guessed_fleurs, guessed_librispeech = False, False
+    guessed_fleurs, guessed_librispeech, guessed_continuous = False, False, False
 
     for fleurs_dir in options.languages:
         seconds, rows = audio_seconds(options.corpus_dir, fleurs_dir)
@@ -1260,7 +1434,10 @@ def command_plan(options, catalog):
             # been downloaded - the exact case --plan exists to answer. Each
             # corpus counts at its own middle: a 5.4h LibriSpeech guess at a
             # 2.5h FLEURS size would be wrong by half a day across two splits.
-            if is_librispeech(fleurs_dir):
+            if is_continuous(fleurs_dir):
+                seconds, rows = CONTINUOUS_SECONDS, CONTINUOUS_ROWS
+                guessed_continuous = True
+            elif is_librispeech(fleurs_dir):
                 seconds, rows = LIBRISPEECH_SPLIT_SECONDS, LIBRISPEECH_SPLIT_ROWS
                 guessed_librispeech = True
             else:
@@ -1277,21 +1454,27 @@ def command_plan(options, catalog):
             chosen = [row for row, _ in explicit_rows(catalog, options.models, fleurs_dir)]
         else:
             chosen = [row for row, _ in rows_for(catalog, fleurs_dir, options.engines,
-                                                 options.exclude, options.wildcard)]
+                                                 options.exclude, options.wildcard, options.live)]
         print("== %s (%s)  %s of audio%s" % (
             fleurs_dir, corpus_tag(fleurs_dir), human_time(seconds),
             "" if known_size else " (estimated; the split is not on disk yet)"))
         for row in chosen:
             cells += 1
-            speed = rtfx.get(row["id"])
-            estimate = seconds / (speed if speed else UNMEASURED_RTFX)
+            if options.live:
+                # A live cell plays its audio at the speed it was spoken, so it
+                # costs the audio's length however fast the model is.
+                speed = None
+                estimate = seconds
+            else:
+                speed = rtfx.get(row["id"])
+                estimate = seconds / (speed if speed else UNMEASURED_RTFX)
             if not row.get("installed") and (row.get("size_bytes") or 0):
                 missing[row["id"]] = row["size_bytes"]
             print("   %-45s %-14s %s%s" % (
                 row["id"],
                 "installed" if row.get("installed") else "NOT INSTALLED",
                 human_time(estimate),
-                "" if speed else "  (never measured here; assuming %dx)" % UNMEASURED_RTFX))
+                "" if speed or options.live else "  (never measured here; assuming %dx)" % UNMEASURED_RTFX))
             total_seconds += estimate
         if not chosen:
             print("   no model in this build claims this language"
@@ -1309,7 +1492,10 @@ def command_plan(options, catalog):
         if options.limit:
             each = each * min(options.limit, LIBRISPEECH_SPLIT_ROWS) / LIBRISPEECH_SPLIT_ROWS
         footer += " (unfetched LibriSpeech splits counted at %s each)" % human_time(each)
-    print("%d cells, about %s of compute%s" % (cells, human_time(total_seconds), footer))
+    if guessed_continuous:
+        footer += " (unbuilt continuous corpora counted at %s each)" % human_time(CONTINUOUS_SECONDS)
+    print("%d cells, about %s of %s%s" % (cells, human_time(total_seconds),
+                                          "real-time playback" if options.live else "compute", footer))
     if missing:
         print("%d model%s to download, %s:" % (
             len(missing), "" if len(missing) == 1 else "s",
@@ -1403,7 +1589,7 @@ def command_run(options, catalog):
             selection = explicit_rows(catalog, options.models, fleurs_dir)
         else:
             selection = rows_for(catalog, fleurs_dir, options.engines,
-                                 options.exclude, options.wildcard)
+                                 options.exclude, options.wildcard, options.live)
         if not selection:
             print("!! no model in this build claims %s; skipping %s" % (tag, fleurs_dir))
             print("   (--wildcard adds the rows that report no language list at all)")
@@ -1427,8 +1613,8 @@ def command_run(options, catalog):
 
     print()
     print("BATTERY COMPLETE  (%s)" % timestamp())
-    rebuild_summaries(options.out)
-    summarize(options.out)
+    rebuild_summaries(options.out, options.live)
+    summarize(options.out, options.live)
     print()
     print("Cells are in %s; the machine-readable table is %s."
           % (options.out, os.path.join(options.out, "summaries.tsv")))
@@ -1529,6 +1715,10 @@ def parse_arguments(argv):
                              "top of this file before believing a number one produces")
     parser.add_argument("--limit", type=positive, metavar="N",
                         help="score the first N rows of each split only")
+    parser.add_argument("--live", action="store_true",
+                        help="measure the live path (speech eval --live) on the rows that can "
+                             "stream, playing the audio at the speed it was spoken; cells go to "
+                             "Private/live-battery. Meant for librispeech-continuous-test-clean")
     parser.add_argument("--download", action="store_true",
                         help="download missing model weights before running")
     parser.add_argument("--skip-missing", action="store_true",
@@ -1551,8 +1741,12 @@ def parse_arguments(argv):
     # repository instead, so the program works from any directory.
     options.speech = (os.path.abspath(options.speech) if options.speech
                       else os.path.join(REPO, "build", "speech"))
+    # Live cells get a directory of their own: their table has more columns, and
+    # a live cell and a batch cell for the same row and corpus are different
+    # measurements that must never share a summaries.tsv.
     options.out = (os.path.abspath(options.out) if options.out
-                   else os.path.join(REPO, "Private", "language-battery"))
+                   else os.path.join(REPO, "Private",
+                                     "live-battery" if options.live else "language-battery"))
     options.corpus_dir = os.path.abspath(
         os.environ.get("SPEECH_CORPUS_DIR") or os.path.join(os.path.expanduser("~"), "Corpora"))
     return parser, options
