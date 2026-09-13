@@ -22,13 +22,10 @@ private final class StubBinary {
         directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("speech-mlx-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        executable = directory.appendingPathComponent(MLXHelperProcess.executableName)
         if let ready {
             try MLXFrameWriter.frame(ready).write(to: directory.appendingPathComponent("ready.jsonl"))
         }
-        try Data(script.utf8).write(to: executable)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        executable = try StubExecutable.install(script: script, in: directory)
     }
 
     deinit { try? FileManager.default.removeItem(at: directory) }

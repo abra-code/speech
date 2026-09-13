@@ -42,11 +42,10 @@ private final class ScriptedHelper {
             .appendingPathComponent("mlx-engine-\(UUID().uuidString)")
         modelsDirectory = directory.appendingPathComponent("models")
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
-        executable = directory.appendingPathComponent(MLXHelperProcess.executableName)
 
-        try write(ready.map { [$0] } ?? [], to: "ready.jsonl")
-        try write(loaded.map { [$0] } ?? [], to: "loaded.jsonl")
-        try write(transcribed, to: "transcribed.jsonl")
+        try Self.write(ready.map { [$0] } ?? [], to: "ready.jsonl", in: directory)
+        try Self.write(loaded.map { [$0] } ?? [], to: "loaded.jsonl", in: directory)
+        try Self.write(transcribed, to: "transcribed.jsonl", in: directory)
 
         let script = """
             #!/bin/sh
@@ -75,9 +74,7 @@ private final class ScriptedHelper {
                 esac
             done
             """
-        try Data(script.utf8).write(to: executable)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        executable = try StubExecutable.install(script: script, in: directory)
 
         for id in install { try pretendInstalled(id) }
     }
@@ -99,7 +96,7 @@ private final class ScriptedHelper {
         try EngineSpec.parse(catalogID: catalogID, modelsDirectory: modelsDirectory)
     }
 
-    private func write(_ responses: [MLXResponse], to name: String) throws {
+    private static func write(_ responses: [MLXResponse], to name: String, in directory: URL) throws {
         var data = Data()
         for response in responses { data.append(try MLXFrameWriter.frame(response)) }
         try data.write(to: directory.appendingPathComponent(name))
