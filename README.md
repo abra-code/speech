@@ -66,6 +66,7 @@ here, and 3 when a model is not installed.
 | `models add <owner/repo>` | Register a transcribe.cpp model the catalog does not describe: download it, load it, and record what it can do ([docs/catalog.md](docs/catalog.md)) |
 | `transcribe <media>` | Transcribe an audio or video file to txt, srt, vtt or json |
 | `stream` | Transcribe the microphone live, optionally refining each utterance with a second engine |
+| `record <file>` | Record the microphone into a wav, aiff, caf or m4a file, for transcribing later |
 | `eval` | Score a model against a manifest: WER, CER, RTFx, peak memory |
 | `export <json>` | Convert a saved transcript to another format without re-transcribing |
 | `decode <media>` | Write the 16 kHz mono wav every engine would receive |

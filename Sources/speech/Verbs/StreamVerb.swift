@@ -469,7 +469,8 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
 /// audio and says so instead of growing a queue nobody will ever hear.
 private let kCaptureQueueDepth = 64
 
-private func printInputDevices(_ globals: GlobalOptions, _ sink: EventSink) throws {
+/// `--list-devices` for both microphone verbs, `stream` and `record`.
+func printInputDevices(_ globals: GlobalOptions, _ sink: EventSink) throws {
     let devices = AudioInput.devices()
     let defaultID = AudioInput.defaultInputDeviceID()
 

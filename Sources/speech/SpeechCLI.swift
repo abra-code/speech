@@ -28,6 +28,7 @@ let gVerbs: [VerbEntry] = [
     VerbEntry(name: "catalog", summary: "List every way this build can run speech recognition", run: runCatalog),
     VerbEntry(name: "transcribe", summary: "Transcribe an audio or video file", run: runTranscribe),
     VerbEntry(name: "stream", summary: "Transcribe the microphone live, with optional refinement", run: runStream),
+    VerbEntry(name: "record", summary: "Record the microphone into a sound file", run: runRecord),
     VerbEntry(name: "eval", summary: "Score a model against a manifest (WER, CER, RTFx, peak memory)", run: runEval),
     VerbEntry(name: "export", summary: "Convert a saved json transcript to txt, srt or vtt", run: runExport),
     VerbEntry(name: "decode", summary: "Write the decoded 16 kHz mono wav a model would receive", run: runDecode),

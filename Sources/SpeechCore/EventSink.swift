@@ -205,6 +205,12 @@ public final class EventSink: @unchecked Sendable {
             statusDone("Done: \(d.segments) segments, \(fmt(d.audioSeconds))s audio in"
                 + " \(fmt(d.wallSeconds))s (\(fmt(d.rtfx))x real time),"
                 + " peak memory \(SystemInfo.formatBytes(d.peakMemoryBytes))")
+        case .recordingStarted(let r):
+            statusDone("Recording to \((r.output as NSString).lastPathComponent)"
+                + " from \(r.device ?? "the default input") at \(Int(r.sampleRate)) Hz."
+                + " Press q and Return, or Ctrl-C, to stop.")
+        case .recordingLevel(let l):
+            status(String(format: "Recording %@  peak %.0f dB", fmt(l.seconds) + "s", l.peakDB))
         case .evalRow(let r):
             statusDone(String(format: "[%d] WER %.2f%%  CER %.2f%%  %@",
                               r.index, r.wer * 100, r.cer * 100,

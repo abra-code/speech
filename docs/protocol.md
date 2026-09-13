@@ -8,7 +8,7 @@ and the applet.
 
 Two kinds of verb write to that stream, and they are not the same thing:
 
-- **Streaming verbs** - `transcribe`, `stream`, `eval` and `models download` -
+- **Streaming verbs** - `transcribe`, `stream`, `record`, `eval` and `models download` -
   emit a sequence of the events tabulated below, each with `type` and `t`.
 - **Query verbs** - `info`, `engines` and `catalog` - emit exactly one
   JSON object: a document, on a single line, with no `type` and no `t`. They are
@@ -65,6 +65,15 @@ an older applet.
 | `done` | `segments`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `output` |
 | `eval.row` | `index`, `path`, `reference`, `hypothesis`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `live` |
 | `eval.summary` | `model`, `language`, `rows`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `worst`, `live` |
+| `recording.started` | `output`, `device`, `device_uid`, `sample_rate`, `channels` (`device` and `device_uid` omitted when the system names no device) |
+| `recording.level` | `seconds`, `rms_db`, `peak_db` |
+
+`record` emits `recording.started` once the microphone is open, `recording.level`
+about five times a second while it writes, and `done` at the end with `output`
+set, `audio_seconds` the length of the file, and `segments` 0. A level is the
+root-mean-square and peak of the samples since the previous level event, in dB
+relative to full scale, floored at -100 so that silence is a number JSON can
+carry rather than minus infinity. `channels` is always 1: the input is mixed down.
 
 `model.entry` is one row of `models list` or `models status`. Its `state` is one
 of:

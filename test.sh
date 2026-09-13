@@ -295,6 +295,30 @@ if [ ! -s "$TMP/fox.wav" ]; then fail "decode produced no wav"; fi
 expect_code 1 "$SPEECH" decode "$TMP/bogus.webm" --output "$TMP/bogus.wav"
 expect_grep_err "webm" "$SPEECH" decode "$TMP/bogus.webm" --output "$TMP/bogus.wav"
 
+echo "== record =="
+# Like stream below, nothing here opens the microphone. Each is a refusal that
+# has to come before recording starts: after it, a refusal would cost a
+# permission prompt and a lit microphone indicator for nothing.
+expect_code 2 "$SPEECH" record                                   # no file
+expect_code 2 "$SPEECH" record "$TMP/one.wav" "$TMP/two.wav"     # two files
+expect_code 2 "$SPEECH" record "$TMP/take.mp3"                   # a format it cannot write
+expect_grep_err "m4a" "$SPEECH" record "$TMP/take.mp3"
+: > "$TMP/existing.wav"
+expect_code 2 "$SPEECH" record "$TMP/existing.wav"               # would replace a file
+expect_grep_err "overwrite" "$SPEECH" record "$TMP/existing.wav"
+mkdir -p "$TMP/folder.wav"
+expect_code 2 "$SPEECH" record "$TMP/folder.wav" --overwrite       # a directory is never replaced
+expect_grep_err "directory" "$SPEECH" record "$TMP/folder.wav" --overwrite
+expect_code 2 "$SPEECH" record "$TMP/no-such-directory/take.wav" # nowhere to write it
+mkdir -p "$TMP/read-only"
+chmod 555 "$TMP/read-only"
+expect_code 2 "$SPEECH" record "$TMP/read-only/take.wav"         # somewhere it cannot write
+expect_grep_err "cannot write" "$SPEECH" record "$TMP/read-only/take.wav"
+chmod 755 "$TMP/read-only"
+expect_code 2 "$SPEECH" record "$TMP/take.wav" --parent-pid 0
+expect_ok "$SPEECH" record --help
+expect_ok "$SPEECH" record --list-devices
+
 echo "== stream =="
 # Everything here stops short of opening the microphone: the tap needs hardware,
 # a TCC grant, and somebody to speak into it. What is testable without all that

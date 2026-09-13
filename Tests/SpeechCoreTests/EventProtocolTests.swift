@@ -38,6 +38,30 @@ struct EventProtocolTests {
             confidence: 0.87, speaker: 2, language: "en")
     }
 
+    @Test("recording events round-trip, and silence is a finite level")
+    func recordingEvents() throws {
+        let started = try roundTrip(.recordingStarted(.init(
+            output: "/tmp/memo.wav", device: "MacBook Air Microphone",
+            deviceUID: "BuiltInMicrophoneDevice", sampleRate: 48_000, channels: 1)))
+        #expect(started["sample_rate"] as? Double == 48_000)
+        #expect(started["device_uid"] as? String == "BuiltInMicrophoneDevice")
+        // A system that names no default device: the fields drop out of the line
+        // rather than arriving as null.
+        let unnamed = try roundTrip(.recordingStarted(.init(
+            output: "/tmp/memo.m4a", device: nil, deviceUID: nil, sampleRate: 44_100, channels: 1)))
+        #expect(unnamed["device"] == nil)
+        #expect(unnamed["device_uid"] == nil)
+
+        // Digital silence is minus infinity dB, which JSONEncoder refuses to
+        // write. The floor is what keeps a quiet room from failing the run.
+        let silence = SpeechEvent.RecordingLevel(seconds: 1.5, rmsDB: -.infinity, peakDB: -.infinity)
+        #expect(silence.rmsDB == SpeechEvent.RecordingLevel.floorDB)
+        let level = try roundTrip(.recordingLevel(silence))
+        #expect(level["rms_db"] as? Double == -100)
+        #expect(level["peak_db"] as? Double == -100)
+        _ = try roundTrip(.recordingLevel(.init(seconds: 12.4, rmsDB: -31.5, peakDB: -6.25)))
+    }
+
     @Test("every event kind round-trips")
     func allKinds() throws {
         let capabilities = EngineCapabilities(

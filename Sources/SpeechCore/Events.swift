@@ -40,6 +40,8 @@ public struct SpeechEvent: Sendable, Equatable {
         case done(DoneEvent)
         case evalRow(EvalRow)
         case evalSummary(EvalSummary)
+        case recordingStarted(RecordingStarted)
+        case recordingLevel(RecordingLevel)
 
         public var type: String {
             switch self {
@@ -56,11 +58,69 @@ public struct SpeechEvent: Sendable, Equatable {
             case .done: return "done"
             case .evalRow: return "eval.row"
             case .evalSummary: return "eval.summary"
+            case .recordingStarted: return "recording.started"
+            case .recordingLevel: return "recording.level"
             }
         }
     }
 
     // MARK: - Payloads
+
+    /// `record` has opened the device and is writing. Emitted once, after the
+    /// microphone started, so a caller showing "recording" is never ahead of
+    /// the hardware.
+    public struct RecordingStarted: Codable, Sendable, Equatable {
+        /// The file the recording will be at when it ends.
+        public var output: String
+        /// The input device's name and UID; nil when the system reports no
+        /// default device it can name.
+        public var device: String?
+        public var deviceUID: String?
+        /// The file's sample rate: the device's own, capped at 48 kHz for m4a.
+        public var sampleRate: Double
+        /// The file's channel count. Always 1: the input is mixed down.
+        public var channels: Int
+
+        public init(output: String, device: String?, deviceUID: String?, sampleRate: Double, channels: Int) {
+            self.output = output
+            self.device = device
+            self.deviceUID = deviceUID
+            self.sampleRate = sampleRate
+            self.channels = channels
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case output, device, channels
+            case deviceUID = "device_uid"
+            case sampleRate = "sample_rate"
+        }
+    }
+
+    /// The input level of the audio just written, for a meter. Emitted a few
+    /// times a second while recording.
+    public struct RecordingLevel: Codable, Sendable, Equatable {
+        /// Seconds of audio written so far.
+        public var seconds: Double
+        /// Root-mean-square and peak level of the samples since the previous
+        /// level event, in dB relative to full scale. Floored at
+        /// `RecordingLevel.floorDB` so silence stays a number JSON can carry.
+        public var rmsDB: Double
+        public var peakDB: Double
+
+        public static let floorDB = -100.0
+
+        public init(seconds: Double, rmsDB: Double, peakDB: Double) {
+            self.seconds = seconds
+            self.rmsDB = max(rmsDB, Self.floorDB)
+            self.peakDB = max(peakDB, Self.floorDB)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case seconds
+            case rmsDB = "rms_db"
+            case peakDB = "peak_db"
+        }
+    }
 
     public struct EngineReady: Codable, Sendable, Equatable {
         public var engine: String
@@ -545,6 +605,8 @@ extension SpeechEvent: Codable {
         case .done(let p): try p.encode(to: encoder)
         case .evalRow(let p): try p.encode(to: encoder)
         case .evalSummary(let p): try p.encode(to: encoder)
+        case .recordingStarted(let p): try p.encode(to: encoder)
+        case .recordingLevel(let p): try p.encode(to: encoder)
         }
     }
 
@@ -566,6 +628,8 @@ extension SpeechEvent: Codable {
         case "done": payload = .done(try DoneEvent(from: decoder))
         case "eval.row": payload = .evalRow(try EvalRow(from: decoder))
         case "eval.summary": payload = .evalSummary(try EvalSummary(from: decoder))
+        case "recording.started": payload = .recordingStarted(try RecordingStarted(from: decoder))
+        case "recording.level": payload = .recordingLevel(try RecordingLevel(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: header, debugDescription: "unknown event type '\(type)'")
