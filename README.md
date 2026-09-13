@@ -192,6 +192,7 @@ across three engines; `speech engines` marks every row that can stream with a
 | [docs/engines.md](docs/engines.md) | Every backend, its capability flags, what it costs and why it is shaped the way it is |
 | [docs/benchmarks/](docs/benchmarks/README.md) | Every model measured against every corpus it claims, ranked by accuracy, with the machine and versions that produced the numbers |
 | [docs/catalog.md](docs/catalog.md) | What the model inventory reports, field by field, and why it ranks nothing |
+| [docs/models/](docs/models/) | One page per model family: what it measured, what it costs, what it cannot do - the text Speech.app shows beside a model |
 | [docs/models.catalog.tsv](docs/models.catalog.tsv) | The inventory itself, exported from `speech catalog --tsv` and diffed by `test.sh`, which fails when it is stale |
 | [docs/protocol.md](docs/protocol.md) | The `--json` event stream: every event kind and every field |
 | [docs/live.md](docs/live.md) | How a live microphone session is driven, what each engine family demands of it, and how a run stops |
