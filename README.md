@@ -126,6 +126,12 @@ row joins the matrix by existing.
     tools/language-battery.py --caffeinate --download cs_cz uk_ua
     tools/language-battery.py --plan librispeech-test-clean   # English-only second corpus
 
+`tools/battery-report.py` turns a finished battery into
+[docs/benchmarks/](docs/benchmarks/README.md): the models ranked by error rate
+within each corpus, the machine and the dependency versions that produced them,
+and every field of every cell as a TSV. What is published there is one M5, and
+the accuracy half of it is the half that travels to another Mac.
+
 Scoring normalizes to NFC, lowercases in the reference language's locale, and
 replaces punctuation and symbols with spaces - keeping an apostrophe that sits
 between two letters, and folding the typographic form onto the ASCII one, so
@@ -184,6 +190,7 @@ across three engines; `speech engines` marks every row that can stream with a
 | Document | What is in it |
 | --- | --- |
 | [docs/engines.md](docs/engines.md) | Every backend, its capability flags, what it costs and why it is shaped the way it is |
+| [docs/benchmarks/](docs/benchmarks/README.md) | Every model measured against every corpus it claims, ranked by accuracy, with the machine and versions that produced the numbers |
 | [docs/catalog.md](docs/catalog.md) | What the model inventory reports, field by field, and why it ranks nothing |
 | [docs/models.catalog.tsv](docs/models.catalog.tsv) | The inventory itself, exported from `speech catalog --tsv` and diffed by `test.sh`, which fails when it is stale |
 | [docs/protocol.md](docs/protocol.md) | The `--json` event stream: every event kind and every field |
