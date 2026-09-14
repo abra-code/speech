@@ -101,8 +101,8 @@ no bytes - CoreML's first-run ANE compile, loading weights, a warm-up pass -
 because those take seconds and silence there reads as a hang.
 
 `engine.ready.locale` is the locale the engine actually resolved the requested
-language to, when that is more specific than what was asked for: a bare `de`
-reaches Apple's engines as `de_AT` and `es` as `es_US`. Omitted when the engine
+language to, when that is more specific than what was asked for: a bare `it`
+reaches Apple's engines as `it_IT` and `es-419` as `es_ES`. Omitted when the engine
 has nothing more specific to report. A measurement that does not record which
 asset produced it cannot be reproduced, so `speech eval` also writes it to
 `summary.json` as `resolved_locales` and to `report.md`.

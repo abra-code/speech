@@ -39,7 +39,7 @@ public struct EvalOutcome: Sendable {
     public var memory: SystemInfo.MemorySnapshot?
     public var loadSeconds: Double
     /// The locale identifiers the engine actually used, comma separated. A run
-    /// that asked for "de" and measured de_AT has to say so, or its numbers
+    /// that asked for "es-419" and measured es_ES has to say so, or its numbers
     /// cannot be reproduced.
     public var resolvedLocales: String?
 }

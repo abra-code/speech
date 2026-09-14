@@ -84,11 +84,21 @@ without error, and still not be there.
 
 ### Language handling
 
-A bare primary subtag resolves to whichever regional model Apple ships first,
-and it is not always the one you would guess: `de` lands on `de_AT`, `es` on
-`es_US`, `fr` on `fr_CA`, `it` on `it_CH`. Pass a full tag (`de-DE`) when the
-region matters, and read `engine.ready.locale` - or the eval report's "Locale
-actually used" - to see which one a run really used.
+A bare primary subtag resolves to the locale for the language's main region
+when the engine has one: `it` is `it_IT`, `nl` is `nl_NL`, `es` is `es_ES`, `pt`
+is `pt_BR`, `zh` is `zh_CN`. The main region comes from CLDR's likely subtags
+(`Locale.Language.maximalIdentifier`). Apple's own
+`supportedLocale(equivalentTo:)` picks whichever variant it lists first, and
+that changes - it gave `it_CH` for `it` and `nl_BE` for dictation's `nl` on
+macOS 26.6.2, and earlier `de_AT` for `de` - so it decides only when there is
+no main-region locale: Arabic resolves to `ar_SA`, and `es-419`, which no Apple
+locale names, to `es_ES`. A tag with a region is taken as asked. Read
+`engine.ready.locale` - or the eval report's "Locale actually used" - to see
+which one a run really used.
+
+The same rule picks among a ggml or MLX model's own regional spellings
+(`Language.match`): a bare `es` finds `es-ES` in Nemotron's list, which names
+`es-US` first.
 
 
 The `languages` list on an Apple engine is a catalog fact and can lag an OS

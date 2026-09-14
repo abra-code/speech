@@ -43,4 +43,4 @@ The gap between the two is large enough to matter: on English and German, using 
 
 ## Language handling
 
-A bare primary subtag resolves to whichever regional model Apple ships first, and it is not always the one you would guess: `de` lands on `de_AT`, `es` on `es_US`, `fr` on `fr_CA`, `it` on `it_CH`. Pass a full tag when the region matters, and read `engine.ready.locale` to see which one a run really used.
+A bare primary subtag resolves to the locale for the language's main region: `it` is `it_IT`, `nl` is `nl_NL`, `es` is `es_ES`, `pt` is `pt_BR`. Apple's own resolver picks whichever variant it lists first - `it_CH` for Italian on macOS 26.6.2 - so `speech` asks it only when Apple has no locale for the main region, as for Arabic (`ar_SA`). Pass a full tag for another region, and read `engine.ready.locale` to see which one a run really used.

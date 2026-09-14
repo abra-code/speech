@@ -22,10 +22,12 @@ public enum Language {
     /// primary subtag lowercased, region uppercased. "pl_pl" -> "pl-PL".
     /// The list's own spelling of a requested language, or nil if it has none.
     ///
-    /// Prefers an exact tag, then a bare primary subtag, then the first
-    /// regional variant of the same language - so `pt-BR` finds itself where a
-    /// model lists both Brazilian and European Portuguese, and a bare `pt`
-    /// lands on whichever the model names first rather than being refused.
+    /// Prefers an exact tag, then a bare primary subtag, then the variant for
+    /// the language's main region, then the first regional variant of the same
+    /// language - so `pt-BR` finds itself where a model lists both Brazilian
+    /// and European Portuguese, a bare `es` lands on `es-ES` even when the
+    /// model names `es-US` first, and a language with no main-region variant
+    /// is still matched rather than refused.
     ///
     /// It hands back the LIST's string rather than the caller's, and that is
     /// the whole point of it. Measured on the ggml weights: the Nemotron rows
@@ -49,7 +51,38 @@ public enum Language {
         }) {
             return bare
         }
-        return supported.first { primarySubtag($0) == primary }
+        let variants = supported.filter { primarySubtag($0) == primary }
+        if let main = mainRegion(requested),
+           let preferred = variants.first(where: { region($0) == main }) {
+            return preferred
+        }
+        return variants.first
+    }
+
+    /// The region a tag names, if any: "pt-BR" -> "BR", "zh-Hant-TW" -> "TW",
+    /// "es-419" -> "419", "pt" -> nil. Underscore forms count ("it_IT").
+    public static func region(_ tag: String) -> String? {
+        let parts = canonical(tag).split(separator: "-").dropFirst()
+        return parts.first { part in
+            (part.count == 2 && part.allSatisfy(\.isLetter))
+                || (part.count == 3 && part.allSatisfy(\.isNumber))
+        }.map(String.init)
+    }
+
+    /// The region a language is mainly spoken in, for a tag that names no
+    /// region: "it" -> "IT", "nl" -> "NL", "pt" -> "BR", "zh-Hant" -> "TW".
+    /// nil when the tag already names a region, or when there is no answer.
+    ///
+    /// From CLDR's likely subtags, which Foundation ships as
+    /// `Locale.Language.maximalIdentifier`. A bare language must never land on
+    /// a minority variant because a list happened to name it first: Apple's
+    /// `supportedLocale(equivalentTo:)` turned "it" into it_CH and "nl" into
+    /// nl_BE on macOS 26.6.2, and the ggml Nemotron list names es-US before
+    /// es-ES.
+    public static func mainRegion(_ tag: String) -> String? {
+        guard region(tag) == nil else { return nil }
+        let maximal = Locale.Language(identifier: canonical(tag)).maximalIdentifier
+        return region(maximal)
     }
 
     public static func canonical(_ tag: String) -> String {

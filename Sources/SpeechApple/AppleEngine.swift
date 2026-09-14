@@ -143,8 +143,8 @@ actor AppleEngine: TranscriptionEngine {
     @discardableResult
     func prepare(language: String?, progress: @escaping LoadProgressHandler) async throws -> String? {
         progressHandler = progress
-        // The identifier, not the primary subtag: "de" resolves to de_AT here
-        // and a measurement that does not record that is not reproducible.
+        // The identifier, not the primary subtag: "es-419" resolves to es_ES
+        // here and a measurement that does not record that is not reproducible.
         return try await ensureLocale(language).identifier
     }
 

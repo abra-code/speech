@@ -128,7 +128,7 @@ public struct SpeechEvent: Sendable, Equatable {
         public var capabilities: EngineCapabilities
         public var loadSeconds: Double
         /// What the engine resolved the requested language to, when it is more
-        /// specific: "de" reaches Apple as de_AT and "es" as es_US. Omitted
+        /// specific: "it" reaches Apple as it_IT and "es-419" as es_ES. Omitted
         /// when the engine has nothing more specific to say.
         public var locale: String?
 

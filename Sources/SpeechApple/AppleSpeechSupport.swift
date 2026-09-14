@@ -93,6 +93,22 @@ public enum AppleSpeech {
         #endif
     }
 
+    /// A tag with no region, onto the module's locale for the language's main
+    /// region: "it" is it_IT and never it_CH, "nl" is nl_NL and never nl_BE.
+    /// nil when the tag names a region, or when the module has no locale for
+    /// the main region (Arabic has only ar_SA, and "yue" has no yue_HK), and
+    /// then `supportedLocale(equivalentTo:)` decides as before.
+    ///
+    /// Asked first because Apple's own answer for a bare language is whichever
+    /// variant it lists first, and that changes: on macOS 26.6.2 it gave it_CH
+    /// for "it" and nl_BE for dictation's "nl", where earlier the same macOS
+    /// had given de_AT for "de" and fr_CA for "fr".
+    static func mainRegional(_ tag: String, in available: [Locale]) -> Locale? {
+        guard let region = Language.mainRegion(tag) else { return nil }
+        let wanted = "\(Language.primarySubtag(tag))_\(region)"
+        return available.first { $0.identifier == wanted }
+    }
+
     /// The rule without the system calls, so it can be tested on a Mac where
     /// every answer is yes.
     static func decide(
@@ -168,12 +184,15 @@ enum AppleLocaleInstaller {
         supportedLocale: (Locale) async -> Locale?
     ) async throws -> Locale {
         let identifier = Language.canonical(requested ?? "en-US")
+        let available = await supportedLocales()
+        if let main = AppleSpeech.mainRegional(identifier, in: available) {
+            return main
+        }
         let wanted = Locale(identifier: identifier)
         guard let resolved = await supportedLocale(wanted) else {
             throw SpeechError.unsupportedLanguage(
                 "\(moduleName) has no model for '\(identifier)'; run 'speech info' for the list it does have")
         }
-        let available = await supportedLocales()
         guard available.contains(where: { $0.identifier == resolved.identifier }) else {
             let covered = languages.isEmpty
                 ? ""
@@ -193,11 +212,14 @@ enum AppleLocaleInstaller {
         supportedLocales: () async -> [Locale],
         supportedLocale: (Locale) async -> Locale?
     ) async -> Locale? {
+        let available = await supportedLocales()
+        if let main = AppleSpeech.mainRegional(tag, in: available) {
+            return main
+        }
         guard let resolved = await supportedLocale(Locale(identifier: Language.canonical(tag))) else {
             return nil
         }
-        return await supportedLocales().contains { $0.identifier == resolved.identifier }
-            ? resolved : nil
+        return available.contains { $0.identifier == resolved.identifier } ? resolved : nil
     }
 
     /// Reserve the locale and install its assets, reporting progress.
