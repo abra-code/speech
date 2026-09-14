@@ -22,6 +22,12 @@ taken on the user's own machine (docs/catalog.md).
     tools/battery-report.py --battery DIR --out DIR
     tools/battery-report.py --check             # is the checked-in report current?
 
+The battery keeps one directory per macOS version (macos-26.6.2) and this reads
+all of them. Apple's two rows are part of the operating system, so every table
+names the macOS version an Apple row was measured on and shows it once per
+version; any other row is shown from the newest version it was measured on.
+measurements.tsv keeps every cell with its version.
+
 What it cannot recover: summary.json records the machine, the OS and the date
 of every cell, but not the versions of the tool and the three engine
 dependencies that produced it. Those are read here from the `speech` build in
@@ -73,7 +79,7 @@ CORPORA = {
 UNSPACED = {"zh", "cmn", "yue", "ja", "th", "km", "lo", "my", "bo"}
 
 TSV_COLUMNS = [
-    "model", "corpus", "language", "resolved_locales", "rows", "skipped",
+    "model", "corpus", "macos", "language", "resolved_locales", "rows", "skipped",
     "wer_pct", "cer_pct", "rtfx", "audio_seconds", "wall_seconds",
     "load_seconds", "peak_memory_bytes", "peak_footprint_bytes",
     "peak_neural_bytes", "reference_words", "reference_characters",
@@ -116,19 +122,65 @@ def is_unspaced(corpus, cell):
     return tag.split("-")[0].lower() in UNSPACED
 
 
+def version_key(version):
+    """A macOS version as numbers, so 26.10.0 sorts after 26.9.0."""
+    return tuple(int(part) if part.isdigit() else -1 for part in str(version).split("."))
+
+
+def is_apple(cell):
+    return cell["model"].startswith("apple.")
+
+
+def model_name(cell):
+    """A row as the documents print it: the id, and for an Apple row its macOS.
+
+    Apple's engines ship with the system and change with it, so an Apple figure
+    without its version is a figure nobody can check - on another Mac, or on this
+    one after an update.
+    """
+    if is_apple(cell) and cell["os"]:
+        return "`%s` on macOS %s" % (cell["model"], cell["os"])
+    return "`%s`" % cell["model"]
+
+
 # ---------------------------------------------------------------------------
 # Reading the battery
 # ---------------------------------------------------------------------------
 
-def read_cells(battery_dir):
-    """Every finished cell, as (model, corpus, limit, summary).
+def battery_dirs(root):
+    """The directories holding cells: one per macOS version, or the root itself.
+
+    tools/language-battery.py measures each macOS version into a directory of
+    its own (macos-26.6.2) so that a newer system never replaces what an older
+    one measured. A directory that holds cells directly - one a battery was
+    pointed at with --out - is read as it is.
+    """
+    try:
+        names = sorted(os.listdir(root))
+    except OSError as error:
+        die("cannot read %s: %s" % (root, error))
+    versions = [os.path.join(root, name) for name in names
+                if name.startswith("macos-") and os.path.isdir(os.path.join(root, name))]
+    return versions or [root]
+
+
+def read_cells(battery_root):
+    """Every finished cell, as (model, corpus, limit, os, summary).
 
     The model and the corpus come from the cell's own row.tsv rather than from
     its directory name: the name is a slug with the punctuation flattened, and
     a model id cannot be recovered from it. A cell missing either file is one
     that failed or was interrupted, and is skipped in silence - the battery
-    already reported it.
+    already reported it. The macOS version is the one the cell recorded, not
+    the name of the directory it sits in.
     """
+    cells = []
+    for battery_dir in battery_dirs(battery_root):
+        cells += read_battery(battery_dir)
+    return cells
+
+
+def read_battery(battery_dir):
     cells = []
     try:
         names = sorted(os.listdir(battery_dir))
@@ -152,9 +204,30 @@ def read_cells(battery_dir):
             continue
         cells.append({
             "model": fields[0], "corpus": fields[1], "limit": fields[2],
-            "cell": name, "summary": summary,
+            "os": str(summary.get("os", "")), "cell": name, "summary": summary,
         })
     return cells
+
+
+def table_cells(cells):
+    """The cells the tables show: an Apple row once per macOS version, any other once.
+
+    Any other row's weights are the same on every macOS, so a second
+    measurement of it after an update is a newer figure for the same model and
+    replaces the older one in the tables. An Apple row on a new macOS is a new
+    model and sits beside the old one. measurements.tsv keeps every cell.
+    """
+    def key(cell):
+        return (cell["model"], cell["corpus"], cell["limit"],
+                cell["os"] if is_apple(cell) else "")
+
+    chosen = {}
+    for cell in cells:
+        best = chosen.get(key(cell))
+        newer = (version_key(cell["os"]), cell["summary"].get("date", ""))
+        if best is None or newer > (version_key(best["os"]), best["summary"].get("date", "")):
+            chosen[key(cell)] = cell
+    return [cell for cell in cells if chosen[key(cell)] is cell]
 
 
 def partial_limits(cells):
@@ -189,7 +262,8 @@ def rank(cells_in_corpus, corpus):
         corpus, cells_in_corpus[0]["summary"]) else "wer"
 
     def key(cell):
-        return (round(cell["summary"].get(metric, 1.0) * 100, 2), cell["model"])
+        return (round(cell["summary"].get(metric, 1.0) * 100, 2), cell["model"],
+                version_key(cell["os"]))
 
     return sorted(cells_in_corpus, key=key), metric
 
@@ -265,6 +339,7 @@ def provenance(cells, catalog):
         "first": dates[0][:10] if dates else "unknown",
         "last": dates[-1][:10] if dates else "unknown",
         "cells": len(cells),
+        "versions": sorted({c["os"] for c in cells if c["os"]}, key=version_key),
         "environment": environment(catalog),
     }
 
@@ -313,7 +388,7 @@ def accuracy_table(ranked, metric):
         if metric == "cer":
             wer = "(%s)" % wer
         rows.append([
-            str(position), "`%s`" % cell["model"], wer, cer,
+            str(position), model_name(cell), wer, cer,
             "%.1fx" % summary.get("rtfx", 0),
             human_bytes(summary.get("peak_memory_bytes", 0)),
         ])
@@ -371,7 +446,7 @@ def spread_paragraph(groups):
     winners = {}
     for corpus in groups:
         ranked, _ = rank(groups[corpus], corpus)
-        winners.setdefault(ranked[0]["model"], []).append(corpus)
+        winners.setdefault(model_name(ranked[0]), []).append(corpus)
     if len(winners) == 1:
         return ("One model takes every corpus in this battery, which is worth "
                 "reading twice before believing: it usually means the corpora "
@@ -381,7 +456,7 @@ def spread_paragraph(groups):
     if len(best) > 1:
         model = [m for m, c in winners.items() if c is best][0]
         others = len(winners) - 1
-        lines.append("`%s` takes %d, and the remaining %d go to %d other row%s."
+        lines.append("%s takes %d, and the remaining %d go to %d other row%s."
                      % (model, len(best), len(groups) - len(best), others,
                         "" if others == 1 else "s"))
     # The sharpest version of the point: a model that tops one English corpus
@@ -389,10 +464,10 @@ def spread_paragraph(groups):
     for a, b in (("librispeech-test-clean", "en_us"), ("en_us", "librispeech-test-clean")):
         if a not in groups or b not in groups:
             continue
-        top = rank(groups[a], a)[0][0]["model"]
-        elsewhere = [c["model"] for c in rank(groups[b], b)[0]]
+        top = model_name(rank(groups[a], a)[0][0])
+        elsewhere = [model_name(c) for c in rank(groups[b], b)[0]]
         if top in elsewhere and elsewhere.index(top) >= 5:
-            lines.append("Both English corpora are read speech, and `%s` is "
+            lines.append("Both English corpora are read speech, and %s is "
                          "first on %s and %d%s of %d on %s - which is a fact "
                          "about how alike a model's training data and a test "
                          "set are, not a tie-break." % (
@@ -432,7 +507,8 @@ pull against each other here, and the tables are sorted on accuracy alone.
 another one at all, and peak memory only partly. WER and CER mostly do - the
 same weights over the same audio make the same mistakes - with two exceptions
 worth knowing: the two Apple rows are the operating system's assets and move
-with its version, and the arithmetic of a CoreML row - one that runs on Apple's
+with its version, which is why every Apple row names the macOS it was measured
+on, and the arithmetic of a CoreML row - one that runs on Apple's
 own inference framework, which is every `fluid.*` model here - belongs to the
 generation of Neural Engine that ran it. Read the accuracy as close to a
 property of the model and the speed as a property of this machine.
@@ -488,9 +564,13 @@ The battery is resumable at the cell, which is what makes a multi-day run
 survive being interrupted. `--plan` prints the matrix, the downloads and the
 hours before any of it starts.
 
+Each macOS version measures into a battery directory of its own
+(`Private/language-battery/macos-26.6.2`), and the report reads all of them, so
+measuring again after a macOS update adds cells rather than replacing any.
+
 The report is not regenerated by `test.sh`, unlike docs/models.catalog.tsv: it
-is derived from a battery directory under `Private/`, which is gitignored and
-absent from a fresh clone. It is current as of the run named above.
+is derived from the battery directories under `Private/`, which is gitignored
+and absent from a fresh clone. It is current as of the run named above.
 """
 
 
@@ -521,6 +601,13 @@ def index_document(groups, prov, catalog, missing, extra, wildcard, limits, note
         "summary, so they are read from the build in this tree and are "
         "correct as long as the report is generated from the tree that "
         "ran the battery.") + "\n")
+    if len(prov["versions"]) > 1:
+        text.append(paragraph(
+            "This battery spans macOS %s. Apple's two rows appear once for each "
+            "version they were measured on, because they are part of the "
+            "operating system; every other row is shown from the newest version "
+            "it was measured on, and measurements.tsv holds every cell."
+            % (", ".join(prov["versions"][:-1]) + " and " + prov["versions"][-1])) + "\n")
 
     text.append("## The corpora\n")
     rows = [["Corpus", "Rows", "Audio", "Reference words", "Models scored"]]
@@ -547,7 +634,7 @@ def index_document(groups, prov, catalog, missing, extra, wildcard, limits, note
         ranked, metric = rank(groups[corpus], corpus)
         best = ranked[0]["summary"]
         rows.append([
-            corpus, "`%s`" % ranked[0]["model"],
+            corpus, model_name(ranked[0]),
             "%.2f%% %s" % (best.get(metric, 0) * 100, metric.upper()),
             "%.1fx" % best.get("rtfx", 0),
             human_bytes(best.get("peak_memory_bytes", 0))])
@@ -679,8 +766,8 @@ def degradation_section(groups):
     more of what it had than one going from 7.6% to 9.1%, and the difference
     says the opposite.
     """
-    clean = {c["model"]: c["summary"] for c in groups.get("librispeech-test-clean", [])}
-    other = {c["model"]: c["summary"] for c in groups.get("librispeech-test-other", [])}
+    clean = {model_name(c): c["summary"] for c in groups.get("librispeech-test-clean", [])}
+    other = {model_name(c): c["summary"] for c in groups.get("librispeech-test-other", [])}
     shared = sorted(set(clean) & set(other))
     if not shared:
         return ""
@@ -691,7 +778,7 @@ def degradation_section(groups):
     entries.sort()
     rows = [["#", "Model", "clean WER", "other WER", "other / clean"]]
     for position, (ratio, model, a, b) in enumerate(entries, start=1):
-        rows.append([str(position), "`%s`" % model, "%.2f%%" % (a * 100),
+        rows.append([str(position), model, "%.2f%%" % (a * 100),
                      "%.2f%%" % (b * 100), "%.2fx" % ratio])
     return "\n".join([
         "## Falling from clean to other", "",
@@ -740,10 +827,11 @@ def tsv_document(cells, prov):
         "#",
         "\t".join(TSV_COLUMNS),
     ]
-    for cell in sorted(cells, key=lambda c: (corpus_sort_key(c["corpus"]), c["model"])):
+    for cell in sorted(cells, key=lambda c: (corpus_sort_key(c["corpus"]), c["model"],
+                                             version_key(c["os"]))):
         summary = cell["summary"]
         lines.append("\t".join([
-            cell["model"], cell["corpus"],
+            cell["model"], cell["corpus"], cell["os"] or "-",
             str(summary.get("language", "-")),
             str(summary.get("resolved_locales", "-")),
             str(summary.get("rows", 0)), str(summary.get("skipped", 0)),
@@ -860,7 +948,7 @@ def main():
     cells = read_cells(options.battery)
     if not cells:
         die("no finished cells in %s - nothing to report." % options.battery)
-    groups = by_corpus(cells)
+    groups = by_corpus(table_cells(cells))
     if not groups:
         die("every cell in %s was scored over part of a split; nothing to rank."
             % options.battery)

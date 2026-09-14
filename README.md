@@ -120,7 +120,10 @@ language's FLEURS split - or, for `librispeech-test-clean` and
 `librispeech-test-other`, against that LibriSpeech split in English.
 Resumable at the cell so a multi-day run survives being interrupted. It picks
 the models from `speech catalog --json` rather than a list, so a new catalog
-row joins the matrix by existing.
+row joins the matrix by existing. Cells go to
+`Private/language-battery/macos-<version>`, one directory per macOS version:
+Apple's two engines ship with the system, so measuring again after a macOS
+update adds a battery beside the old one instead of replacing it.
 
     tools/language-battery.py --list                 # the 102 FLEURS languages, and who claims each
     tools/language-battery.py --plan cs_cz uk_ua     # the cells, the downloads, the hours
@@ -129,8 +132,8 @@ row joins the matrix by existing.
 
 `--live` measures the live path instead: `speech eval --live` on every row that
 can stream, with each row's audio played at the speed it was spoken, so a cell
-costs the length of its audio. Its cells and table go to `Private/live-battery`
-and add the median time to first partial, final lag and finish time, and the
+costs the length of its audio. Its cells and table go to
+`Private/live-battery/macos-<version>` and add the median time to first partial, final lag and finish time, and the
 words a session lost at the end. Single sentences are the easy case for a live
 session, so the corpus to use is `librispeech-continuous-test-clean`: minute-long
 passages of one reader, joined from consecutive utterances of a LibriSpeech

@@ -29,6 +29,14 @@ marker is skipped, a cell that failed is remembered and skipped too
 marker at all, so stopping and restarting the next day costs only the cell that
 was in flight.
 
+Each macOS version measures into a directory of its own:
+Private/language-battery/macos-26.6.2, Private/live-battery/macos-26.6.2. Apple's
+two engines are part of the operating system, so the same row on a newer macOS is
+a different measurement, and resuming would otherwise skip it as done - or a
+fresh run would mix two systems in one table. A directory named with --out that
+already holds cells from another macOS version is refused for the same reason.
+tools/battery-report.py reads every version's directory.
+
 A warning about --wildcard. The three fluid.nemotron-multilingual rows report no
 language list - their real one is inside the download - so they are excluded
 unless you ask for them. When you do, nothing checks that the model has ever
@@ -75,6 +83,7 @@ import argparse
 import datetime
 import json
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -969,13 +978,20 @@ def known_rtfx(paths):
     return {model: sorted(values)[len(values) // 2] for model, values in seen.items()}
 
 
-def rtfx_sources(out_dir):
+def rtfx_sources(out_dir, live=False):
     """Anything on this machine that has ever recorded an RTFx.
 
-    This battery's own results first, then the stage spikes, as directories so
-    the per-cell summary.json files count too.
+    This battery's own results first, then every macOS version's battery of the
+    same kind - the first run after an update starts an empty directory, and the
+    machine's speed did not change with the system - then the stage spikes, as
+    directories so the per-cell summary.json files count too. Live cells and
+    batch cells are never mixed: a live cell plays its audio at the speed it was
+    spoken, so its RTFx is about 1x whatever the model.
     """
-    sources = [out_dir]
+    root = battery_root(live)
+    roots = [root] if os.path.isdir(root) else []
+    inside = os.path.abspath(out_dir).startswith(os.path.join(root, ""))
+    sources = ([] if inside else [out_dir]) + roots
     private = os.path.join(REPO, "Private")
     if os.path.isdir(private):
         for name in sorted(os.listdir(private)):
@@ -1421,7 +1437,7 @@ def command_list(options, catalog):
 
 
 def command_plan(options, catalog):
-    rtfx = known_rtfx(rtfx_sources(options.out))
+    rtfx = known_rtfx(rtfx_sources(options.out, options.live))
     total_seconds, missing, cells = 0.0, {}, 0
     guessed_fleurs, guessed_librispeech, guessed_continuous = False, False, False
 
@@ -1568,7 +1584,52 @@ def resolve_downloads(options, selection):
     sys.exit(1)
 
 
+def battery_root(live):
+    """The directory holding one battery per macOS version."""
+    return os.path.join(REPO, "Private", "live-battery" if live else "language-battery")
+
+
+def macos_version():
+    """This Mac's macOS version, spelled the way `speech eval` records it.
+
+    speech writes major.minor.patch from ProcessInfo, so 27.0 is 27.0.0 in every
+    summary.json; platform gives 27.0. Padding here keeps the directory name and
+    the comparison with a cell's own record the same string.
+    """
+    parts = (platform.mac_ver()[0] or "unknown").split(".")
+    while len(parts) < 3 and parts[0] != "unknown":
+        parts.append("0")
+    return ".".join(parts)
+
+
+def other_macos(out_dir, current):
+    """The macOS version of a finished cell in out_dir that is not this one, or None."""
+    try:
+        names = sorted(os.listdir(out_dir))
+    except OSError:
+        return None
+    for name in names:
+        try:
+            with open(os.path.join(out_dir, name, "summary.json"), encoding="utf-8") as handle:
+                recorded = json.load(handle).get("os")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if recorded and recorded != current:
+            return recorded
+    return None
+
+
 def command_run(options, catalog):
+    current = macos_version()
+    recorded = other_macos(options.out, current)
+    if recorded:
+        print("!! %s holds cells measured on macOS %s, and this Mac runs macOS %s."
+              % (options.out, recorded, current), file=sys.stderr)
+        print("   A battery keeps to one macOS version, so that a newer system's cells never",
+              file=sys.stderr)
+        print("   stand in for an older one's. Leave out --out to measure into %s."
+              % os.path.join(battery_root(options.live), "macos-" + current), file=sys.stderr)
+        return 1
     os.makedirs(options.out, exist_ok=True)
 
     print("battery: %s" % " ".join(options.languages))
@@ -1697,7 +1758,8 @@ def parse_arguments(argv):
     parser.add_argument("--plan", action="store_true",
                         help="print the matrix, the missing downloads and a time estimate; run nothing")
     parser.add_argument("--out", metavar="DIR",
-                        help="where cells and summaries.tsv go (default Private/language-battery)")
+                        help="where cells and summaries.tsv go (default "
+                             "Private/language-battery/macos-<this macOS version>)")
     # One value per flag, repeatable, and each value may itself be a
     # space-separated list. `nargs="+"` would read better but it is greedy: in
     # `--exclude ggml.whisper pl_pl` argparse hands both words to --exclude and
@@ -1718,7 +1780,8 @@ def parse_arguments(argv):
     parser.add_argument("--live", action="store_true",
                         help="measure the live path (speech eval --live) on the rows that can "
                              "stream, playing the audio at the speed it was spoken; cells go to "
-                             "Private/live-battery. Meant for librispeech-continuous-test-clean")
+                             "Private/live-battery/macos-<this macOS version>. Meant for "
+                             "librispeech-continuous-test-clean")
     parser.add_argument("--download", action="store_true",
                         help="download missing model weights before running")
     parser.add_argument("--skip-missing", action="store_true",
@@ -1745,8 +1808,7 @@ def parse_arguments(argv):
     # a live cell and a batch cell for the same row and corpus are different
     # measurements that must never share a summaries.tsv.
     options.out = (os.path.abspath(options.out) if options.out
-                   else os.path.join(REPO, "Private",
-                                     "live-battery" if options.live else "language-battery"))
+                   else os.path.join(battery_root(options.live), "macos-" + macos_version()))
     options.corpus_dir = os.path.abspath(
         os.environ.get("SPEECH_CORPUS_DIR") or os.path.join(os.path.expanduser("~"), "Corpora"))
     return parser, options

@@ -19,7 +19,9 @@ Punctuation is requested explicitly for dictation. Left alone it emits unpunctua
 
 ## What they measured
 
-Full FLEURS test splits, 2026-09-04.
+Full FLEURS test splits on macOS 26.6.2, 2026-09-04.
+
+These are figures for that version of macOS. Both engines ship with the system and change with it, so a later version is measured again and reported beside these rather than in their place: [docs/benchmarks](../benchmarks/README.md) names the macOS version on every Apple row.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
