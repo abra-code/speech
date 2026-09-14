@@ -187,19 +187,25 @@ public struct LoadProgress: Sendable, Equatable {
     public var bytesTotal: Int64?
     /// The file or model being worked on, for the status line.
     public var file: String?
+    /// A locale this step gave up to make room for `file`. Not progress:
+    /// `EventSink.modelProgress` reports it as a `locale_released` warning,
+    /// because the language it names may have to download again.
+    public var releasedLocale: String?
 
     public init(
         phase: Phase,
         fraction: Double? = nil,
         bytesDone: Int64? = nil,
         bytesTotal: Int64? = nil,
-        file: String? = nil
+        file: String? = nil,
+        releasedLocale: String? = nil
     ) {
         self.phase = phase
         self.fraction = fraction
         self.bytesDone = bytesDone
         self.bytesTotal = bytesTotal
         self.file = file
+        self.releasedLocale = releasedLocale
     }
 }
 

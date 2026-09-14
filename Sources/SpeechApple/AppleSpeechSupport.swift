@@ -241,8 +241,16 @@ enum AppleLocaleInstaller {
         if !reserved.contains(locale) {
             let cap = AssetInventory.maximumReservedLocales
             while reserved.count >= cap, let oldest = reserved.first {
-                _ = await AssetInventory.release(reservedLocale: oldest)
+                let released = await AssetInventory.release(reservedLocale: oldest)
                 reserved.removeFirst()
+                // Observed on macOS 26.6.2: installing Spanish released German,
+                // and German then no longer appeared in installedLocales.
+                // Apple answers false when it released nothing, and a warning
+                // about a language that is still there would be wrong.
+                if released {
+                    report(LoadProgress(
+                        phase: .listing, file: locale.identifier, releasedLocale: oldest.identifier))
+                }
             }
         }
         do {

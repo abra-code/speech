@@ -111,6 +111,13 @@ asset produced it cannot be reproduced, so `speech eval` also writes it to
 installs them system-wide at no path this tool owns, and Apple publishes no
 size. A zero there would be a measurement rather than a missing one.
 
+A `warning` with `code` `locale_released` means installing an Apple locale
+released another one: Apple keeps a limited number of locales for each app (5
+on macOS 26.6.2), and `speech` releases the oldest only when a new one needs
+the room. The message names both. The released language may disappear from
+`installedLocales` and download again on its next use, so a reader that offers
+languages should say so rather than let it happen silently.
+
 `error.code` is one of `usage`, `unavailable`, `model_missing`,
 `unsupported_format`, `unsupported_language`, `runtime`, and maps onto the exit
 status: 0 success, 1 runtime error, 2 usage or unavailable engine, 3 model

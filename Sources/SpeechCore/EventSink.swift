@@ -121,6 +121,14 @@ public final class EventSink: @unchecked Sendable {
     }
 
     public func modelProgress(model: String, _ progress: LoadProgress) {
+        if let released = progress.releasedLocale {
+            warning(
+                "\(released) was released to make room for \(progress.file ?? "another language"):"
+                + " Apple keeps a limited number of languages for each app, so macOS may remove"
+                + " \(released)'s files and its next use downloads them again",
+                code: "locale_released")
+            return
+        }
         emit(.modelProgress(.init(model: model, progress: progress)))
     }
 
