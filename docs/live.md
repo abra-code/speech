@@ -357,6 +357,56 @@ default silently produce nothing. The value is the model's `stream` setting in
 `catalog/ggml.json`, with the table in its note; `GGMLEngine.streamExtension(for:)`
 keeps the same value as the fallback for a model added without one.
 
+**A second trap, in the library: the committed text freezes.** Found 2026-09-13
+by the live battery on continuous speech, where this row's finals ran 34 s behind
+the audio at the median and 54 s at worst, on an M5 and an M1 Pro alike. The six
+single sentences in the first sweep below were too short to show it.
+
+What happens, in transcribe.cpp v0.2.3 (and `main` as of 2026-09-13):
+
+- The parakeet cache-aware family marks every decoded token committed.
+- The library's `committed` text still grows only while those tokens' texts,
+  each decoded on its own and concatenated, match the full text byte for byte.
+- The full text has runs of spaces collapsed, and the per-token texts do not. The
+  first token that decodes to a bare space puts a double space into the
+  concatenation that the full text never contains, and the match can never
+  advance past it again (`token_prefix_raw_bytes` in `src/transcribe.cpp`).
+- So `committed` freezes 5 to 25 s into a passage - in 18 of the 20 - while
+  `tentative` keeps growing and `audio_committed_ms` keeps advancing. Everything
+  after the freeze is committed in one piece at finalize.
+
+Partials were never affected: they show committed plus tentative, which stayed
+current. Finals were: they waited for the finalize, and the sentence rule then
+stamped each sentence of that one late piece with an end time back across the
+freeze. That is why the lag number is real rather than an artifact - the text was
+committed that late. Neither commit policy avoids it: the library uses the
+family's own boundary for both `.auto` and `.stablePrefix`.
+
+**The workaround**, until a transcribe.cpp release carries the fix: a stream using
+the `parakeet_stream` extension treats committed plus tentative as committed
+(`GGMLLiveSession.commitsTentative(for:)`). That is the text the family meant to
+commit, and it held on the evidence: across the 20 passages `tentative` was not
+revised once in 18,509 feeds on q8_0, nor in 19,540 on q4_k_m. Remove it, and re-run the live battery, when
+the pinned transcribe.cpp version moves past the fix.
+
+Measured on the same 20 passages, q8_0, M5, no buffers dropped:
+
+| build | final lag med/worst | WER |
+| --- | --- | --- |
+| v0.2.3, before the workaround | 34.39 / 54.27 s | 3.60% |
+| v0.2.3 with the workaround | 0.46 / 2.45 s | 3.60% |
+| v0.2.3 with the upstream fix, no workaround | 0.46 / 1.74 s | 3.60% |
+
+The third row is a local build of the library with a proposed fix to that
+comparison; it is what the workaround should be checked against when a release
+carries a fix.
+
+It is scoped to `parakeet_stream` on purpose, even though `parakeet_buffered` goes
+through the same library boundary. Whether a stream freezes depends on the model
+emitting a token that decodes to a bare space, and on the same 20 passages
+`ggml.parakeet-unified-en-0.6b@q8_0` never did: worst final lag 3.83 s, no words
+lost. A buffered row that starts showing the freeze is the signal to widen it.
+
 ## The `fluid` rows
 
 Three families of them stream. Two answer the same question - a language Apple

@@ -45,6 +45,40 @@ actor GGMLLiveSession: LiveSession {
     private var finished = false
     /// Kept so a repeated `finish()` reports the same failure.
     private var failure: LiveSessionFailure?
+    /// Whether this stream's tentative text is treated as committed. See
+    /// `commitsTentative(for:)`.
+    private let commitsTentative: Bool
+
+    /// Streams whose tentative text is committed here rather than by the library.
+    ///
+    /// A workaround for transcribe.cpp v0.2.3, and only that. Its parakeet
+    /// cache-aware family marks every decoded token committed, but the library
+    /// grows `committed` only while the per-token texts, concatenated, match
+    /// the full text byte for byte - and the full text has runs of spaces
+    /// collapsed. The first token that decodes to a bare space ends the match
+    /// for the rest of the stream: `committed` freezes 5 to 25 seconds in, and
+    /// everything after it arrives in one piece at finalize.
+    ///
+    /// Measured on `nemotron-3.5-asr-streaming-0.6b@q8_0` over the 20 continuous
+    /// LibriSpeech passages: finals ran 34 s behind the audio at the median and
+    /// 54 s at worst, while `tentative` kept growing and was not revised once in
+    /// 18,509 feeds (nor in 19,540 on q4_k_m). Committed plus tentative is therefore the text the family
+    /// meant to commit, and reading it that way is what brings the finals back
+    /// in step with the speaker.
+    ///
+    /// Remove once a transcribe.cpp release carries the fix; docs/live.md has the
+    /// details.
+    static func commitsTentative(for streamExtension: StreamExtension?) -> Bool {
+        if case .parakeetStream = streamExtension { return true }
+        return false
+    }
+
+    /// The committed and tentative text to hand the accumulator.
+    static func committedView(
+        committed: String, tentative: String, commitsTentative: Bool
+    ) -> (committed: String, tentative: String) {
+        commitsTentative ? (committed + tentative, "") : (committed, tentative)
+    }
 
     static func make(
         session: GGMLSession,
@@ -56,7 +90,8 @@ actor GGMLLiveSession: LiveSession {
     ) async throws -> GGMLLiveSession {
         let live = GGMLLiveSession(
             session: session, catalogID: catalogID, language: language,
-            segmentation: segmentation)
+            segmentation: segmentation,
+            commitsTentative: commitsTentative(for: streamExtension))
         // `.auto` lets the family pick its own commit policy. Overriding it
         // here would mean this file claiming to know better than the decoder
         // about when a prefix is stable, which it does not.
@@ -70,11 +105,13 @@ actor GGMLLiveSession: LiveSession {
         session: GGMLSession,
         catalogID: String,
         language: String?,
-        segmentation: LiveSegmentation
+        segmentation: LiveSegmentation,
+        commitsTentative: Bool
     ) {
         self.session = session
         self.catalogID = catalogID
         self.language = language
+        self.commitsTentative = commitsTentative
         self.accumulator = StreamSegmentAccumulator(
             language: language, segmentation: segmentation)
         let (events, continuation) = AsyncStream<LiveEvent>.makeStream()
@@ -156,9 +193,12 @@ actor GGMLLiveSession: LiveSession {
     // MARK: - Mapping
 
     private func absorb(_ step: GGMLSession.StreamStep, isFinal: Bool) {
+        let view = Self.committedView(
+            committed: step.text.committed, tentative: step.text.tentative,
+            commitsTentative: commitsTentative)
         let events = accumulator.absorb(
-            committed: step.text.committed,
-            tentative: step.text.tentative,
+            committed: view.committed,
+            tentative: view.tentative,
             committedMs: step.update.audioCommittedMs,
             receivedMs: step.update.inputReceivedMs,
             isFinal: isFinal)

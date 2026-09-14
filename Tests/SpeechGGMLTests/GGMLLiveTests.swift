@@ -10,6 +10,8 @@
 import Foundation
 import Testing
 
+import TranscribeCpp
+
 @testable import SpeechCore
 @testable import SpeechGGML
 
@@ -57,5 +59,96 @@ struct GGMLStreamingRowTests {
                 capabilities.live == row.streaming,
                 "\(model)@\(variant ?? "-") reports live=\(capabilities.live)")
         }
+    }
+}
+
+@Suite("ggml committed-text workaround")
+struct GGMLCommittedTextWorkaroundTests {
+    @Test("only the parakeet cache-aware stream commits its tentative text")
+    func scopedToParakeetStream() {
+        // The transcribe.cpp v0.2.3 defect is in that family's commit boundary.
+        // Widening this to the buffered kind or to a family that has never been
+        // measured would be trusting tentative text nobody checked.
+        #expect(GGMLLiveSession.commitsTentative(for: .parakeetStream(ParakeetStreamOptions())))
+        #expect(!GGMLLiveSession.commitsTentative(for: .parakeetBuffered(ParakeetBufferedStreamOptions())))
+        #expect(!GGMLLiveSession.commitsTentative(for: nil))
+    }
+
+    @Test("a frozen commit still reaches the accumulator as committed text")
+    func frozenCommitIsRead() {
+        // The measured shape: `committed` stops growing and the rest of the
+        // speech sits in `tentative` until finalize.
+        let view = GGMLLiveSession.committedView(
+            committed: "We want you to help us publish",
+            tentative: " some leading articles. Will you do it?",
+            commitsTentative: true)
+        #expect(view.committed == "We want you to help us publish some leading articles. Will you do it?")
+        #expect(view.tentative.isEmpty)
+    }
+
+    @Test("a stream without the workaround passes the split through")
+    func passThrough() {
+        let view = GGMLLiveSession.committedView(
+            committed: "one two", tentative: " three", commitsTentative: false)
+        #expect(view.committed == "one two")
+        #expect(view.tentative == " three")
+    }
+
+    @Test("with the workaround, a sentence closes before the stream ends")
+    func finalsArriveMidStream() {
+        // End to end through the real accumulator: before the workaround the
+        // first final after the freeze came only at finalize.
+        var accumulator = StreamSegmentAccumulator()
+        var finals: [SpeechCore.Segment] = []
+        let feeds: [(String, String, Double)] = [
+            ("We want you", "", 2),
+            ("We want you", " to help us.", 4),
+            ("We want you", " to help us. Will you do it? Yes", 6),
+        ]
+        for (committed, tentative, seconds) in feeds {
+            let view = GGMLLiveSession.committedView(
+                committed: committed, tentative: tentative, commitsTentative: true)
+            let events = accumulator.absorb(
+                committed: view.committed, tentative: view.tentative,
+                committedMs: Int64(seconds * 1000), receivedMs: Int64(seconds * 1000),
+                isFinal: false)
+            for event in events {
+                if case .final(let segment) = event { finals.append(segment) }
+            }
+        }
+        #expect(finals.map(\.text) == ["We want you to help us.", "Will you do it?"])
+    }
+
+    @Test("the finalize step, where committed becomes the full text, adds nothing twice")
+    func finalizeSeam() {
+        // At finalize the library appends the whole frozen suffix to
+        // `committed` and empties `tentative`, so the view's committed string
+        // is the same text as the feed before it plus whatever the flush
+        // decoded. The scalar watermark must see only that growth: a
+        // duplicated or dropped word here would land in the last final of
+        // every live run on this row.
+        var accumulator = StreamSegmentAccumulator()
+        var finals: [SpeechCore.Segment] = []
+        let feeds: [(String, String, Double, Bool)] = [
+            ("We want you", "", 2, false),
+            ("We want you", " to help us publish", 4, false),
+            ("We want you", " to help us publish some articles. Will you", 6, false),
+            ("We want you to help us publish some articles. Will you do it?", "", 8, true),
+        ]
+        for (committed, tentative, seconds, isFinal) in feeds {
+            let view = GGMLLiveSession.committedView(
+                committed: committed, tentative: tentative, commitsTentative: true)
+            let events = accumulator.absorb(
+                committed: view.committed, tentative: view.tentative,
+                committedMs: Int64(seconds * 1000), receivedMs: Int64(seconds * 1000),
+                isFinal: isFinal)
+            for event in events {
+                if case .final(let segment) = event { finals.append(segment) }
+            }
+        }
+        #expect(finals.map(\.text) == [
+            "We want you to help us publish some articles.", "Will you do it?",
+        ])
+        #expect(finals.map(\.text).joined(separator: " ") == feeds[3].0)
     }
 }
