@@ -37,7 +37,9 @@ public enum AppleEngineFactory {
     public static func make(_ spec: EngineSpec) throws -> any TranscriptionEngine {
         #if canImport(Speech)
         guard #available(macOS 26, *) else {
-            throw SpeechError.unavailable(AppleSpeech.availability().reason ?? "macOS 26 or later required")
+            // Either kind gives the operating system's reason here.
+            throw SpeechError.unavailable(
+                AppleSpeech.availability(for: .dictation).reason ?? "macOS 26 or later required")
         }
         switch spec.model {
         case "transcriber":
@@ -251,7 +253,7 @@ actor AppleEngine: TranscriptionEngine {
     // MARK: - Locale and modules
 
     private func ensureLocale(_ language: String?) async throws -> Locale {
-        switch AppleSpeech.availability() {
+        switch AppleSpeech.availability(for: kind) {
         case .available:
             break
         case .osTooOld(let reason), .notAvailable(let reason):

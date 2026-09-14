@@ -65,10 +65,17 @@ that accepts a custom vocabulary.
   default, which is right for a text field and wrong for a transcript.
 - Contextual strings are passed through `--vocab`.
 
-Both Apple engines are gated three ways: `#if canImport(Speech)` at compile
-time, `#available(macOS 26, *)` at run time, and `SpeechTranscriber.isAvailable`
-for the case where the OS is new enough but the models are not there. Every
-negative answer carries a reason; `speech info` prints them.
+Both Apple engines are gated by `#if canImport(Speech)` at compile time and
+`#available(macOS 26, *)` at run time. `apple.transcriber` alone is also gated
+by `SpeechTranscriber.isAvailable`, which macOS sets false on a Mac that cannot
+run the long-form model. The SDK has no such property for
+DictationTranscriber, and Apple names it as the module to use in that case, so
+`apple.dictation` stays available there. Every negative answer carries a
+reason; `speech info` prints them.
+
+Neither engine needs Siri or keyboard dictation turned on in System Settings.
+That was the older SFSpeechRecognizer's requirement; Apple says it does not
+apply to SpeechAnalyzer.
 
 Locale assets are system-wide and shared between apps. `speech models
 install-locale <bcp47>` installs one and then verifies it turns up in

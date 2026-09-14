@@ -11,9 +11,13 @@
 //                 deployment target; only the SpeechAnalyzer generation of
 //                 classes inside it is new, and Swift weak-imports those from
 //                 the @available annotations.
-//   run time      `#available(macOS 26, *)` plus SpeechTranscriber.isAvailable,
-//                 which is the only honest answer to "will this work on this
-//                 Mac right now".
+//   run time      `#available(macOS 26, *)` for both engines, plus
+//                 SpeechTranscriber.isAvailable for apple.transcriber alone.
+//                 That property exists on SpeechTranscriber and nowhere else
+//                 in the SDK: Apple names DictationTranscriber as the module to
+//                 use where SpeechTranscriber is not available, so gating
+//                 dictation on it would take away the fallback exactly where
+//                 it is needed.
 //
 // Everything here reports a reason when it says no. "unavailable" with no
 // explanation is the failure mode that makes a user reinstall an OS for
@@ -68,22 +72,43 @@ public enum AppleSpeech {
         }
     }
 
-    public static func availability() -> Availability {
+    /// Whether one Apple engine can run on this Mac, and why not when it cannot.
+    ///
+    /// Neither engine needs Siri or keyboard dictation turned on: that was
+    /// SFSpeechRecognizer's requirement, and Apple says in the SpeechAnalyzer
+    /// session (WWDC25 277) that it no longer applies. A missing locale is not
+    /// unavailability either - the engine installs it on first use.
+    public static func availability(for kind: AppleEngineKind) -> Availability {
         #if canImport(Speech)
-        guard #available(macOS 26, *) else {
-            return .osTooOld(
-                "Apple's on-device speech analyzer needs macOS 26 or later"
-                + " (this Mac runs \(SystemInfo.operatingSystemVersion))")
+        if #available(macOS 26, *) {
+            return decide(
+                kind, osVersion: SystemInfo.operatingSystemVersion, osSupported: true,
+                longFormAvailable: SpeechTranscriber.isAvailable)
         }
-        guard SpeechTranscriber.isAvailable else {
-            return .notAvailable(
-                "Apple's speech models are not available on this Mac;"
-                + " check Settings > General > Language & Region for a supported language")
-        }
-        return .available
+        return decide(
+            kind, osVersion: SystemInfo.operatingSystemVersion, osSupported: false,
+            longFormAvailable: false)
         #else
         return .notAvailable("this build has no Speech framework")
         #endif
+    }
+
+    /// The rule without the system calls, so it can be tested on a Mac where
+    /// every answer is yes.
+    static func decide(
+        _ kind: AppleEngineKind, osVersion: String, osSupported: Bool, longFormAvailable: Bool
+    ) -> Availability {
+        guard osSupported else {
+            return .osTooOld(
+                "Apple's on-device speech engines need macOS 26 or later"
+                + " (this Mac runs macOS \(osVersion))")
+        }
+        if kind == .transcriber && !longFormAvailable {
+            return .notAvailable(
+                "macOS reports SpeechTranscriber, Apple's long-form model, as not available on this Mac;"
+                + " \(dictationID) does not depend on it and runs here")
+        }
+        return .available
     }
 
     /// What `speech info` reports about the built-in engines.
@@ -276,17 +301,22 @@ extension AppleSpeech {
     ) async throws -> [InstalledLocale] {
         #if canImport(Speech)
         guard #available(macOS 26, *) else {
-            throw SpeechError.unavailable(availability().reason ?? "macOS 26 or later required")
+            throw SpeechError.unavailable(availability(for: .dictation).reason ?? "macOS 26 or later required")
         }
         var installed: [InstalledLocale] = []
         var failures: [String] = []
+        var skipped: [String] = []
 
         // Each module is asked separately and a module that has no model for
         // this tag is skipped, not fatal. The long-form engine covers ten
         // languages and the dictation engine thirty-three; installing Polish
         // has to succeed on the strength of the second even though the first
         // has nothing to offer.
-        if let locale = await AppleLocaleInstaller.supports(
+        // A long-form model this Mac cannot run has no assets worth installing,
+        // and must not stop the dictation half from installing.
+        if let reason = availability(for: .transcriber).reason {
+            skipped.append("\(transcriberID): \(reason)")
+        } else if let locale = await AppleLocaleInstaller.supports(
             tag,
             supportedLocales: { await SpeechTranscriber.supportedLocales },
             supportedLocale: { await SpeechTranscriber.supportedLocale(equivalentTo: $0) })
@@ -319,11 +349,16 @@ extension AppleSpeech {
         }
 
         if installed.isEmpty {
-            if failures.isEmpty {
+            if failures.isEmpty && skipped.isEmpty {
                 throw SpeechError.unsupportedLanguage(
                     "neither built-in engine has a model for '\(tag)'")
             }
-            throw SpeechError.unavailable(failures.joined(separator: "; "))
+            if failures.isEmpty {
+                throw SpeechError.unsupportedLanguage(
+                    "\(dictationID) has no model for '\(tag)', and macOS reports \(transcriberID)"
+                    + " as not available on this Mac")
+            }
+            throw SpeechError.unavailable((failures + skipped).joined(separator: "; "))
         }
         return installed
         #else

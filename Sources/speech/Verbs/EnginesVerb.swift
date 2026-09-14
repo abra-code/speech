@@ -23,15 +23,18 @@ struct KnownEngine {
 /// Every catalog id this build can construct, with the live availability
 /// answer. Stage 1 and 2 append their rows here as their targets land.
 func knownEngines() -> [KnownEngine] {
-    let appleAvailability = AppleSpeech.availability()
-    let apple: [KnownEngine] = [AppleSpeech.transcriberID, AppleSpeech.dictationID].compactMap { id in
+    let apple: [KnownEngine] = [
+        (AppleSpeech.transcriberID, AppleEngineKind.transcriber),
+        (AppleSpeech.dictationID, AppleEngineKind.dictation),
+    ].compactMap { id, kind in
         let model = String(id.split(separator: ".").dropFirst().joined(separator: "."))
         guard let capabilities = AppleEngineFactory.capabilities(for: model) else { return nil }
+        let availability = AppleSpeech.availability(for: kind)
         return KnownEngine(
             id: id,
             capabilities: capabilities,
-            available: appleAvailability.isAvailable,
-            reason: appleAvailability.reason)
+            available: availability.isAvailable,
+            reason: availability.reason)
     }
 
     // The FluidAudio rows this build can construct. "Available" here means the

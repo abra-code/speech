@@ -7,6 +7,8 @@
 
 macOS ships two speech engines and `speech` exposes both. They cost nothing to install, run on the Neural Engine, and are the sensible baseline: whatever else you install has to be better than what the Mac already does.
 
+Neither needs Siri or keyboard dictation turned on in System Settings, and a language's files download from Apple the first time it is used. On a Mac where macOS reports the long-form model as not available, `apple.transcriber` says so and `apple.dictation` still runs.
+
 Both need macOS 26. On anything older they report `unavailable` with a reason, and there is no built-in baseline at all - on those systems any working third-party row is an improvement over nothing.
 
 ## The two rows

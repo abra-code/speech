@@ -55,6 +55,7 @@ let package = Package(
             name: "speech",
             dependencies: ["SpeechCore", "SpeechApple", "SpeechFluid", "SpeechGGML", "SpeechMLX"]),
         .testTarget(name: "SpeechCoreTests", dependencies: ["SpeechCore"]),
+        .testTarget(name: "SpeechAppleTests", dependencies: ["SpeechApple", "SpeechCore"]),
         .testTarget(name: "SpeechMLXProtocolTests", dependencies: ["SpeechMLXProtocol"]),
         .testTarget(name: "SpeechMLXTests", dependencies: ["SpeechMLX", "SpeechCore", "SpeechMLXProtocol"]),
         .testTarget(name: "SpeechFluidTests", dependencies: ["SpeechFluid", "SpeechCore"]),
