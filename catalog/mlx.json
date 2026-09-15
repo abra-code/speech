@@ -20,7 +20,7 @@
       "params_m": 600,
       "precision": "bf16",
       "size_bytes": 2509041541,
-      "label": "Parakeet TDT 0.6B v3 (MLX, bf16)"
+      "label": "Parakeet TDT 0.6B v3 (bf16)"
     },
     {
       "engine": "mlx",
@@ -37,7 +37,7 @@
       "params_m": 110,
       "precision": "bf16",
       "size_bytes": 458958626,
-      "label": "Parakeet TDT-CTC 110M (MLX, bf16)"
+      "label": "Parakeet TDT-CTC 110M (bf16)"
     },
     {
       "engine": "mlx",
@@ -70,7 +70,7 @@
       "params_m": 809,
       "precision": "fp16",
       "size_bytes": 1618594759,
-      "label": "Whisper large-v3-turbo (MLX, fp16)"
+      "label": "Whisper large-v3-turbo (fp16)"
     },
     {
       "engine": "mlx",
@@ -94,8 +94,8 @@
       "max_seconds": 300,
       "params_m": 1700,
       "variants": [
-        { "variant": "8bit", "source": "mlx-community/Qwen3-ASR-1.7B-8bit", "precision": "int8", "size_bytes": 2467856503, "label": "Qwen3-ASR 1.7B (MLX, 8-bit)" },
-        { "variant": "4bit", "source": "mlx-community/Qwen3-ASR-1.7B-4bit", "precision": "int4", "size_bytes": 1607630579, "label": "Qwen3-ASR 1.7B (MLX, 4-bit)" }
+        { "variant": "8bit", "source": "mlx-community/Qwen3-ASR-1.7B-8bit", "precision": "int8", "size_bytes": 2467856503, "label": "Qwen3-ASR 1.7B (8-bit)" },
+        { "variant": "4bit", "source": "mlx-community/Qwen3-ASR-1.7B-4bit", "precision": "int4", "size_bytes": 1607630579, "label": "Qwen3-ASR 1.7B (4-bit)" }
       ]
     }
   ]
