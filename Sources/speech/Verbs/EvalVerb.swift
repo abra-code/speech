@@ -2,7 +2,7 @@
 //
 // The command the catalog is built out of. Everything interesting happens in
 // SpeechCore.Evaluator or SpeechCore.LiveEvaluator; this is argument handling
-// and the --limit rule, which is load-bearing: it takes the FIRST n rows,
+// and the --limit rule, which matters: it takes the FIRST n rows,
 // never a random n, so that a 200-row run of one engine and a 200-row run of
 // another are the same 200 utterances.
 //

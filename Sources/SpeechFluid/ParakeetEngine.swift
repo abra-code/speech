@@ -286,7 +286,7 @@ actor ParakeetEngine: TranscriptionEngine {
         // cleanup() also drops FluidAudio's process-global MLMultiArray cache,
         // which is prewarmed with 15-second buffers and owned by no manager
         // instance, so releasing the manager alone never reclaims it. Moot for
-        // a CLI that exits; load-bearing for Speech.app, where unload exists
+        // a CLI that exits; essential for Speech.app, where unload exists
         // precisely to give the memory back.
         await manager?.cleanup()
         manager = nil

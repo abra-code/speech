@@ -128,7 +128,7 @@
       "engine": "ggml",
       "model": "nemotron-3.5-asr-streaming-0.6b",
       "family": "nemotron",
-      "note": "Region tags, and they are load-bearing: this model rejects pl. The streaming flag was measured on q8_0; q4_k_m inherits it, since streaming is an architecture property - the loaded model still has the final word. att_context_right 0 is the only value that works, measured 2026-09-05 on q8_0: 0 gives the correct transcript, 1, 2, 4 and 8 make the library throw, and 13 or no value (the library default) give no error and no text, ever - a clean finish that commits every millisecond of audio and returns an empty string.",
+      "note": "Region tags are required: this model rejects pl. The streaming flag was measured on q8_0; q4_k_m inherits it, since streaming is an architecture property - the loaded model still has the final word. att_context_right 0 is the only value that works, measured 2026-09-05 on q8_0: 0 gives the correct transcript, 1, 2, 4 and 8 make the library throw, and 13 or no value (the library default) give no error and no text, ever - a clean finish that commits every millisecond of audio and returns an empty string.",
       "source": "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf",
       "params_m": 600,
       "languages": [

@@ -59,7 +59,7 @@ final class ProtocolOutput: @unchecked Sendable {
 
     /// One response, whole.
     ///
-    /// The lock is not load-bearing today: every call comes from the single
+    /// The lock is not needed today: every call comes from the single
     /// sequential task in Helper.swift, and the model libraries never call it.
     /// It is here because a partially written line is indistinguishable from a
     /// corrupt one on the other side, and that is a bad thing to discover after

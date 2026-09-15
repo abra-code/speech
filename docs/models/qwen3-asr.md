@@ -1,15 +1,14 @@
 # Qwen3-ASR
 
-> Every number on this page comes from one battery: an Apple M5 on macOS 26.6.2,
-> September 2026, over the full FLEURS test splits. It is a reference point for
-> what to expect, not a measurement of your Mac. Speech.app can re-run it locally,
-> and against your own recordings, which is the number that actually decides.
+> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> FLEURS test sets. Use these numbers as a guide: results on your Mac and with
+> your own recordings can differ.
 
-Alibaba's Qwen3-ASR, a speech encoder in front of a language-model decoder, in 0.6B and 1.7B sizes. The 1.7B row produced the most accurate English and German measured anywhere in this project. Its Polish is the worst of any row that passes elsewhere.
+Alibaba's Qwen3-ASR, a speech encoder paired with a language-model decoder, in 0.6B and 1.7B sizes. The 1.7B model gives the most accurate English and German measured, but its Polish is weak.
 
-## What it measured
+## Measurements
 
-Full FLEURS test splits, 2026-09-05.
+Full FLEURS test sets, 2026-09-05 (MLX builds 2026-09-07). Word error rate (WER) in percent, lower is better; speed in multiples of real time.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
@@ -20,24 +19,24 @@ Full FLEURS test splits, 2026-09-05.
 | `mlx.qwen3-asr-1.7b@4bit` | 4.89 | 21.77 | 6.10 | 13-19x | 3.03-3.23 GB |
 | `ggml.qwen3-asr-0.6b@q4_k_m` | not measured | | | | |
 
-The MLX rows, measured 2026-09-07, are the same weights on a different runtime and are worse in every language - by 0.4 points in English and by five in Polish. They are not offered. They also carry the one long-recording caveat worth knowing about this family: its token budget is spent across a whole request, so a recording handed over in one piece loses its tail silently. `speech` cuts at five minutes for that reason.
+The MLX builds use the same weights and are worse in every language: by 0.4 points in English and about five in Polish. MLX spends one token budget across a whole request, so a long recording sent in one piece loses its ending without an error; `speech` sends it to the MLX builds in five-minute pieces.
 
-## It is not a Polish model, whatever its language list says
+## Not for Polish
 
-It carries `pl` among 30 languages and produces 12 to 25 percent WER on it while producing 3.74 percent on English. A catalog that offered it for Polish because the metadata listed the language would be offering the worst row in the set, 12.21 does not reach the 11.19 bar that 15 percent over Apple's 13.16 implies, and 24.80 is not close to anything.
+Polish is on its list of 30 languages, but it scores 12 to 25 percent WER in Polish against 3.74 in English. Even the best build, at 12.21, is not 15 percent better than Apple's 13.16.
 
-German is the opposite story. 4.06 is the best German measured here, a 37.6 percent relative improvement over Apple.
+German is the opposite: 4.06 is the best German measured, 37.6 percent fewer errors than Apple.
 
-## The cost
+## Cost
 
-3.67 GB of memory for the 8-bit 1.7B row, which is 23 percent of a 16 GB Mac for one model, and about 12 times real time - an hour of audio in five minutes. The 4-bit build saves 1.3 GB and costs half a point of English and nearly five points of Polish, which is a reasonable trade if memory is the constraint and Polish was never the plan.
+The 8-bit 1.7B build uses 3.67 GB of memory, 23 percent of a 16 GB Mac, and runs at about 12 times real time, so an hour of audio takes about five minutes. The 4-bit build saves 1.3 GB and costs half a point in English and nearly five in Polish: a fair trade when memory is short and Polish is not needed.
 
-## What it cannot do
+## Limits
 
-- **No timestamps at all**, so no subtitles.
+- **No timestamps**, so no subtitles.
 - **No custom vocabulary.**
-- A run is capped at 5,218,560 ms, about 87 minutes, after which audio is chunked.
+- **At most about 87 minutes per run** (5,218,560 ms); longer audio is cut into pieces.
 
-## What FLEURS cannot tell you
+## What FLEURS does not cover
 
-Qwen3-ASR's published strength is hard audio - accents, noise, overlapping speech - and FLEURS is clean read prose, which is exactly what this corpus cannot test. The numbers above rank it on the easy case. On the hard case it may well be further ahead than they suggest, and nothing here proves it.
+Qwen3-ASR is published as strong on difficult audio: accents, noise and overlapping speech. FLEURS is clear read speech and cannot test that, so on difficult recordings Qwen3-ASR may compare better than these numbers show.

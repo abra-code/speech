@@ -1,15 +1,14 @@
 # Canary 1B v2
 
-> Every number on this page comes from one battery: an Apple M5 on macOS 26.6.2,
-> September 2026, over the full FLEURS test splits. It is a reference point for
-> what to expect, not a measurement of your Mac. Speech.app can re-run it locally,
-> and against your own recordings, which is the number that actually decides.
+> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> FLEURS test sets. Use these numbers as a guide: results on your Mac and with
+> your own recordings can differ.
 
-NVIDIA's Canary-1B-v2, an encoder-decoder model covering 25 European languages. In this battery it was the best all-round row: it beat Apple's built-in engine by more than 15 percent in all three languages tested, at around 50 times real time, in about 1.3 GB.
+NVIDIA's Canary-1B-v2, covering 25 European languages. The best all-round model in these measurements: at least 15 percent fewer errors than Apple's engine in all three languages tested, about 50 times faster than real time, in about 1.3 GB of memory.
 
-## What it measured
+## Measurements
 
-Full FLEURS test splits, 2026-09-04 and 2026-09-05.
+Full FLEURS test sets, 2026-09-04 and 2026-09-05. Word error rate (WER) in percent, lower is better; speed in multiples of real time.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
@@ -17,21 +16,17 @@ Full FLEURS test splits, 2026-09-04 and 2026-09-05.
 | `ggml.canary-1b-v2@q4_k_m` | not measured | | | | |
 | `fluid.canary-1b-v2@int4` | 6.36 | 11.77 | 6.96 | 6-8x | 0.31-0.34 GB |
 
-## The finding worth reading
+## The 4-bit Core ML build
 
-Stage 1 measured Canary on CoreML at int4, found it beaten everywhere and twenty times slower than the alternatives, and hid it. Stage 2 measured the same model on ggml at Q8_0 and found it the best row in the set.
+FluidInference publishes this model for Core ML only in 4-bit form. That build is 1.4 to 5 WER points worse than the 8-bit GGUF build in every language, and about seven times slower. Its only advantage is memory: 0.31-0.34 GB against 1.32-1.38 GB. It is hidden from the model list, but still runs when its full id is given.
 
-**That was int4's fault, not Canary's.** FluidInference publishes only int4 CoreML weights for this model, so stage 1 was measuring a 4-bit build with no 8-bit option to compare against. The `handy-computer` GGUF repository publishes a full quantization ladder, and at Q8_0 the same model is 1.4 to 5 WER points better in every language and seven times faster.
+## Limits
 
-The cost is memory: 305-341 MB on CoreML against 1.32-1.38 GB here, four times more for the same family. The int4 row is kept for that reason and no other.
-
-## What it cannot do
-
-- **No timestamps at all.** Not word, not segment. This was read out of the GGUF rather than from a model card, and it corrected an assumption the plan had made. A row with no timestamps cannot produce subtitles, so `speech export` to srt or vtt has nothing to work with.
-- **A hard 400 second ceiling.** Past 6 minutes 40 seconds the library throws rather than degrading, so a long recording is cut into pieces at local energy minima and the transcripts stitched back with offset timestamps. Canary is the one row where that chunking is load-bearing.
-- **No language identification, and a missing hint is not an error.** Given Polish audio with no `--language`, Canary returns fluent, confident English prose about the same subject, because a Canary prompt with no source language is a translation request. The engine refuses to prepare without a hint rather than letting that happen.
-- **`fluid.canary-1b-v2@int4` needs macOS 15**, and is the only reason this binary's floor is not macOS 14.
+- **No timestamps**, word or segment, so no SRT or WebVTT subtitles.
+- **At most 400 seconds (6 minutes 40 seconds) per run.** Longer recordings are cut into pieces at quiet points and the transcripts joined. Canary is the one model that depends on this.
+- **No language detection, and no error without a language.** Given Polish audio and no `--language`, Canary returns fluent English about the same subject, because without a source language it translates. `speech` refuses to run it without a language.
+- **`fluid.canary-1b-v2@int4` needs macOS 15**, which is why `speech` requires macOS 15 rather than 14.
 
 ## Language tags
 
-Canary publishes bare subtags. It accepts `pl` and rejects `pl-PL`. The engine looks the request up in the loaded model's own list and hands back the model's own spelling, so either form works from the command line.
+Canary uses tags without a region: it accepts `pl` and rejects `pl-PL`. `speech` converts a tag to the model's own form, so either works.

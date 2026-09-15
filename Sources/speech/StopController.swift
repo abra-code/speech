@@ -155,7 +155,7 @@ final class StopController: @unchecked Sendable {
     /// a SIGINT during shutdown must not re-enter and change the reported reason.
     ///
     /// Recording a stop also hands the signals back to the kernel, and that is
-    /// load-bearing rather than tidy. Shutdown is not instant - it finalizes a
+    /// essential, not a tidy-up. Shutdown is not instant - it finalizes a
     /// session, drains refinements, and releases a gigabyte of weights - and an
     /// engine can take longer over any of that than the person waiting is
     /// willing to. If the handled signals stayed ignored for that whole window,

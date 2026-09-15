@@ -80,7 +80,7 @@ done
 # xcrun's own lookup failure exits 72. Neither number is a contract.
 #
 # The status is returned in a variable rather than as the function's exit code,
-# and that is load-bearing under `set -e`: a call whose status were non-zero
+# and that matters under `set -e`: a call whose status were non-zero
 # would end the script here instead of reaching the offer below.
 #
 # ASKED TWICE, AND WHY NEITHER WAY IS ENOUGH ALONE. xcrun keeps a lookup cache

@@ -230,7 +230,7 @@ struct CanaryTests {
     func osFloor() throws {
         // There is no fp16 build published, so this row has no macOS 14 path at
         // all - which is why the whole binary's deployment target is 15. The
-        // floor is load-bearing rather than documentation, and this pins the
+        // floor is a real requirement, not documentation, and this pins the
         // value the applet's Info.plist has to agree with.
         #expect(try CanaryFlavor.parse(model: "canary-1b-v2", variant: "int4").minimumMacOS == "15.0")
         #expect(FluidEngineFactory.capabilities(for: "canary-1b-v2", variant: "int4")?

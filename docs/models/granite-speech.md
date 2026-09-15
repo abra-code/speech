@@ -1,16 +1,15 @@
 # Granite Speech
 
-> Every number on this page comes from one battery: an Apple M5 on macOS 26.6.2,
-> September 2026, over the full LibriSpeech test-clean and test-other sets and
-> the full FLEURS English test split. It is a reference point for what to
-> expect, not a measurement of your Mac. Speech.app can re-run it locally, and
-> against your own recordings, which is the number that actually decides.
+> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> LibriSpeech test-clean and test-other sets and the full FLEURS English test
+> set. Use these numbers as a guide: results on your Mac and with your own
+> recordings can differ.
 
-IBM's Granite Speech, four builds from two generations: Granite Speech 4.1 2B, its Plus build (the one with timestamps), its NAR build (a non-autoregressive decoder, which writes the whole transcript in a few passes rather than a word at a time), and the older Granite 4.0 1B Speech. All four take the first four places on both halves of LibriSpeech, ahead of every other row measured in this project. On FLEURS English the same four place 20th to 26th of 33.
+IBM's Granite Speech in four builds from two generations: Granite Speech 4.1 2B; its Plus build, the only one with timestamps; its NAR (non-autoregressive) build, which writes the whole transcript in a few passes instead of word by word; and the older Granite 4.0 1B Speech. The four take the top four places on both LibriSpeech sets, ahead of every other model measured, but place only 20th to 26th of 33 on FLEURS English.
 
-## What it measured
+## Measurements
 
-Full test sets, 2026-09-11 and 2026-09-12. WER in percent, with the row's place among the rows scored on that corpus in brackets.
+Full test sets, 2026-09-11 and 2026-09-12. Word error rate (WER) in percent, lower is better, with the rank among all models measured on that set in brackets; speed in multiples of real time.
 
 | row | LibriSpeech clean | LibriSpeech other | FLEURS English | speed | memory |
 | --- | --- | --- | --- | --- | --- |
@@ -20,7 +19,7 @@ Full test sets, 2026-09-11 and 2026-09-12. WER in percent, with the row's place 
 | `ggml.granite-speech-4.1-2b-plus@q8_0` | 1.65 (4th) | 3.32 (4th) | 5.66 (21st) | 9-10x | 3.58-3.65 GB |
 | the four `@q4_k_m` builds | not measured | | | | |
 
-For comparison, on the same three corpora:
+For comparison, on the same three sets:
 
 | row | LibriSpeech clean | LibriSpeech other | FLEURS English | speed | memory |
 | --- | --- | --- | --- | --- | --- |
@@ -29,33 +28,33 @@ For comparison, on the same three corpora:
 | `ggml.qwen3-asr-1.7b@q8_0` | 1.88 | 3.67 | 3.74 | 11-17x | 3.66-3.67 GB |
 | `apple.transcriber` | 2.34 | 4.90 | 8.03 | 52-60x | 22 MB |
 
-## First on LibriSpeech, twentieth on FLEURS
+## Why the rankings disagree
 
-Both corpora are English read aloud, and the two rankings disagree about this family more than about any other. LibriSpeech is audiobook recordings from the public-domain LibriVox project, and it is one of the most widely used sets for training English speech models; FLEURS is sentences from Wikipedia read by volunteers for a benchmark. A model that leads by a wide margin on one and sits mid-table on the other is most likely telling you how much its training data resembles each set, not how it will handle yours. Nothing here says what Granite was trained on, and nothing needs to: the disagreement is the finding.
+Both sets are English read aloud. LibriSpeech is audiobooks from the public-domain LibriVox project and is widely used to train English speech models; FLEURS is Wikipedia sentences read by volunteers. A model that leads on one and sits mid-table on the other most likely reflects how closely its training data resembles each set, not how it will handle your recordings.
 
-What the two corpora do agree on is order within the family. The 4.1 builds beat the 4.0 build on all three corpora, so there is no measured reason to choose 4.0.
+Within the family the sets agree: the 4.1 builds beat 4.0 on all three, so there is no reason to choose 4.0.
 
 ## Which build
 
-- **4.1 2B NAR** is the fastest, at 16 to 17 times real time, and the most accurate on LibriSpeech test-clean. It also needs the most memory of any row in the catalog: 5.17 to 5.35 GB, 1.4 to 1.6 GB more than the ordinary 4.1 build, for a download that is slightly smaller (2.50 GB against 2.56 GB).
-- **4.1 2B** is first on LibriSpeech test-other, the harder half, at 3.8 GB and 9 to 11 times real time.
-- **4.1 2B Plus** is the only Granite build that reports word and segment timestamps, so it is the only one that can make subtitles. It costs a little accuracy on LibriSpeech and is the slowest, around 9 times real time.
-- **4.0 1B** is the earlier generation. Despite the name, its Q8_0 file is exactly the size of the 4.1 2B file, and it is behind the 4.1 builds everywhere it was measured.
+- **4.1 2B NAR** is the fastest, 16 to 17 times real time, and the most accurate on LibriSpeech test-clean. It uses the most memory of any model in the catalog, 5.17 to 5.35 GB, which is 1.4 to 1.6 GB more than 4.1 2B, even though its download is slightly smaller (2.50 GB against 2.56 GB).
+- **4.1 2B** is first on LibriSpeech test-other, the harder set, at 3.8 GB and 9 to 11 times real time.
+- **4.1 2B Plus** is the only build with word and segment timestamps, so the only one that can make subtitles. It is slightly less accurate on LibriSpeech and the slowest, about 9 times real time.
+- **4.0 1B** is the older generation. Despite its name, its Q8_0 file is the same size as that of 4.1 2B, and it is behind the 4.1 builds on every set.
 
-## The cost
+## Cost
 
-3.6 to 5.4 GB of memory and 9 to 17 times real time: an hour of audio in 4 to 7 minutes. On a 16 GB Mac the NAR build takes a third of the memory.
+3.6 to 5.4 GB of memory, and 9 to 17 times real time, so an hour of audio takes 4 to 7 minutes. On a 16 GB Mac the NAR build uses a third of the memory.
 
-That price buys 0.3 to 0.5 points of WER over Parakeet Unified English on LibriSpeech, and nothing on FLEURS English, where Parakeet Unified is ahead by 0.7 points or more. Parakeet Unified runs 72 to 166 times real time in under 1 GB. Granite is the choice when the recordings resemble LibriSpeech and accuracy is worth several gigabytes and a slower run; the user's own recordings are what show whether they do.
+Compared with Parakeet Unified English, that buys up to half a WER point on LibriSpeech and nothing on FLEURS English, where Parakeet Unified is 0.7 points or more ahead - and Parakeet Unified runs at 72 to 166 times real time in under 1 GB. Choose Granite when your recordings resemble audiobooks and the extra accuracy is worth the memory and time.
 
-## What it cannot do
+## Limits
 
-- **No language identification.** The language has to be chosen: `speech` refuses to run a Granite row without `--language`, and Speech.app offers no Automatic for it.
+- **No language detection.** `speech` requires `--language`, and Speech.app offers no Automatic choice.
 - **No timestamps**, except in the Plus build.
-- **No live mode.** None of the four streams.
-- **At most 377 seconds of audio per run** (384 for the NAR build). Longer recordings are cut at silences by the engine and transcribed in pieces.
-- **Only English has been measured on a full test set.** The builds claim French, German, Spanish and Portuguese, and the 4.1 2B and 4.0 1B builds also Japanese. Twenty-utterance FLEURS spot checks put German at 9 to 12 percent WER across the four, where `apple.transcriber` scored 6.51 percent on the full German split. Twenty utterances rank nothing, but they are no reason to pick Granite for German.
+- **No live mode.**
+- **At most 377 seconds of audio per run** (384 for NAR). Longer recordings are cut at silences and transcribed in pieces.
+- **Only English was measured on full test sets.** The builds also list French, German, Spanish and Portuguese, and 4.1 2B and 4.0 1B list Japanese. Samples of 20 FLEURS sentences put German at 9 to 12 percent WER, against 6.51 for `apple.transcriber` on the full German set. That sample is too small to rank models, but gives no reason to choose Granite for German.
 
-## What these corpora cannot tell you
+## What these tests do not cover
 
-Both are clean, single-speaker read speech. Neither has a meeting, a phone call, an accent far from the training data, a noisy room or a speaker who hesitates, and those are where transcription accuracy is usually lost. A first place on audiobooks is a good sign for dictation of prepared text and says little about a conversation.
+Both sets are clear read speech from one speaker at a time. Neither includes meetings, phone calls, strong accents, noisy rooms or hesitant speakers, which is where most errors happen. A top score on audiobooks is a good sign for reading prepared text aloud, and says little about conversation.

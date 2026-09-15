@@ -1,6 +1,6 @@
 // ManifestTests.swift - the corpus format and the catalog id grammar.
 //
-// Manifest order is load-bearing: `--limit 200` has to mean the same 200 rows
+// Manifest order matters: `--limit 200` has to mean the same 200 rows
 // for every engine or no two measurements can be compared, so the parser must
 // not reorder or deduplicate anything.
 

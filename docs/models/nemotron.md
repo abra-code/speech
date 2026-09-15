@@ -1,15 +1,14 @@
 # Nemotron 3.5 ASR streaming
 
-> Every number on this page comes from one battery: an Apple M5 on macOS 26.6.2,
-> September 2026, over the full FLEURS test splits. It is a reference point for
-> what to expect, not a measurement of your Mac. Speech.app can re-run it locally,
-> and against your own recordings, which is the number that actually decides.
+> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> FLEURS test sets. Use these numbers as a guide: results on your Mac and with
+> your own recordings can differ.
 
-NVIDIA's Nemotron 3.5 ASR Streaming Multilingual 0.6B, covering 32 region-qualified locales. It is here for live mode, not for files.
+NVIDIA's Nemotron 3.5 ASR Streaming Multilingual 0.6B, covering 32 locales. It is meant for live transcription, not for files.
 
-## What it measured
+## Measurements
 
-Full FLEURS test splits, 2026-09-04 and 2026-09-05.
+Full FLEURS test sets, 2026-09-04 and 2026-09-05, transcribed as files. Word error rate (WER) in percent, lower is better; speed in multiples of real time.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
@@ -18,18 +17,12 @@ Full FLEURS test splits, 2026-09-04 and 2026-09-05.
 | `fluid.nemotron-multilingual@1120` | 10.63 | 17.39 | 10.37 | 58-76x | 0.65 GB |
 | `fluid.nemotron-multilingual@560` | not measured | | | | |
 
-**It lost to Apple in all three languages on batch files**, on both runtimes and at every chunk tier, so on a recording there is no reason to reach for it.
+On files it lost to Apple in all three languages, on both engines and at every chunk size, so choose another model for recordings.
 
-## Why it is still here
+## Why use it
 
-Streaming. This is a model designed to emit text while the audio is still arriving, and none of the rows that beat it on batch files can do that. The CoreML rows differ only in chunk size - 0.56, 1.12 and 2.24 seconds - which is a latency-against-accuracy dial that means nothing on a file and everything on a microphone.
-
-Live mode arrives in stage 4, and it will bring its own measurements. Until then this family has a reason to exist and no evidence for it, and no engine in the current build reports `live` at all.
-
-`fluid.nemotron-multilingual@560` has never been downloaded here, so its size is unknown. The chunk tiers are separate downloads of about 664 MB each, not one download with a setting.
+It writes text while the audio is still arriving, which the models that beat it on files cannot do. The Core ML builds differ only in chunk size - 0.56, 1.12 and 2.24 seconds. A shorter chunk shows text sooner; a longer one is slightly more accurate. Each chunk size is a separate download of about 664 MB.
 
 ## Language tags
 
-Nemotron publishes region-qualified tags and is strict about them: it accepts `pl-PL` and rejects `pl`, which is the opposite of Canary, Qwen3-ASR and Whisper. The engine looks the request up in the loaded model's own list and hands back the model's own spelling, so either form works from the command line - that difference is the reason it has to.
-
-It does identify its own language, which the plan had assumed it could not.
+Nemotron requires a region: it accepts `pl-PL` and rejects `pl`, the opposite of Canary, Qwen3-ASR and Whisper. `speech` converts a tag to the model's own form, so either works. It detects the spoken language on its own.

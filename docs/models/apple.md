@@ -1,46 +1,39 @@
 # Apple (built in)
 
-> Every number on this page comes from one battery: an Apple M5 on macOS 26.6.2,
-> September 2026, over the full FLEURS test splits. It is a reference point for
-> what to expect, not a measurement of your Mac. Speech.app can re-run it locally,
-> and against your own recordings, which is the number that actually decides.
+> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> FLEURS test sets. Use these numbers as a guide: results on your Mac and with
+> your own recordings can differ.
 
-macOS ships two speech engines and `speech` exposes both. They cost nothing to install, run on the Neural Engine, and are the sensible baseline: whatever else you install has to be better than what the Mac already does.
+macOS includes two speech engines, and `speech` offers both. They need no download, run on the Neural Engine, and set the bar: a downloaded model is worth installing only if it does better.
 
-Neither needs Siri or keyboard dictation turned on in System Settings, and a language's files download from Apple the first time it is used. On a Mac where macOS reports the long-form model as not available, `apple.transcriber` says so and `apple.dictation` still runs.
+Both need macOS 26; on older systems they show as unavailable, with the reason. Neither needs Siri or keyboard dictation turned on. The first time a language is used, macOS downloads its files. If macOS reports the long-form model as unavailable, `apple.transcriber` says so and `apple.dictation` still works.
 
-Both need macOS 26. On anything older they report `unavailable` with a reason, and there is no built-in baseline at all - on those systems any working third-party row is an improvement over nothing.
+## The two engines
 
-## The two rows
+**`apple.transcriber` (SpeechTranscriber).** The long-form engine used by Notes and Voice Memos. 30 locales in 10 languages, with word timings and confidence scores. Strong on clear English speech, and by far the lightest on memory.
 
-**`apple.transcriber` - SpeechTranscriber.** The long-form engine, the one behind Notes and Voice Memos. 30 locales in 10 languages. Word timings and confidences. It was strong on clean English read speech and the cheapest thing here by a wide margin.
+**`apple.dictation` (DictationTranscriber).** The keyboard dictation engine. 54 locales in 33 languages, including Polish, Czech, Croatian, Ukrainian, Russian and Slovak, which the long-form engine does not support. It is built for short speech and is the only Apple engine that accepts a custom vocabulary. `speech` turns punctuation on for it; by default it returns unpunctuated text.
 
-**`apple.dictation` - DictationTranscriber.** Keyboard dictation's engine. 54 locales in 33 languages, and the only Apple module that covers Polish, Czech, Croatian, Ukrainian, Russian and Slovak. It is short-form, and it is the only Apple engine that accepts a custom vocabulary.
+## Measurements
 
-Punctuation is requested explicitly for dictation. Left alone it emits unpunctuated text, which is right for a text field and wrong for a transcript.
-
-## What they measured
-
-Full FLEURS test splits on macOS 26.6.2, 2026-09-04.
-
-These are figures for that version of macOS. Both engines ship with the system and change with it, so a later version is measured again and reported beside these rather than in their place: [docs/benchmarks](../benchmarks/README.md) names the macOS version on every Apple row.
+Full FLEURS test sets, macOS 26.6.2, 2026-09-04. Word error rate (WER) in percent, lower is better; speed in multiples of real time. Both engines change with macOS updates, and [docs/benchmarks](../benchmarks/README.md) lists the macOS version for every Apple result.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
 | `apple.transcriber` | 8.03 | not supported | 6.51 | 60-124x | 18-20 MB |
 | `apple.dictation` | 13.08 | 13.16 | 12.98 | 35-61x | 20-25 MB |
 
-The memory figures are not a typo. Both engines are ANE-resident with the weights owned by the OS, so the process footprint is tens of megabytes against hundreds for any downloaded row. Nothing else measured here is close.
+Memory is in tens of megabytes because macOS, not the app, holds the model. Every downloaded model uses hundreds of megabytes or more.
 
-The gap between the two is large enough to matter: on English and German, using dictation where the long-form engine would work costs about 6 WER points.
+Where both engines support a language, the long-form engine is 5 to 6.5 WER points better (English and German).
 
-## What they cannot do
+## Limits
 
-- **No custom vocabulary on the long-form engine.** SpeechTranscriber ignores contextual strings entirely, confirmed by an Apple engineer in developer forum thread 801877, so the row reports `vocab: false` rather than accepting terms and silently dropping them.
-- **No Polish on the long-form engine**, and no Czech, Croatian, Ukrainian, Russian or Slovak either. Those languages fall to dictation, which is why Polish has a 13.16 baseline where German has 6.51.
-- **No diarization, no language identification.**
-- **Locale assets are a separate install.** They are system-wide and shared between apps. `speech models install-locale <bcp47>` installs one and then verifies it turns up in `installedLocales`, because a locale can be reported as supported, install without error, and still not be there.
+- **No custom vocabulary on the long-form engine.** It ignores custom terms (an Apple engineer confirmed this in developer forum thread 801877), so `speech` reports `vocab: false` for it.
+- **No Polish, Czech, Croatian, Ukrainian, Russian or Slovak on the long-form engine.** These languages use dictation, which is why Apple's Polish score is 13.16 while German is 6.51.
+- **No speaker labels and no language detection.**
+- **Language files are installed separately** and shared by all apps. `speech models install-locale <bcp47>` installs one and then checks that it is really there, because macOS can report a locale as supported and installed when it is not.
 
-## Language handling
+## Language tags
 
-A bare primary subtag resolves to the locale for the language's main region: `it` is `it_IT`, `nl` is `nl_NL`, `es` is `es_ES`, `pt` is `pt_BR`. Apple's own resolver picks whichever variant it lists first - `it_CH` for Italian on macOS 26.6.2 - so `speech` asks it only when Apple has no locale for the main region, as for Arabic (`ar_SA`). Pass a full tag for another region, and read `engine.ready.locale` to see which one a run really used.
+A language without a region uses its main region: `it` is `it_IT`, `nl` is `nl_NL`, `es` is `es_ES`, `pt` is `pt_BR`. Apple's own lookup picks the first variant it lists (`it_CH` for Italian on macOS 26.6.2), so `speech` uses it only when there is no locale for the main region, as for Arabic (`ar_SA`). Pass a full tag for another region; `engine.ready.locale` shows which locale a run used.
