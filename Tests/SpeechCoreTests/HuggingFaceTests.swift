@@ -44,6 +44,41 @@ struct HuggingFaceTests {
         }
     }
 
+    /// A person adding a model sees these words in Speech.app. None of the
+    /// statuses Hugging Face actually sends may reach them as a bare number.
+    @Test("a refused request is described in plain words, not as a status code")
+    func refusalWording() {
+        #expect(HuggingFace.refusal(status: 401, repo: "someone/model")
+            == "Hugging Face has no public repository named 'someone/model'."
+            + " Check the spelling of the owner and the name; speech does not sign in to Hugging Face,"
+            + " so private repositories and ones that ask you to accept terms first cannot be used.")
+        #expect(HuggingFace.refusal(status: 404, repo: "someone/model")
+            == HuggingFace.refusal(status: 401, repo: "someone/model"),
+            "a missing and a hidden repository mean the same to someone who cannot sign in")
+        #expect(HuggingFace.refusal(status: 404, repo: "someone/model", file: "m-Q8_0.gguf")
+            .hasPrefix("Hugging Face has no file 'm-Q8_0.gguf' in a public repository named 'someone/model'."))
+        // A gated repository lists its files and then refuses the download
+        // with the same 401 as a missing one; only the header tells them apart.
+        #expect(HuggingFace.refusal(status: 401, repo: "org/gated", file: "m.gguf", errorCode: "GatedRepo")
+            == "'org/gated' on Hugging Face asks people to accept its terms on the Hugging Face website"
+            + " before downloading; speech does not sign in to Hugging Face, so it cannot download this model.")
+        #expect(HuggingFace.refusal(status: 404, repo: "org/repo", file: "m.gguf", errorCode: "EntryNotFound")
+            == "'org/repo' on Hugging Face has no file 'm.gguf'.")
+        #expect(HuggingFace.refusal(status: 401, repo: "someone/model", errorCode: "EntryNotFound")
+            == HuggingFace.refusal(status: 401, repo: "someone/model"),
+            "without a file name the code adds nothing")
+        #expect(HuggingFace.refusal(status: 429, repo: "someone/model")
+            == "Hugging Face is receiving too many requests from this network. Wait a few minutes and try again.")
+        #expect(HuggingFace.refusal(status: 503, repo: "someone/model", file: "m.gguf")
+            == "Hugging Face is having trouble right now and could not send 'm.gguf'. Try again later.")
+        for status in [401, 403, 404, 429, 500, 502, 503] {
+            let text = HuggingFace.refusal(status: status, repo: "someone/model")
+            #expect(!text.contains("HTTP") && !text.contains(String(status)), "\(status): \(text)")
+        }
+        #expect(HuggingFace.refusal(status: 418, repo: "someone/model")
+            == "Hugging Face refused to send the list of files in 'someone/model' (HTTP status 418).")
+    }
+
     @Test("Content-Range is parsed, including an unknown total")
     func contentRange() throws {
         let parsed = try #require(ResumableDownload.parseContentRange("bytes 200-999/1000"))

@@ -15,6 +15,8 @@ final class StubOrigin: URLProtocol, @unchecked Sendable {
         /// which is what a server without range support does.
         var ignoreRange = false
         var status: Int?
+        /// Sent with the response, as Hugging Face sends `X-Error-Code`.
+        var headers: [String: String] = [:]
     }
 
     private static let lock = NSLock()
@@ -46,7 +48,7 @@ final class StubOrigin: URLProtocol, @unchecked Sendable {
         }
 
         var status = response.status ?? 200
-        var headers: [String: String] = [:]
+        var headers = response.headers
         var body = response.body
 
         if let forced = response.status {
@@ -238,13 +240,45 @@ struct ResumableDownloadTests {
         try await Self.withScratch { directory in
             StubOrigin.serve(.init(body: Data(), status: 404))
             let destination = directory.appendingPathComponent("model.gguf")
-            await #expect(throws: SpeechError.self) {
+            let error = await #expect(throws: SpeechError.self) {
                 try await HuggingFace.download(
                     repo: "org/repo", file: "model-Q8_0.gguf", to: destination,
                     expectedSize: 100, oid: "sha256:one",
                     configuration: StubOrigin.configuration()) { _ in }
             }
+            #expect(error?.message == HuggingFace.refusal(status: 404, repo: "org/repo", file: "model-Q8_0.gguf"))
             #expect(!FileManager.default.fileExists(atPath: destination.path))
+        }
+    }
+
+    /// A gated repository lists its files, so `models add` gets as far as the
+    /// download, which Hugging Face refuses with the same 401 as a missing
+    /// repository. Only its error code says the terms were not accepted.
+    @Test("a download refused for a gated repository says so")
+    func gatedDownloadIsDescribed() async throws {
+        try await Self.withScratch { directory in
+            StubOrigin.serve(.init(body: Data(), status: 401, headers: ["X-Error-Code": "GatedRepo"]))
+            let destination = directory.appendingPathComponent("model.gguf")
+            let error = await #expect(throws: SpeechError.self) {
+                try await HuggingFace.download(
+                    repo: "org/gated", file: "model-Q8_0.gguf", to: destination,
+                    configuration: StubOrigin.configuration()) { _ in }
+            }
+            #expect(error?.message == HuggingFace.refusal(
+                status: 401, repo: "org/gated", file: "model-Q8_0.gguf", errorCode: "GatedRepo"))
+            #expect(error?.message.hasPrefix("'org/gated' on Hugging Face asks people to accept its terms") == true)
+        }
+    }
+
+    @Test("a repository listing Hugging Face refuses is described in plain words")
+    func treeRefusalIsDescribed() async throws {
+        try await Self.withScratch { _ in
+            StubOrigin.serve(.init(body: Data(), status: 401))
+            let session = URLSession(configuration: StubOrigin.configuration())
+            let error = await #expect(throws: SpeechError.self) {
+                _ = try await HuggingFace.tree(repo: "someone/no-such-model", session: session)
+            }
+            #expect(error?.message == HuggingFace.refusal(status: 401, repo: "someone/no-such-model"))
         }
     }
 

@@ -144,11 +144,61 @@ public enum HuggingFace {
             throw SpeechError.runtime("\(url.absoluteString) did not answer over HTTP")
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw SpeechError.runtime(
-                "\(url.absoluteString) returned HTTP \(http.statusCode)"
-                + (http.statusCode == 404 ? " (no such repository)" : ""))
+            throw SpeechError.runtime(refusal(status: http.statusCode, repo: repo))
         }
         return try parseTree(data, describedAs: url.absoluteString)
+    }
+
+    /// What a refused request means, in words a person can act on without
+    /// knowing HTTP status codes. Shown as it is by Speech.app.
+    ///
+    /// Hugging Face answers 401, not 404, for a repository that does not
+    /// exist, so that a private one's existence is not given away. A gated
+    /// repository whose terms have not been accepted lists its files (the tree
+    /// API answers 200) and then answers 401 to the download itself, so that
+    /// case arrives here with `file` set. A file missing from a repository that
+    /// exists is a 404 on the download. The download's `X-Error-Code` header
+    /// tells those two apart (`GatedRepo`, `EntryNotFound`); without it this
+    /// program, which never signs in, cannot, and says so.
+    public static func refusal(
+        status: Int, repo: String, file: String? = nil, errorCode: String? = nil
+    ) -> String {
+        let signIn = "speech does not sign in to Hugging Face, so private repositories"
+            + " and ones that ask you to accept terms first cannot be used"
+        switch errorCode {
+        case "GatedRepo":
+            return "'\(repo)' on Hugging Face asks people to accept its terms on the Hugging Face"
+                + " website before downloading; speech does not sign in to Hugging Face, so it"
+                + " cannot download this model."
+        case "EntryNotFound":
+            if let file {
+                return "'\(repo)' on Hugging Face has no file '\(file)'."
+            }
+        default:
+            break
+        }
+        switch status {
+        case 401, 404:
+            if let file {
+                return "Hugging Face has no file '\(file)' in a public repository named '\(repo)'."
+                    + " Check the names; \(signIn)."
+            }
+            return "Hugging Face has no public repository named '\(repo)'."
+                + " Check the spelling of the owner and the name; \(signIn)."
+        case 403:
+            return "Hugging Face would not give access to '\(repo)'; \(signIn)."
+        case 429:
+            return "Hugging Face is receiving too many requests from this network."
+                + " Wait a few minutes and try again."
+        case 500..<600:
+            return "Hugging Face is having trouble right now and could not send "
+                + (file.map { "'\($0)'" } ?? "the list of files in '\(repo)'")
+                + ". Try again later."
+        default:
+            return "Hugging Face refused to send "
+                + (file.map { "'\($0)' from '\(repo)'" } ?? "the list of files in '\(repo)'")
+                + " (HTTP status \(status))."
+        }
     }
 
     /// The tree API's JSON to file entries. Split out from `tree` so the size
@@ -198,6 +248,7 @@ public enum HuggingFace {
         try validate(pathPart: file, label: "file name")
         try await ResumableDownload(
             url: resolveURL(repo: repo, file: file),
+            repo: repo,
             destination: destination,
             expectedSize: expectedSize,
             oid: oid,
@@ -216,6 +267,8 @@ public enum HuggingFace {
 /// file on disk always survives.
 final class ResumableDownload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let url: URL
+    /// The repository `url` points into, for the words of a refusal.
+    private let repo: String
     private let destination: URL
     private let temporary: URL
     /// Records which revision the bytes in `temporary` came from. Without it a
@@ -242,10 +295,11 @@ final class ResumableDownload: NSObject, URLSessionDataDelegate, @unchecked Send
     private var lastReport = Date.distantPast
 
     init(
-        url: URL, destination: URL, expectedSize: Int64?, oid: String?, label: String,
+        url: URL, repo: String, destination: URL, expectedSize: Int64?, oid: String?, label: String,
         configuration: URLSessionConfiguration?
     ) {
         self.url = url
+        self.repo = repo
         self.destination = destination
         self.temporary = destination.appendingPathExtension("download")
         self.validator = destination.appendingPathExtension("download.oid")
@@ -441,14 +495,16 @@ final class ResumableDownload: NSObject, URLSessionDataDelegate, @unchecked Send
             try? FileManager.default.removeItem(at: validator)
             complete(with: SpeechError.runtime(
                 "\(label): the server rejected the resume offset \(resumeFrom);"
-                + " the stale partial download has been discarded, so run the same"
-                + " command again to start over"))
+                + " the stale partial download has been discarded, so download the"
+                + " model again to start over"))
             return
         }
         guard (200..<300).contains(http.statusCode) else {
             completionHandler(.cancel)
             complete(with: SpeechError.runtime(
-                "\(label): \(url.absoluteString) returned HTTP \(http.statusCode)"))
+                HuggingFace.refusal(
+                    status: http.statusCode, repo: repo, file: label,
+                    errorCode: http.value(forHTTPHeaderField: "X-Error-Code"))))
             return
         }
 
