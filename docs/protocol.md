@@ -67,6 +67,7 @@ an older applet.
 | `eval.summary` | `model`, `language`, `rows`, `wer`, `cer`, `audio_seconds`, `wall_seconds`, `rtfx`, `peak_rss_bytes`, `peak_memory_bytes`, `worst`, `live` |
 | `recording.started` | `output`, `device`, `device_uid`, `sample_rate`, `channels` (`device` and `device_uid` omitted when the system names no device) |
 | `recording.level` | `seconds`, `rms_db`, `peak_db` |
+| `stream.started` | `device`, `device_uid`, `sample_rate` (`device` and `device_uid` omitted when the system names no device) |
 
 `record` emits `recording.started` once the microphone is open, `recording.level`
 about five times a second while it writes, and `done` at the end with `output`
@@ -74,6 +75,12 @@ set, `audio_seconds` the length of the file, and `segments` 0. A level is the
 root-mean-square and peak of the samples since the previous level event, in dB
 relative to full scale, floored at -100 so that silence is a number JSON can
 carry rather than minus infinity. `channels` is always 1: the input is mixed down.
+
+`stream` emits `stream.started` once, when its audio starts reaching the model:
+after `engine.ready`, after the live session is made and after the microphone
+opened. A caller telling someone to start speaking must wait for this event, not
+for `engine.ready`, because speech in the gap between the two is not
+transcribed. `sample_rate` is the rate the hardware delivers, before conversion.
 
 `model.entry` is one row of `models list` or `models status`. Its `state` is one
 of:

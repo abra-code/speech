@@ -217,6 +217,9 @@ public final class EventSink: @unchecked Sendable {
             statusDone("Recording to \((r.output as NSString).lastPathComponent)"
                 + " from \(r.device ?? "the default input") at \(Int(r.sampleRate)) Hz."
                 + " Press q and Return, or Ctrl-C, to stop.")
+        case .streamStarted(let s):
+            statusDone("Listening to \(s.device ?? "the default input") at \(Int(s.sampleRate)) Hz."
+                + " Press q and Return, or Ctrl-C, to stop.")
         case .recordingLevel(let l):
             status(String(format: "Recording %@  peak %.0f dB", fmt(l.seconds) + "s", l.peakDB))
         case .evalRow(let r):

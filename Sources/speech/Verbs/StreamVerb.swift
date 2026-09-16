@@ -309,6 +309,7 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
     // the `catch` below is what turns it back into a clean exit.
     let microphone = Microphone()
     let pump: LivePump
+    let inputRate: Double
     let pumpAudio: Task<Void, Never>
     do {
         try microphone.start(
@@ -326,6 +327,7 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         guard let inputFormat = microphone.inputFormat else {
             throw SpeechError.unavailable("the microphone reported no input format")
         }
+        inputRate = inputFormat.sampleRate
         pump = try LivePump(
             session: session,
             inputFormat: inputFormat,
@@ -360,6 +362,13 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         if let vadEngine { await vadEngine.unload() }
         throw error
     }
+
+    // Only now is speech transcribed: the model loaded, the session exists and
+    // the tap is open. `engine.ready` came before the last two, and a caller
+    // that said "speak now" on it lost whatever was said in between.
+    let opened = microphone.selectedDevice
+    sink.emit(.streamStarted(.init(
+        device: opened?.name, deviceUID: opened?.uid, sampleRate: inputRate)))
 
     // MARK: Run until stopped
 

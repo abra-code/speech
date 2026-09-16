@@ -42,6 +42,7 @@ public struct SpeechEvent: Sendable, Equatable {
         case evalSummary(EvalSummary)
         case recordingStarted(RecordingStarted)
         case recordingLevel(RecordingLevel)
+        case streamStarted(StreamStarted)
 
         public var type: String {
             switch self {
@@ -60,6 +61,7 @@ public struct SpeechEvent: Sendable, Equatable {
             case .evalSummary: return "eval.summary"
             case .recordingStarted: return "recording.started"
             case .recordingLevel: return "recording.level"
+            case .streamStarted: return "stream.started"
             }
         }
     }
@@ -91,6 +93,32 @@ public struct SpeechEvent: Sendable, Equatable {
 
         private enum CodingKeys: String, CodingKey {
             case output, device, channels
+            case deviceUID = "device_uid"
+            case sampleRate = "sample_rate"
+        }
+    }
+
+    /// `stream` has the microphone open and its audio is going to the model.
+    /// Emitted once, after the model has loaded, the live session exists and
+    /// the microphone started, so a caller that says "speak now" on it is never
+    /// ahead of the hardware. `engine.ready` comes before all but the first of
+    /// those, and speech in the gap between the two is not transcribed.
+    public struct StreamStarted: Codable, Sendable, Equatable {
+        /// The input device's name and UID; nil when the system reports no
+        /// default device it can name.
+        public var device: String?
+        public var deviceUID: String?
+        /// The rate the hardware delivers, before any conversion for the model.
+        public var sampleRate: Double
+
+        public init(device: String?, deviceUID: String?, sampleRate: Double) {
+            self.device = device
+            self.deviceUID = deviceUID
+            self.sampleRate = sampleRate
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case device
             case deviceUID = "device_uid"
             case sampleRate = "sample_rate"
         }
@@ -607,6 +635,7 @@ extension SpeechEvent: Codable {
         case .evalSummary(let p): try p.encode(to: encoder)
         case .recordingStarted(let p): try p.encode(to: encoder)
         case .recordingLevel(let p): try p.encode(to: encoder)
+        case .streamStarted(let p): try p.encode(to: encoder)
         }
     }
 
@@ -630,6 +659,7 @@ extension SpeechEvent: Codable {
         case "eval.summary": payload = .evalSummary(try EvalSummary(from: decoder))
         case "recording.started": payload = .recordingStarted(try RecordingStarted(from: decoder))
         case "recording.level": payload = .recordingLevel(try RecordingLevel(from: decoder))
+        case "stream.started": payload = .streamStarted(try StreamStarted(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: header, debugDescription: "unknown event type '\(type)'")

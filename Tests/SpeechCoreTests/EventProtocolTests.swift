@@ -60,6 +60,17 @@ struct EventProtocolTests {
         #expect(level["rms_db"] as? Double == -100)
         #expect(level["peak_db"] as? Double == -100)
         _ = try roundTrip(.recordingLevel(.init(seconds: 12.4, rmsDB: -31.5, peakDB: -6.25)))
+
+        // `stream`'s "the microphone is open", the same device fields as
+        // `record`'s, and the same absence when no device is named.
+        let listening = try roundTrip(.streamStarted(.init(
+            device: "MacBook Air Microphone", deviceUID: "BuiltInMicrophoneDevice", sampleRate: 48_000)))
+        #expect(listening["type"] as? String == "stream.started")
+        #expect(listening["device"] as? String == "MacBook Air Microphone")
+        #expect(listening["sample_rate"] as? Double == 48_000)
+        let unnamedStream = try roundTrip(.streamStarted(.init(device: nil, deviceUID: nil, sampleRate: 16_000)))
+        #expect(unnamedStream["device"] == nil)
+        #expect(unnamedStream["device_uid"] == nil)
     }
 
     @Test("every event kind round-trips")
