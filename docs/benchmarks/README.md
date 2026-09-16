@@ -34,11 +34,11 @@ property of the model and the speed as a property of this machine.
 | --- | --- |
 | Machine | Apple M5 |
 | Memory | 25.77 GB |
-| macOS | 26.6.2 |
-| Measured | 2026-09-08 to 2026-09-12 |
-| Cells | 192 model-corpus pairs |
+| macOS | 26.6.2 / 26.7.0 |
+| Measured | 2026-09-08 to 2026-09-16 |
+| Cells | 207 model-corpus pairs |
 | `speech` | speech 0.1.0 |
-| Apple Speech | bundled with macOS 26.6.2 |
+| Apple Speech | bundled with macOS 26.7.0 |
 | FluidAudio | 0.15.6 |
 | transcribe.cpp | 0.2.3 |
 | mlx-audio-swift | 0.1.3 |
@@ -49,6 +49,12 @@ are not: `speech eval` does not write them into a summary, so they are read
 from the build in this tree and are correct as long as the report is generated
 from the tree that ran the battery.
 
+This battery spans macOS 26.6.2 and 26.7.0. Apple's two rows appear once for
+each version they were measured on, because they are part of the operating
+system - except where a newer version made exactly the same errors as the one
+before it, which shows only the newer row. Every other row is shown from the
+newest version it was measured on, and measurements.tsv holds every cell.
+
 ## The corpora
 
 | Corpus | Rows | Audio | Reference words | Models scored |
@@ -56,7 +62,7 @@ from the tree that ran the battery.
 | en_us | 647 | 1.8 h | 14,465 | 33 |
 | de_de | 862 | 3.2 h | 18,703 | 21 |
 | es_419 | 908 | 3.1 h | 23,314 | 21 |
-| fr_fr | 676 | 2.0 h | 17,075 | 20 |
+| fr_fr | 676 | 2.0 h | 17,075 | 21 |
 | pl_pl | 758 | 2.1 h | 14,380 | 20 |
 | cmn_hans_cn | 945 | 3.1 h | 32,925 | 13 |
 | librispeech-test-clean | 2620 | 5.5 h | 52,576 | 32 |

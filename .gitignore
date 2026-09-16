@@ -4,3 +4,4 @@ build/
 Private/
 Tests/tmp/
 *.o
+tools/__pycache__
