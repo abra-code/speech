@@ -4,7 +4,7 @@
 > FLEURS test sets. Use these numbers as a guide: results on your Mac and with
 > your own recordings can differ.
 
-OpenAI's Whisper large-v3-turbo, 809 million parameters, 99 languages - far more languages than any other model here. It gives the best Polish measured.
+OpenAI's Whisper large-v3-turbo, 809 million parameters, 99 languages - far more languages than any other model here, and the most even across the ones measured.
 
 ## Measurements
 
@@ -16,7 +16,7 @@ Full FLEURS test sets, 2026-09-05 (MLX build 2026-09-07). Word error rate (WER) 
 | `mlx.whisper-large-v3-turbo` | 4.92 | 5.82 | **4.54** | 8.1-11.7x | 3.61 GB |
 | `ggml.whisper-large-v3-turbo@q4_k_m` | not measured | | | | |
 
-The MLX build matches the ggml build in English and Polish and is half a point better in German. It is about a third slower and uses three times the memory, and for German `ggml.qwen3-asr-1.7b@q8_0` does better still, at 4.06.
+Of the six languages measured it takes first place in Polish, at 5.81, and is a point or so behind the best in English and German. The MLX build matches the ggml build in English and Polish and is half a point better in German. It is about a third slower and uses three times the memory, and for German `ggml.qwen3-asr-1.7b@q8_0` does better still, at 4.06.
 
 Polish at 5.81 means 56 percent fewer errors than Apple's 13.16.
 

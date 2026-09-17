@@ -24,7 +24,7 @@ FluidInference publishes this model for Core ML only in 4-bit form. That build i
 
 - **No timestamps**, word or segment, so no SRT or WebVTT subtitles.
 - **Long recordings are transcribed in 30-second pieces**, cut at quiet points and joined. The model declares 400 seconds per run, but it stops writing after about a minute of speech, and 45-second pieces lost more words: 14.7% WER in English and 13.9% in Polish, against 11.4% and 8.7% at 30 seconds (docs/engines.md).
-- **No language detection, and no error without a language.** Given Polish audio and no `--language`, Canary returns fluent English about the same subject, because without a source language it translates. `speech` refuses to run it without a language.
+- **No language detection, and no error without a language.** Given non-English audio and no `--language`, Canary returns fluent English about the same subject, because without a source language it translates. `speech` refuses to run it without a language.
 - **`fluid.canary-1b-v2@int4` needs macOS 15**, which is why `speech` requires macOS 15 rather than 14.
 
 ## Language tags

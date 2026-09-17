@@ -21,15 +21,13 @@ Full FLEURS test sets, 2026-09-05 (MLX builds 2026-09-07). Word error rate (WER)
 
 The MLX builds use the same weights and are worse in every language: by 0.4 points in English and about five in Polish. MLX spends one token budget across a whole request, so a long recording sent in one piece loses its ending without an error; `speech` sends it to the MLX builds in five-minute pieces.
 
-## Not for Polish
+## A language on its list is not a language it is good at
 
-Polish is on its list of 30 languages, but it scores 12 to 25 percent WER in Polish against 3.74 in English. Even the best build, at 12.21, is not 15 percent better than Apple's 13.16.
-
-German is the opposite: 4.06 is the best German measured, 37.6 percent fewer errors than Apple.
+Its 30 languages are not equally served, and the six measured here spread further apart than for any other model. German is its best: 4.06, the lowest German measured and 37.6 percent fewer errors than Apple. Polish is its worst: 12 to 25 percent, where even the best build's 12.21 fails to beat Apple's 13.16 by the 15 percent this project asks for. Check the language you care about in the table above rather than trusting the list.
 
 ## Cost
 
-The 8-bit 1.7B build uses 3.67 GB of memory, 23 percent of a 16 GB Mac, and runs at about 12 times real time, so an hour of audio takes about five minutes. The 4-bit build saves 1.3 GB and costs half a point in English and nearly five in Polish: a fair trade when memory is short and Polish is not needed.
+The 8-bit 1.7B build uses 3.67 GB of memory, 23 percent of a 16 GB Mac, and runs at about 12 times real time, so an hour of audio takes about five minutes. The 4-bit build saves 1.3 GB and costs half a point in English and nearly five in Polish: a fair trade where memory is short and the recording is in one of its stronger languages.
 
 ## Limits
 
