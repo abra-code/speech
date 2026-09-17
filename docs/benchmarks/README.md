@@ -185,3 +185,5 @@ and absent from a fresh clone. It is current as of the run named above.
 | [fleurs.md](fleurs.md) | 6 FLEURS languages, one ranking each |
 | [librispeech.md](librispeech.md) | test-clean, test-other, and how far each model falls between them |
 | [measurements.tsv](measurements.tsv) | Every cell, every field, tab separated |
+| [live.md](live.md) | The same models transcribing at the pace of speech, which is a different measurement |
+| [live-measurements.tsv](live-measurements.tsv) | Every live cell, tab separated |

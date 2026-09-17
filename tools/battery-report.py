@@ -601,7 +601,8 @@ and absent from a fresh clone. It is current as of the run named above.
 """
 
 
-def index_document(groups, prov, catalog, missing, extra, wildcard, limits, notes):
+def index_document(groups, prov, catalog, missing, extra, wildcard, limits, notes,
+                   live=False):
     text = [BANNER, INDEX_HEAD]
     fleurs_count = sum(1 for c in groups if CORPORA.get(c, (FLEURS, c, ""))[0] == FLEURS)
 
@@ -735,6 +736,12 @@ def index_document(groups, prov, catalog, missing, extra, wildcard, limits, note
                       "between them"])
     files.append(["[measurements.tsv](measurements.tsv)",
                   "Every cell, every field, tab separated"])
+    if live:
+        files.append(["[live.md](live.md)",
+                      "The same models transcribing at the pace of speech, "
+                      "which is a different measurement"])
+        files.append(["[live-measurements.tsv](live-measurements.tsv)",
+                      "Every live cell, tab separated"])
     text.append(table(files))
     text.append("")
     return "\n".join(text)
@@ -997,8 +1004,9 @@ def main():
     # A section ends in one newline; the blank line that separates the last
     # table from the degradation heading has to be put there.
     degradation = degradation_section(groups)
+    live = os.path.exists(os.path.join(options.out, "live.md"))
     documents = [("README.md", index_document(groups, prov, catalog, missing,
-                                              extra, wildcard, limits, notes))]
+                                              extra, wildcard, limits, notes, live))]
     if has_family(groups, FLEURS):
         documents.append(("fleurs.md", family_document(groups, FLEURS, FLEURS_HEAD)))
     if has_family(groups, LIBRISPEECH):

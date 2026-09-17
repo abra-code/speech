@@ -8,6 +8,11 @@ same id once a second, better engine has re-heard the same audio.
 Only rows whose capability record says `live` can be driven this way.
 `speech engines` prints the flag; the catalog's `modes` column carries it too.
 
+This page is how live mode works and why each row is set up the way it is. The
+published figures - which row is how accurate, how soon its text appears and
+how far behind it runs - are `docs/benchmarks/live.md`, generated from the
+measured cells by `tools/live-report.py`.
+
 ```
 speech stream --model apple.transcriber --language en-US
 speech stream --model apple.transcriber --refine apple.dictation --language en-US

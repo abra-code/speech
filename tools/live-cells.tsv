@@ -1,0 +1,23 @@
+# The live cells tools/live-report.py publishes, and the corpus each belongs to.
+#
+# Live measurement is not a battery that sweeps everything: `speech eval --live`
+# runs at the pace of the audio, so one row of twenty minute-long passages takes
+# twenty minutes and the whole set takes hours. What exists was measured for a
+# reason - a battery for the streaming rows, a chunk sweep for the two families
+# with a latency dial - and only the cells measured at a row's SHIPPING setting
+# belong in a published figure. A sweep's other tiers describe a setting nobody
+# runs; they stay in Private and in docs/live.md, where they are labeled as an
+# experiment.
+#
+# So the list is explicit rather than a glob over Private: nothing is published
+# by accident, and adding a re-run is one line.
+#
+#   1 path, relative to the repository; a trailing /* reads every cell in it
+#   2 corpus id, or "row.tsv" to take it from the cell's own row
+#   3 note for the published page, or empty
+Private/live-battery/macos-*/*	row.tsv
+Private/live-chunk-sweep-2026-09-17/chunk-11-en_us	en_us	the shipping 11-second chunk
+Private/live-chunk-sweep-2026-09-17/chunk-11-pl_pl	pl_pl	the shipping 11-second chunk
+Private/nemotron-560-2026-09-17/fluid.nemotron-multilingual@560-en_us-live	en_us
+Private/nemotron-560-2026-09-17/fluid.nemotron-multilingual@560-pl_pl-live	pl_pl
+Private/nemotron-560-2026-09-17/fluid.nemotron-multilingual@1120-en_us-live	en_us
