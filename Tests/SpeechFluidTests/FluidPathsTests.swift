@@ -132,13 +132,34 @@ struct FluidPathsTests {
         let downloading = DownloadProgress(
             fractionCompleted: 0.5, phase: .downloading(completedFiles: 3, totalFiles: 11))
         #expect(FluidProgress.map(downloading, during: .loading).phase == .compiling)
-        #expect(FluidProgress.map(downloading, during: .installing).phase == .downloading)
+        #expect(FluidProgress.map(downloading, during: .installingRepo).phase == .downloading)
 
         // File counts, not an off-by-one: `completedFiles` is a finished count,
         // so rendering `completed + 1` printed "file 12 of 11" on the last event.
         let last = DownloadProgress(
             fractionCompleted: 1, phase: .downloading(completedFiles: 11, totalFiles: 11))
-        #expect(FluidProgress.map(last, during: .installing).file == "11 of 11 files")
+        #expect(FluidProgress.map(last, during: .installingSubdirectory).file == "11 of 11 files")
+    }
+
+    @Test("an install's download runs from 0 to 1, whichever FluidAudio function downloads")
+    func downloadFractionIsTheDownloadsOwn() {
+        // A repo download ends at 0.5, measured on fluid.parakeet-ctc-110m:
+        // passed through, the Models window stopped at 50% and jumped to
+        // installed.
+        let repoHalfway = DownloadProgress(
+            fractionCompleted: 0.25, phase: .downloading(completedFiles: 1, totalFiles: 16))
+        let repoDone = DownloadProgress(
+            fractionCompleted: 0.5, phase: .downloading(completedFiles: 16, totalFiles: 16))
+        #expect(FluidProgress.map(repoHalfway, during: .installingRepo).fraction == 0.5)
+        #expect(FluidProgress.map(repoDone, during: .installingRepo).fraction == 1)
+
+        // A subdirectory download already runs to 1 and must not be doubled.
+        let subdirectoryHalfway = DownloadProgress(
+            fractionCompleted: 0.5, phase: .downloading(completedFiles: 3, totalFiles: 6))
+        #expect(FluidProgress.map(subdirectoryHalfway, during: .installingSubdirectory).fraction == 0.5)
+
+        // A load keeps FluidAudio's fraction: nothing is downloading there.
+        #expect(FluidProgress.map(repoHalfway, during: .loading).fraction == 0.25)
 
         // An empty model name is FluidAudio's placeholder and must not become
         // a blank filename in a status line.

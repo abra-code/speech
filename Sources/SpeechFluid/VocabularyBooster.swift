@@ -341,7 +341,7 @@ actor SpotterEngine: TranscriptionEngine {
             try await ModelHub.download(
                 CtcModelVariant.ctc110m.repo,
                 to: directory,
-                progressHandler: FluidProgress.handler(.installing, progress))
+                progressHandler: FluidProgress.handler(.installingRepo, progress))
         } catch is CancellationError {
             throw CancellationError()
         } catch {

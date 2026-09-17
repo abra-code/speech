@@ -268,7 +268,7 @@ actor UnifiedStreamingEngine: TranscriptionEngine {
             } else {
                 try await installer.loadModels(
                     to: directory,
-                    progressHandler: FluidProgress.handler(.installing, progress))
+                    progressHandler: FluidProgress.handler(.installingRepo, progress))
             }
         } catch is CancellationError {
             await installer.cleanup()

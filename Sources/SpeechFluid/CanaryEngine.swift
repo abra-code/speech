@@ -311,7 +311,7 @@ actor CanaryEngine: TranscriptionEngine {
         do {
             downloaded = try await CanaryModels.download(
                 precision: flavor.precision,
-                progressHandler: FluidProgress.handler(.installing, progress))
+                progressHandler: FluidProgress.handler(.installingRepo, progress))
         } catch {
             throw SpeechError.runtime("downloading '\(id)' failed: \(error.localizedDescription)")
         }

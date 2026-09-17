@@ -227,7 +227,7 @@ actor ParakeetEngine: TranscriptionEngine {
                 to: FluidPaths.parakeetRepo(in: directory, version: flavor.version),
                 version: flavor.version,
                 encoderPrecision: flavor.precision,
-                progressHandler: FluidProgress.handler(.installing, progress))
+                progressHandler: FluidProgress.handler(.installingRepo, progress))
         } catch {
             // The partial marker stays: the directory holds whatever arrived,
             // and the next attempt resumes rather than starting from zero.

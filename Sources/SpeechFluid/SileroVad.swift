@@ -181,7 +181,7 @@ actor SileroVadEngine: TranscriptionEngine, VoiceActivityEngine {
             try await ModelHub.download(
                 .vad,
                 to: FluidPaths.vadModels(in: directory),
-                progressHandler: FluidProgress.handler(.installing, progress))
+                progressHandler: FluidProgress.handler(.installingRepo, progress))
         } catch is CancellationError {
             throw CancellationError()
         } catch {

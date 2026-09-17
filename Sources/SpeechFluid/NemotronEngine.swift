@@ -327,7 +327,7 @@ actor NemotronEngine: TranscriptionEngine {
                 languageCode: FluidPaths.nemotronLanguageCode,
                 chunkMs: chunkMs,
                 to: directory,
-                progressHandler: FluidProgress.handler(.installing, progress))
+                progressHandler: FluidProgress.handler(.installingSubdirectory, progress))
         } catch {
             throw SpeechError.runtime("downloading '\(id)' failed: \(error.localizedDescription)")
         }

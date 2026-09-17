@@ -30,9 +30,31 @@ enum FluidProgress {
     /// already on disk. During a load nothing can be fetched - `prepare`
     /// verified the row is installed and throws `modelMissing` otherwise - so
     /// every phase there is honestly "making it usable", which is `compiling`.
+    ///
+    /// An install also says which FluidAudio function downloads, because the
+    /// share of its fraction the download takes depends on that, not on the
+    /// model. A repo download or load (`ModelHub.download(_:to:)`,
+    /// `ModelHub.loadModels`, and `AsrModels.download`, `CanaryModels.download`
+    /// and the two Unified managers' `loadModels` through them) ends its download at
+    /// 0.5 and saves the rest for a CoreML compile that may never follow;
+    /// `ModelHub.download(_:subdirectory:to:)`, which Nemotron's
+    /// `downloadVariant` uses, runs to 1.0. Passed through, every download but
+    /// Nemotron's stopped at 50% and then jumped to installed. Checked against
+    /// FluidAudio 0.15.6, which Package.swift pins exactly.
     enum Activity {
-        case installing
+        case installingRepo
+        case installingSubdirectory
         case loading
+
+        /// The fraction FluidAudio reports when the download is done, or nil
+        /// when nothing is being downloaded.
+        var downloadShare: Double? {
+            switch self {
+            case .installingRepo: return 0.5
+            case .installingSubdirectory: return 1.0
+            case .loading: return nil
+            }
+        }
     }
 
     static func map(_ progress: DownloadProgress, during activity: Activity) -> LoadProgress {
@@ -44,12 +66,12 @@ enum FluidProgress {
         case .listing:
             return LoadProgress(phase: .listing, fraction: progress.fractionCompleted)
         case .downloading(let completed, let total):
-            guard activity == .installing else {
+            guard let share = activity.downloadShare else {
                 return LoadProgress(phase: .compiling, fraction: progress.fractionCompleted)
             }
             return LoadProgress(
                 phase: .downloading,
-                fraction: progress.fractionCompleted,
+                fraction: min(progress.fractionCompleted / share, 1),
                 file: total > 0 ? "\(completed) of \(total) files" : nil)
         case .compiling(let modelName):
             // The first ANE compile of a CoreML package takes seconds with no
