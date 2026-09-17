@@ -450,6 +450,26 @@ That is the row's real character: it buys languages, not responsiveness. The
 second behind the speaker; this one shows nothing for thirteen seconds and then
 a paragraph.
 
+**A shorter chunk is not the way out, measured 2026-09-17.** The chunk is a
+setting, not a property of the model, so it was swept: 11, 7, 5 and 3 seconds,
+with the left context filled to the model's 15-second input and the right kept
+at 2, on the first 25 FLEURS rows of English and Polish (510 and 512 words), live
+at real time on an M5. The switch used for it has been removed.
+
+| chunk | English WER | Polish WER |
+| --- | --- | --- |
+| 11 s (this row) | 6.7% | 11.5% |
+| 7 s | 10.2% | 23.8% |
+| 5 s | 7.5% | 37.1% |
+| 3 s | 44.7% | 94.5% |
+
+Polish, the reason this row exists, doubles its error at 7 seconds and falls
+apart below that; English survives to 5 and breaks at 3. The offline encoder
+needs a long window to decode well, and more left context does not stand in for
+it. Twenty-five rows rank nothing finely, but a two- to eightfold rise is far
+outside what that sample could produce. The row keeps FluidAudio's 11-second
+preset, and a caller that wants text sooner should pick another live row.
+
 Three specific traps in the library, each of which was a defect in the first
 version and is measured in the second:
 
@@ -491,8 +511,10 @@ Measured here, six FLEURS rows a language, on an M5:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `fluid.nemotron-multilingual@2240` | en-US | 2.42% | 2.42% | 2.31 s | 2.24 s | 1.40 / 2.14 s | 0.06 s |
 | `fluid.nemotron-multilingual@1120` | en-US | 4.03% | 4.03% | 2.29 s | 1.12 s | 1.38 / 2.12 s | 0.04 s |
+| `fluid.nemotron-multilingual@560` | en-US | 3.23% | 3.23% | 1.77 s | 0.56 s | 1.22 / 2.12 s | 0.03 s |
 | `fluid.nemotron-multilingual@2240` | pl-PL | 22.61% | 22.61% | 2.31 s | 2.24 s | 0.09 / 1.36 s | 0.06 s |
 | `fluid.nemotron-multilingual@1120` | pl-PL | 22.61% | 22.61% | 2.29 s | 1.12 s | 0.61 / 1.34 s | 0.04 s |
+| `fluid.nemotron-multilingual@560` | pl-PL | 22.61% | 22.61% | 1.77 s | 0.56 s | 0.17 / 1.33 s | 0.03 s |
 
 Three things in that table are worth reading carefully.
 
@@ -511,9 +533,13 @@ tiers is the cadence: `@1120` produced 9 partials on a 12.6 s row where `@2240`
 produced 5. Time to first partial mixes the model's chunk with the speaker's
 first breath, and on this row the second one dominates.
 
-**The finer tier is not free.** English doubled its error rate from 2.42% to
-4.03% for half the wait; Polish did not move at all. Six rows rank nothing, but
-the direction is the one the model card would predict, and the dial is real.
+**Six rows do not show what the finer tiers cost.** English went from 2.42% at
+`@2240` to 4.03% at `@1120` and back to 3.23% at `@560`, measured 2026-09-17 on the
+same rows (`@1120` repeated its 4.03% and its lag that day, so the rows match);
+Polish stayed at 22.61% on all three. The first partial came 0.5 s sooner at
+`@560`: its smaller steps publish the first words closer to when they are
+spoken. Choose the tier for its cadence, and measure accuracy on more than six
+rows before trusting any ordering.
 
 Against the other `fluid` row: this one puts text on screen every one to two
 seconds where `fluid.parakeet-v3` shows nothing for thirteen, and on the Polish
