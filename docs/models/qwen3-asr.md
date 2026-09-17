@@ -35,7 +35,7 @@ The 8-bit 1.7B build uses 3.67 GB of memory, 23 percent of a 16 GB Mac, and runs
 
 - **No timestamps**, so no subtitles.
 - **No custom vocabulary.**
-- **At most about 87 minutes per run** (5,218,560 ms); longer audio is cut into pieces.
+- **Long recordings are transcribed in 10-second pieces**, cut at quiet points. The model declares 87 minutes per run, but it stops writing after about a minute of speech, and longer pieces lose whole sentences: on 5-minute recordings, 10-second pieces scored 11.3% WER in English against 17.2% for 45-second ones (docs/engines.md).
 
 ## What FLEURS does not cover
 

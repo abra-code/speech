@@ -205,11 +205,52 @@ to be measured where they are going to be used.
 
 Two things this engine does that no other does. It reads every capability fact
 out of the GGUF rather than from a model card, which corrected four assumptions
-in stage 2 - Canary has no timestamps and a 400 second ceiling, Nemotron does
-identify its own language, Qwen3-ASR caps a run at about 87 minutes, and
+in stage 2 - Canary has no timestamps and declares a 400 second ceiling, Nemotron
+does identify its own language, Qwen3-ASR declares about 87 minutes, and
 Parakeet v3 reports 25 languages where the CoreML build advertises 28. And it
-cuts a long recording into pieces for the families with a hard ceiling, at local
-energy minima, stitching the transcripts back with offset timestamps.
+cuts every recording into pieces at local energy minima, stitching the
+transcripts back with offset timestamps.
+
+### A run's declared ceiling is not a length it survives
+
+Until 2026-09-17 a recording was cut only where the GGUF declared a ceiling,
+and a 36-minute talk showed what that missed. The declared figure bounds the
+input and nothing else:
+
+- The families whose decoder writes text token by token stop at 256 tokens per
+  run, about a minute of speech. Qwen3-ASR declares 87 minutes and refused 5;
+  Granite 4.0 and Canary refused 5 too, with "output truncated". Granite Speech
+  NAR's 4096-token context was full at 5 minutes.
+- The encoder families grow their compute graph with the square of the audio.
+  Parakeet, Parakeet Unified and Nemotron finished 10 minutes and asked Metal for
+  13.7 GB at 20, and transcribe.cpp 0.2.3's ggml crashes on the failed allocation
+  (SIGSEGV) instead of returning an error.
+- Whisper windows its own input at 30 seconds and ran 20 minutes in 1.3 GB.
+
+Staying under those limits is not enough either: every family drops whole
+sentences from long pieces. So each architecture now has a measured length
+(`GGMLPieces`), chosen on four 5-minute recordings per language joined from
+unique FLEURS sentences:
+
+| architecture | piece | WER at that length (one sentence at a time) | WER at 45 s, or 300 s for Parakeet |
+| --- | --- | --- | --- |
+| `qwen3_asr` (1.7B Q8_0) | 10 s | en 11.3% (4.2%), pl 17.0% (13.9%) | en 17.2%, pl refused one recording |
+| `canary` (1B v2 Q8_0) | 30 s | en 11.4% (5.0%), pl 8.7% (8.2%) | en 14.7%, pl 13.9% |
+| `granite_speech` (4.0 1B Q8_0) | 15 s | en 7.7% (7.4%) | en 14.6% |
+| `granite_speech_nar` (4.1 2B NAR Q8_0) | 15 s | en 14.9% (5.9%) | en 23.8% |
+| `parakeet` (TDT 0.6B v3 Q8_0) | 30 s | en 9.0% (5.0%), pl 8.9% (8.4%) | en 46.6%, pl 14.4% |
+
+Whisper keeps the whole file; another encoder gets 30 seconds, and any other
+architecture 15, since a piece too short costs a little accuracy where one too
+long costs the transcript. A piece refused anyway - a decoder that repeats
+itself can fill its budget on ten seconds, as Granite 4.0 did once - is cut in
+half at quiet points and retried, down to 5 seconds, so one bad piece does not
+fail a long recording.
+
+A new speaker every sentence makes that corpus harsher than a talk: Parakeet v3
+on FluidAudio, which is not cut this way, scored 10.1% on one of its English
+recordings. The table is for comparing lengths, not for quoting as accuracy.
+The raw reports are in `Private/ggml-pieces-2026-09-17/`.
 
 Its xcframework is dynamic, unlike FluidAudio's static dependency, so
 `CTranscribe.framework` ships beside `build/speech` and whoever embeds one
@@ -286,7 +327,34 @@ that default building a roughly 7 GB KV cache and hanging a 108 minute file on a
 48 GB machine. `speech` hands the helper bounded buffers and states how they may
 be cut. The cost of not doing so was measured rather than assumed: one whole
 recording in a single request took `mlx.parakeet-tdt-0.6b-v3` to 21.91 GB at
-41.9x, against 4.55 GB at 153.4x with a 120 second ceiling.
+41.9x, against 4.55 GB at 153.4x with the 120 second ceiling that row carried
+at the time.
+
+A ceiling that fits in memory can still be too long to transcribe, the same way
+the `ggml` pieces above are. The Parakeet rows were measured on the same corpora
+on 2026-09-17 and now get 30 and 15 seconds instead of 120:
+
+| pieces | `parakeet-tdt-0.6b-v3` en | pl | `parakeet-tdt_ctc-110m` en |
+| --- | --- | --- | --- |
+| one sentence at a time | 5.18% | 8.36% | 8.34% |
+| 15 s | 11.00% | 9.27% | **13.37%** |
+| 30 s | **8.94%** | **9.14%** | 20.28% |
+| 60 s | 22.27% | 10.96% | - |
+| 120 s | 37.55% | 12.91% | 22.64% |
+
+English at 120 seconds deleted 908 words of about 2,400, which is how this
+shows up on a real recording: a transcript that reads well and is missing
+stretches. A 1 h 45 min talk came out 15,874 words at 120 seconds with a
+56-second stretch absent, and 16,032 words with no gap over 10 seconds at 30 -
+the `ggml` build of the same checkpoint, at 30 seconds, wrote 16,036. It was
+also the fastest length on the corpus, and peak memory did not move.
+
+Whisper windows its own input at 30 seconds and Qwen3-ASR decodes in 30-second
+chunks, so their 300 second ceilings do not carry this risk, and the same talk
+says so: Qwen3-ASR wrote 16,083 words and Whisper 14,765, Whisper's shortfall
+spread evenly over every five-minute window rather than collected in gaps,
+which is Whisper leaving out the "um" and "uh" the other two write down. The
+reports are in `Private/mlx-pieces-2026-09-17/`.
 
 ## Deployment floor
 

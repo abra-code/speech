@@ -52,7 +52,7 @@ Compared with Parakeet Unified English, that buys up to half a WER point on Libr
 - **No language detection.** `speech` requires `--language`, and Speech.app offers no Automatic choice.
 - **No timestamps**, except in the Plus build.
 - **No live mode.**
-- **At most 377 seconds of audio per run** (384 for NAR). Longer recordings are cut at silences and transcribed in pieces.
+- **Long recordings are transcribed in 15-second pieces**, cut at silences. The builds declare 377 seconds per run (384 for NAR), but 4.0 1B stops writing after about a minute of speech, NAR fills its context before 5 minutes, and longer pieces lose whole sentences: 15-second pieces scored 7.7% WER (4.0 1B) and 14.9% (NAR) in English, against 14.6% and 23.8% at 45 seconds. The Plus build and 4.1 2B were not measured and get the same length (docs/engines.md).
 - **Only English was measured on full test sets.** The builds also list French, German, Spanish and Portuguese, and 4.1 2B and 4.0 1B list Japanese. Samples of 20 FLEURS sentences put German at 9 to 12 percent WER, against 6.51 for `apple.transcriber` on the full German set. That sample is too small to rank models, but gives no reason to choose Granite for German.
 
 ## What these tests do not cover

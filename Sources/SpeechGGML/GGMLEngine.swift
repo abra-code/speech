@@ -5,11 +5,12 @@
 // `Model(path:)` loads it, and the library reports its own capabilities. What
 // this engine owns is the three places where that simplicity runs out.
 //
-// **The audio ceiling.** Several families refuse a run longer than
-// `capabilities.maxAudioMs` with `inputTooLong` rather than degrading, so a
-// long file has to arrive in pieces with the transcripts stitched back and the
-// timestamps offset. The cut points come from an `AudioSegmenter` injected by
-// the caller, which is why this target does not depend on SpeechFluid.
+// **The audio ceiling.** A long file has to arrive in pieces, with the
+// transcripts stitched back and the timestamps offset. How long a piece may be
+// is `GGMLPieces`: the declared `capabilities.maxAudioMs` is an input bound, far
+// longer than any family transcribes well or even survives. The cut points come
+// from an `AudioSegmenter` injected by the caller, which is why this target does
+// not depend on SpeechFluid.
 //
 // **The language gate.** Some families have no language identification at all,
 // and the library's answer to a missing hint is a default, not an error - which
@@ -274,41 +275,98 @@ actor GGMLEngine: TranscriptionEngine {
             language: language,
             specKDrafts: -1)
 
-        // `maxAudioMs == 0` means no practical limit, which is the common case;
-        // the segmenter then returns one range and this is a plain single run.
-        let cap = loaded.maxAudioMs > 0 ? Double(loaded.maxAudioMs) / 1000 : .infinity
+        // The declared `maxAudioMs` is an input bound, not a length a run
+        // survives: see `GGMLPieces`. Audio under the ceiling comes back from
+        // the segmenter as one range and this is a plain single run.
+        let cap = GGMLPieces.ceilingSeconds(
+            architecture: model?.arch ?? "", declaredMs: loaded.maxAudioMs)
         let ranges = try await segmenter.split(samples: samples, maxSeconds: cap)
 
         var segments: [SpeechCore.Segment] = []
         for range in ranges {
-            try Task.checkCancellation()
-            guard range.count > 0 else { continue }
-            let piece = range.start == 0 && range.end == samples.count
-                ? samples
-                : Array(samples[range.start..<range.end])
-            let transcript: Transcript
-            do {
-                transcript = try await session.run(piece, options: runOptions)
-            } catch let error as TranscribeError {
-                // A canceled run is a cancellation, not a transcription
-                // failure: the partial the library preserved is discarded on
-                // purpose, because a caller that pressed Ctrl-C is not asking
-                // for half a transcript to be written over the whole one.
-                if case .aborted = error, Task.isCancelled { throw CancellationError() }
-                throw SpeechError.runtime("'\(id)' failed to transcribe: \(Self.describe(error))")
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                throw SpeechError.runtime("'\(id)' failed to transcribe: \(Self.describe(error))")
-            }
-            segments.append(contentsOf: Self.segments(
-                from: transcript,
-                offset: range.startSeconds,
-                fallbackEnd: range.endSeconds,
-                firstID: segments.count,
-                language: language))
+            try await transcribePiece(
+                range, of: samples, session: session, runOptions: runOptions,
+                language: language, into: &segments)
         }
         return segments
+    }
+
+    /// Below this a refused piece is not cut again: the refusal is reported.
+    static let shortestRetrySeconds: Double = 5
+
+    /// "4:05", or "1:02:07" past an hour: where in a recording a piece starts.
+    static func clock(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds))
+        let (hours, minutes, secs) = (total / 3600, total / 60 % 60, total % 60)
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, secs)
+            : String(format: "%d:%02d", minutes, secs)
+    }
+
+    /// Whether a refusal can go away when the same audio is given in shorter
+    /// pieces. A text decoder that falls into repeating itself fills its
+    /// generation budget on as little as ten seconds (Granite 4.0 1B did, on one
+    /// of four 5-minute recordings), and memory and context are length limits by
+    /// definition. One such piece must not cost a long recording its transcript.
+    static func isRetriableWithShorterPieces(_ error: TranscribeError) -> Bool {
+        switch error {
+        case .outputTruncated, .inputTooLong, .outOfMemory: return true
+        default: return false
+        }
+    }
+
+    /// Runs one piece and appends its segments. A piece refused for its length
+    /// is cut at quiet points into pieces of at most half its length, which are
+    /// run in turn, down to `shortestRetrySeconds`.
+    private func transcribePiece(
+        _ range: SampleRange, of samples: [Float], session: GGMLSession, runOptions: RunOptions,
+        language: String?, into segments: inout [SpeechCore.Segment]
+    ) async throws {
+        try Task.checkCancellation()
+        guard range.count > 0 else { return }
+        let piece = range.start == 0 && range.end == samples.count
+            ? samples
+            : Array(samples[range.start..<range.end])
+        let transcript: Transcript
+        do {
+            transcript = try await session.run(piece, options: runOptions)
+        } catch let error as TranscribeError {
+            // A canceled run is a cancellation, not a transcription
+            // failure: the partial the library preserved is discarded on
+            // purpose, because a caller that pressed Ctrl-C is not asking
+            // for half a transcript to be written over the whole one.
+            if case .aborted = error, Task.isCancelled { throw CancellationError() }
+            let seconds = range.endSeconds - range.startSeconds
+            if Self.isRetriableWithShorterPieces(error), seconds > Self.shortestRetrySeconds {
+                let halves = try await segmenter.split(samples: piece, maxSeconds: seconds / 2)
+                if halves.count > 1 {
+                    for half in halves {
+                        try await transcribePiece(
+                            SampleRange(start: range.start + half.start, end: range.start + half.end),
+                            of: samples, session: session, runOptions: runOptions,
+                            language: language, into: &segments)
+                    }
+                    return
+                }
+            }
+            // Where, because on a long recording the library's own message
+            // names only the last and shortest piece it was given.
+            let place = Self.isRetriableWithShorterPieces(error)
+                ? " (at \(Self.clock(range.startSeconds))-\(Self.clock(range.endSeconds)), in pieces as short as"
+                    + " \(Int(Self.shortestRetrySeconds)) s)"
+                : ""
+            throw SpeechError.runtime("'\(id)' failed to transcribe: \(Self.describe(error))\(place)")
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw SpeechError.runtime("'\(id)' failed to transcribe: \(Self.describe(error))")
+        }
+        segments.append(contentsOf: Self.segments(
+            from: transcript,
+            offset: range.startSeconds,
+            fallbackEnd: range.endSeconds,
+            firstID: segments.count,
+            language: language))
     }
 
     func makeLiveSession(options: TranscribeOptions) async throws -> any LiveSession {
