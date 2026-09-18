@@ -617,3 +617,10 @@ if [ "$FAILURES" -gt 0 ]; then
     exit 1
 fi
 echo "All tests passed."
+
+# build.sh prints the newer-transcribe.cpp reminder at the end of its own
+# output, which here is the middle of this one. Repeat it where it is actually
+# last. It reads what the vendor step recorded, so there is no second network
+# call, and a reminder that fails to print is not a failed test run.
+banner_status=0
+./tools/vendor-transcribe.sh --report-upstream || banner_status=$?

@@ -188,7 +188,15 @@ two different models.
 ## `ggml.*` - transcribe.cpp 0.2.3, ggml on Metal
 
 Shipped in stage 2. GGUF weights from handy-computer on Hugging Face, run
-through a vendored Swift wrapper over a binary xcframework.
+through a vendored Swift wrapper over an xcframework.
+
+That xcframework is built here rather than downloaded. Two defects this engine
+hits - the streaming commit freeze in `docs/live.md` and the Metal
+out-of-memory crash below - are fixed in no published release, so
+`tools/vendor-transcribe.sh` clones the pinned tag, applies
+`patches/transcribe.cpp/`, and builds it. A patch that stops applying fails the
+build; `patches/transcribe.cpp/README.md` says what each one is and what it
+costs to carry.
 
 This engine is what put Whisper, Qwen3-ASR and an 8-bit Canary within reach. Its
 cost is memory of a different shape: every measured row reports a Neural Engine ledger
@@ -223,8 +231,12 @@ input and nothing else:
   NAR's 4096-token context was full at 5 minutes.
 - The encoder families grow their compute graph with the square of the audio.
   Parakeet, Parakeet Unified and Nemotron finished 10 minutes and asked Metal for
-  13.7 GB at 20, and transcribe.cpp 0.2.3's ggml crashes on the failed allocation
-  (SIGSEGV) instead of returning an error.
+  13.7 GB at 20. An unpatched transcribe.cpp 0.2.3 crashes on the failed
+  allocation (SIGSEGV) rather than returning an error - measured on Parakeet TDT
+  0.6B v3 at 20 minutes. The patched library this repository builds reports the
+  allocation failure and ends the run with an out-of-memory error instead, which
+  is a refusal a caller can act on rather than a dead process; that half was
+  measured on Qwen3-ASR 1.7B, which takes the same allocation path.
 - Whisper windows its own input at 30 seconds and ran 20 minutes in 1.3 GB.
 
 Staying under those limits is not enough either: every family drops whole

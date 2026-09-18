@@ -45,6 +45,22 @@ case "$want" in
     *) echo "usage: ./build.sh [arm64]" >&2; exit 1 ;;
 esac
 
+# The transcribe.cpp xcframework is built from a patched clone rather than taken
+# from a release, so it has to exist before SwiftPM reads Package.swift - a
+# binaryTarget with a missing path is a manifest error. The script is a no-op
+# once the pin and the patches have not changed, and it is where the fixes in
+# patches/transcribe.cpp/ are applied (a patch that no longer applies stops the
+# build here). Its exit status is checked rather than left to set -e, so the
+# failure names this step. The `|| status=$?` form is what makes that check
+# reachable: under set -e a bare failing command exits the shell before the
+# next line runs, so a plain `cmd; status=$?` never sees a non-zero value.
+vendor_status=0
+./tools/vendor-transcribe.sh || vendor_status=$?
+if [ "$vendor_status" -ne 0 ]; then
+    echo "build.sh: the transcribe.cpp vendor build failed; see above." >&2
+    exit 1
+fi
+
 # SwiftPM's scratch directory, in the visible build/ rather than a hidden
 # .build, alongside the binary handed to consumers. SwiftPM only creates
 # subdirectories in here, so build/speech does not collide with anything it owns.
@@ -128,5 +144,13 @@ if [ -d "$bin_path/speech.dSYM" ]; then
 fi
 
 lipo -info build/speech
+
+# The reminder last, where nothing scrolls past it: the vendor step runs before
+# a build log that is hundreds of lines long, so a newer published
+# transcribe.cpp release gets said again here. This reads what that step already
+# found - no second network call - and a reminder that fails to print is still
+# not a failed build, which is why its status is captured and not acted on.
+banner_status=0
+./tools/vendor-transcribe.sh --report-upstream || banner_status=$?
 
 echo "Done."

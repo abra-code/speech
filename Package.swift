@@ -14,14 +14,21 @@ let package = Package(
         .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.15.6"),
     ],
     targets: [
-        // transcribe.cpp v0.2.3, consumed as the published xcframework plus its
-        // own Swift wrapper vendored under Sources/TranscribeCpp (MIT). The
-        // checksum is of the release asset; `swift package compute-checksum`
-        // reproduces it.
+        // transcribe.cpp v0.2.3, built from source, plus its own Swift wrapper
+        // vendored under Sources/TranscribeCpp (MIT).
+        //
+        // Not the published release asset: speech needs two fixes no release
+        // carries - the Parakeet streaming commit freeze and the Metal
+        // out-of-memory crash - so tools/vendor-transcribe.sh clones the pinned
+        // tag, applies patches/transcribe.cpp/, and builds the xcframework this
+        // target points at. The pin and the patches are in this repository, so
+        // the framework is reproducible; vendor/ itself is not committed.
+        //
+        // `swift build` on its own fails here with "artifact not found" until
+        // that script has run once. ./build.sh and ./test.sh run it for you.
         .binaryTarget(
             name: "CTranscribe",
-            url: "https://github.com/handy-computer/transcribe.cpp/releases/download/v0.2.3/TranscribeCpp.xcframework.zip",
-            checksum: "944be4d5232f39c99608f676a2ddda2516e0ed3c9fb6db50685ffa8d20a8b9c9"
+            path: "vendor/TranscribeCpp.xcframework"
         ),
         .target(
             name: "TranscribeCpp",

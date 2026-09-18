@@ -367,7 +367,8 @@ by the live battery on continuous speech, where this row's finals ran 34 s behin
 the audio at the median and 54 s at worst, on an M5 and an M1 Pro alike. The six
 single sentences in the first sweep below were too short to show it.
 
-What happens, in transcribe.cpp v0.2.3 (and `main` as of 2026-09-13):
+What happens, in an unpatched transcribe.cpp v0.2.3 (and `main` as of
+2026-09-13):
 
 - The parakeet cache-aware family marks every decoded token committed.
 - The library's `committed` text still grows only while those tokens' texts,
@@ -391,20 +392,29 @@ family's own boundary for both `.auto` and `.stablePrefix`.
 the `parakeet_stream` extension treats committed plus tentative as committed
 (`GGMLLiveSession.commitsTentative(for:)`). That is the text the family meant to
 commit, and it held on the evidence: across the 20 passages `tentative` was not
-revised once in 18,509 feeds on q8_0, nor in 19,540 on q4_k_m. Remove it, and re-run the live battery, when
-the pinned transcribe.cpp version moves past the fix.
+revised once in 18,509 feeds on q8_0, nor in 19,540 on q4_k_m.
+
+**The library this repository builds now carries the fix.** Since 2026-09-17
+`speech` does not link a published release: `tools/vendor-transcribe.sh` builds
+the xcframework from the pinned tag with the patches in
+`patches/transcribe.cpp/`, and `0001-stream-commit-collapsed-spaces.patch` is
+the fix to that comparison. The Swift workaround is inert against it - committed
+plus tentative is what the fixed library commits anyway - and stays until the
+live battery has been re-run against the patched build and the removal measured
+rather than assumed.
 
 Measured on the same 20 passages, q8_0, M5, no buffers dropped:
 
 | build | final lag med/worst | WER |
 | --- | --- | --- |
-| v0.2.3, before the workaround | 34.39 / 54.27 s | 3.60% |
-| v0.2.3 with the workaround | 0.46 / 2.45 s | 3.60% |
-| v0.2.3 with the upstream fix, no workaround | 0.46 / 1.74 s | 3.60% |
+| v0.2.3 unpatched, before the workaround | 34.39 / 54.27 s | 3.60% |
+| v0.2.3 unpatched, with the workaround | 0.46 / 2.45 s | 3.60% |
+| v0.2.3 with the patched library, no workaround | 0.46 / 1.74 s | 3.60% |
 
-The third row is a local build of the library with a proposed fix to that
-comparison; it is what the workaround should be checked against when a release
-carries a fix.
+The third row was measured against a hand-built library carrying what is now
+`patches/transcribe.cpp/0001-stream-commit-collapsed-spaces.patch`. It is the
+number to reproduce before the Swift workaround is removed; what ships today is
+that library with the workaround still on top of it.
 
 It is scoped to `parakeet_stream` on purpose, even though `parakeet_buffered` goes
 through the same library boundary. Whether a stream freezes depends on the model

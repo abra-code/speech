@@ -35,8 +35,21 @@ unavailable on x86_64 macOS, and its CoreML pipelines want the Neural Engine in
 any case.
 
 Two dependencies: FluidAudio, pinned to 0.15.6, which brings the Parakeet, Canary
-and Nemotron CoreML pipelines; and transcribe.cpp 0.2.3 as the `CTranscribe`
-binary target. Both fetch at resolve time, so the first build needs the network.
+and Nemotron CoreML pipelines; and transcribe.cpp, pinned to v0.2.3 and built
+from source as the `CTranscribe` binary target. Both need the network on the
+first build.
+
+transcribe.cpp is built rather than downloaded because two fixes `speech`
+depends on are in no published release. `build.sh` runs
+`tools/vendor-transcribe.sh`, which clones the pinned tag, applies the patches
+in `patches/transcribe.cpp/` and builds `vendor/TranscribeCpp.xcframework`; that
+needs cmake and Xcode (ninja is used if it is there), takes a few minutes on a
+cold tree, and is a no-op afterwards until the pin or a patch changes. A patch
+that stops applying fails the build instead of dropping the fix silently, and a
+newer published transcribe.cpp release is reported in a banner when that script
+finishes and again at the very end of the build, after the Swift log. `swift
+build` on its own does not work until that script has run once, since `vendor/`
+is not committed.
 Beyond them `build/speech` needs no Python, no ffmpeg and no package manager:
 audio decoding is AVFoundation and the Apple engines are the system's own
 frameworks. The measuring tools under `tools/` are Python, and the optional MLX
