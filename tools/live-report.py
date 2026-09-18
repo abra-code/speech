@@ -34,6 +34,33 @@ DEFAULT_OUT = os.path.join(REPO, "docs", "benchmarks")
 # language battery's, so a row here and a row in measurements.tsv can be lined
 # up by (model, corpus). Kept here rather than imported for the reason
 # battery-report.py gives: the two tools run separately.
+
+# The continuous corpora FLEURS supplies, which is how every language but
+# English gets one at all. A FLEURS passage is not a reading - the dataset's
+# rows are unrelated sentences in different voices - so what it shares with the
+# LibriSpeech one is the property a live row is judged on rather than the
+# material.
+CONTINUOUS_FLEURS = [
+    # English too, though the corpus published for English is the LibriSpeech
+    # one above: that is a real reading and this is not, so a cell here would be
+    # a comparison between the two corpora rather than between rows. It has a
+    # title so that a cell measured in it publishes as something a reader can
+    # place, instead of as a bare id.
+    ("en_us", "English (en_US)", "en"),
+    ("de_de", "German (de_DE)", "de"),
+    ("es_419", "Spanish (es_419)", "es"),
+    ("fr_fr", "French (fr_FR)", "fr"),
+    ("pl_pl", "Polish (pl_PL)", "pl"),
+    ("cmn_hans_cn", "Mandarin (cmn_Hans_CN)", "zh"),
+]
+
+CONTINUOUS_FLEURS_HEAD = (
+    "Consecutive distinct FLEURS sentences joined into minute-long passages"
+    " (tools/make-continuous-corpus.py). FLEURS is not a reading, so the voice"
+    " changes from sentence to sentence; what the passage has in common with the"
+    " LibriSpeech one is the thing being measured - a minute of speech with no"
+    " cut edge for a session to find a boundary at.")
+
 CORPORA = [
     ("librispeech-continuous-test-clean",
      "LibriSpeech test-clean, continuous", "en",
@@ -41,6 +68,11 @@ CORPORA = [
      " (tools/make-continuous-corpus.py). This is the corpus a live row has to"
      " be judged on: a row that loses the tail of long speech loses it here"
      " and nowhere else."),
+] + [
+    ("fleurs-continuous-" + directory,
+     "FLEURS %s, continuous" % name, language, CONTINUOUS_FLEURS_HEAD)
+    for directory, name, language in CONTINUOUS_FLEURS
+] + [
     ("en_us", "FLEURS English (en_US)", "en",
      "One sentence per recording. Short, clean and read aloud, which is what"
      " makes it a weak test of a streaming row."),

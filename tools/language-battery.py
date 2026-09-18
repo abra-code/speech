@@ -68,7 +68,18 @@ minute-long passages of one reader, joined from consecutive utterances of a
 chapter by tools/make-continuous-corpus.py, which a run calls on demand. Single
 sentences are the easy case for a live session - one boundary to find, and the
 audio ends where the speaker does - and on continuous speech the Parakeet
-Unified latency tiers ranked differently. Live cells and their table go to
+Unified latency tiers ranked differently.
+
+LibriSpeech is English, so every other language's continuous corpus comes from
+FLEURS instead: `fleurs-continuous-de_de`, or `continuous-de`, which resolves by
+the same rules a plain language name does. FLEURS is not a reading - its rows
+are unrelated sentences, each recorded by several speakers in consecutive rows -
+so a passage there is consecutive distinct sentences in changing voices. It is
+the weaker corpus of the two for that reason, and it is still the one that
+answers the question the English corpus answers: what a row does with a minute
+of speech that has no cut edges in it. `continuous-en` builds one from FLEURS
+English as well; it is not what English is published on, because the LibriSpeech
+corpus beside it is a real reading. Live cells and their table go to
 Private/live-battery and add the live measurements: the medians of time to first
 partial, final lag and finish time, trailing words lost and dropped buffers. The
 three fluid.nemotron-multilingual chunk tiers report no language list, so they
@@ -178,12 +189,14 @@ LIBRISPEECH_TAG = "en-US"
 LIBRISPEECH_SPLIT_ROWS = 2800
 LIBRISPEECH_SPLIT_SECONDS = int(5.4 * 3600)
 
-# The continuous-speech corpora tools/make-continuous-corpus.py builds from a
-# LibriSpeech split, named `librispeech-continuous-<split>`. English, like their
-# source. The size is the builder's default, for planning one not built yet:
-# 20 passages, each closed by the utterance that crosses a minute, which came
-# to 21.6 minutes from test-clean.
+# The continuous-speech corpora tools/make-continuous-corpus.py builds, named
+# after the split each is joined from: `librispeech-continuous-<split>`, English
+# like its source, and `fleurs-continuous-<directory>` for every other language.
+# The size is the builder's default, the same for both, for planning one not
+# built yet: 20 passages, each closed by the utterance that crosses a minute,
+# which came to 21.6 minutes from test-clean.
 CONTINUOUS_PREFIX = "librispeech-continuous-"
+CONTINUOUS_FLEURS_PREFIX = "fleurs-continuous-"
 MAKE_CONTINUOUS = os.path.join(REPO, "tools", "make-continuous-corpus.py")
 CONTINUOUS_ROWS = 20
 CONTINUOUS_SECONDS = 22 * 60
@@ -309,13 +322,56 @@ def continuous_split(name):
 
 
 def continuous_id(split):
-    """The battery id for the continuous corpus built from a split."""
+    """The battery id for the continuous corpus built from a LibriSpeech split."""
     return CONTINUOUS_PREFIX + split
 
 
-def is_continuous(fleurs_dir):
-    """Whether a resolved battery id names a continuous-speech corpus."""
+def is_continuous_librispeech(fleurs_dir):
+    """Whether a resolved battery id names a continuous corpus of LibriSpeech."""
     return continuous_split(fleurs_dir) is not None
+
+
+def continuous_remainder(name):
+    """What follows a continuous-corpus prefix, or None if there is none.
+
+    `fleurs-continuous-de_de` -> `de_de`, `continuous-de` -> `de`. The caller
+    resolves the remainder as a language in its own right; this only strips.
+    Call it after continuous_split, which claims the LibriSpeech spellings.
+    """
+    wanted = name.strip()
+    for prefix in (CONTINUOUS_FLEURS_PREFIX, "continuous-"):
+        if wanted.lower().replace("_", "-").startswith(prefix):
+            return wanted[len(prefix):]
+    return None
+
+
+def continuous_fleurs_id(fleurs_dir):
+    """The battery id for the continuous corpus built from a FLEURS directory."""
+    return CONTINUOUS_FLEURS_PREFIX + fleurs_dir
+
+
+def continuous_fleurs_dir(fleurs_dir):
+    """The FLEURS directory a continuous-FLEURS id is built from, or None."""
+    if not fleurs_dir.startswith(CONTINUOUS_FLEURS_PREFIX):
+        return None
+    return fleurs_dir[len(CONTINUOUS_FLEURS_PREFIX):] or None
+
+
+def is_continuous_fleurs(fleurs_dir):
+    """Whether a resolved battery id names a continuous corpus of FLEURS."""
+    return continuous_fleurs_dir(fleurs_dir) is not None
+
+
+def is_continuous(fleurs_dir):
+    """Whether a resolved battery id names a continuous-speech corpus, either kind.
+
+    The two share everything about how a corpus is stored and measured - built
+    passages of 16-bit PCM, sized from their own headers, built on demand - and
+    differ only in the source they are joined from and the language they score
+    as. Callers that care about the shared part ask this; the two that care
+    about the difference ask the specific one.
+    """
+    return is_continuous_librispeech(fleurs_dir) or is_continuous_fleurs(fleurs_dir)
 
 
 def corpus_tag(fleurs_dir):
@@ -325,8 +381,11 @@ def corpus_tag(fleurs_dir):
     all score as en-US. One function so rows_for, the planners, the runner and
     the summary cannot disagree about which.
     """
-    if is_librispeech(fleurs_dir) or is_continuous(fleurs_dir):
+    if is_librispeech(fleurs_dir) or is_continuous_librispeech(fleurs_dir):
         return LIBRISPEECH_TAG
+    source = continuous_fleurs_dir(fleurs_dir)
+    if source is not None:
+        return tag_for(source)
     return tag_for(fleurs_dir)
 
 
@@ -439,6 +498,29 @@ def resolve_language(name):
             return canonical, None
         return canonical, ("%s: continuous speech built from LibriSpeech %s; scoring it as "
                            "%s in English (%s)" % (name.strip(), split, canonical, LIBRISPEECH_TAG))
+    # Then the continuous corpora of FLEURS, which is every language but English.
+    # The remainder is resolved as a language in its own right, so
+    # `fleurs-continuous-de_de`, `continuous-de` and `continuous-de-DE` all
+    # arrive at the same corpus by the same rules as the plain split does.
+    remainder = continuous_remainder(name)
+    if remainder is not None:
+        directory, complaint = resolve_language(remainder)
+        if directory is None:
+            return None, complaint
+        if is_librispeech(directory):
+            # LibriSpeech's continuous corpus has its own spelling, which
+            # continuous_split claims above; this is a spelling of it that the
+            # FLEURS branch caught instead, so name the one that works.
+            return None, ("'%s' names a LibriSpeech split, whose continuous corpus is %s."
+                          % (name.strip(), continuous_id(librispeech_split(directory))))
+        if is_continuous(directory):
+            return None, ("'%s' asks for a continuous corpus of a corpus that is already "
+                          "one. Name the split it is built from." % name.strip())
+        canonical = continuous_fleurs_id(directory)
+        if name.strip().lower().replace("_", "-") == canonical.replace("_", "-"):
+            return canonical, None
+        return canonical, ("%s: continuous speech built from FLEURS %s; scoring it as %s "
+                           "in %s" % (name.strip(), directory, canonical, tag_for(directory)))
     # LibriSpeech before FLEURS: `test-clean` is not a FLEURS directory and
     # must not fall through to the "does not name a language" refusal.
     split = librispeech_split(name)
@@ -779,6 +861,10 @@ def usable_librispeech_manifest(corpus_dir, fleurs_dir, allow_fetch):
 
 
 def continuous_manifest_path(corpus_dir, fleurs_dir):
+    """Where the builder writes a continuous corpus: beside the split it joined."""
+    source = continuous_fleurs_dir(fleurs_dir)
+    if source is not None:
+        return os.path.join(corpus_dir, "fleurs", "continuous-" + source, "manifest.tsv")
     return os.path.join(corpus_dir, "LibriSpeech", "continuous-" + continuous_split(fleurs_dir),
                         "manifest.tsv")
 
@@ -809,13 +895,15 @@ def continuous_audio(corpus_dir, fleurs_dir):
 def usable_continuous_manifest(corpus_dir, fleurs_dir, allow_fetch):
     """The manifest for a continuous-speech corpus, building it if that is allowed.
 
-    Building needs the LibriSpeech split it is made from, which is fetched the
-    usual way first. What is built is the builder's default corpus - 20 passages
-    of about a minute, from different speakers. A different size is made by
-    running tools/make-continuous-corpus.py directly, and is then read as it is.
-    The builder decodes with this repository's build/speech; decoding does not
-    differ between builds, so a run with --speech elsewhere still gets the same
-    passages.
+    Building needs the split it is made from - a LibriSpeech split for the
+    English corpus, a FLEURS directory for every other language - which is
+    fetched the usual way first. What is built is the builder's default corpus,
+    20 passages of about a minute: of one reader each from LibriSpeech, of
+    consecutive distinct sentences from FLEURS, which has no readings in it. A
+    different size is made by running tools/make-continuous-corpus.py directly,
+    and is then read as it is. The builder decodes with this repository's
+    build/speech; decoding does not differ between builds, so a run with
+    --speech elsewhere still gets the same passages.
 
     Building is not fetching: with the split already on disk it downloads
     nothing, so --no-fetch still builds, and declines only the download of a
@@ -824,13 +912,17 @@ def usable_continuous_manifest(corpus_dir, fleurs_dir, allow_fetch):
     manifest = continuous_manifest_path(corpus_dir, fleurs_dir)
     if os.path.exists(manifest) and os.path.getsize(manifest) > 0:
         return manifest
-    split = continuous_split(fleurs_dir)
-    if usable_librispeech_manifest(corpus_dir, librispeech_id(split), allow_fetch) is None:
+    source = continuous_fleurs_dir(fleurs_dir)
+    if source is None:
+        source = continuous_split(fleurs_dir)
+        if usable_librispeech_manifest(corpus_dir, librispeech_id(source), allow_fetch) is None:
+            return None
+    elif usable_manifest(corpus_dir, source, allow_fetch) is None:
         return None
     print("-- building %s with tools/make-continuous-corpus.py" % fleurs_dir)
     environment = dict(os.environ, SPEECH_CORPUS_DIR=corpus_dir)
     try:
-        done = subprocess.run([sys.executable, MAKE_CONTINUOUS, "--split", split],
+        done = subprocess.run([sys.executable, MAKE_CONTINUOUS, "--split", source],
                               stdin=subprocess.DEVNULL, env=environment)
     except OSError as error:
         print("!! could not run %s: %s" % (MAKE_CONTINUOUS, error))
