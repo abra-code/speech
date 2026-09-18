@@ -15,7 +15,10 @@ usable live, and only the first is accuracy:
 - **Finals behind** - the median, and the worst, delay between a sentence
   ending and its final text.
 - **Tail lost** - words missing from the end of a recording. Anything but
-  "none" is a defect in the row's own windowing, not a speed problem.
+  "none" is a defect in the row's own windowing, not a speed problem. It is
+  counted on whitespace, so it reads "-" for a language that writes none:
+  there the count would see one token per sentence and report a catastrophe
+  that the character error rate over the same audio contradicts.
 
 Throughput is deliberately absent: at a pace of 1.0 every row runs at real
 time by construction, and a row too slow to keep up shows it as dropped
@@ -30,7 +33,7 @@ measured on a handful of them separates nothing.
 
 ## Provenance
 
-Machine Apple M5, macOS 26.6.2 / 26.7.0, measured 2026-09-13 to 2026-09-17, 18
+Machine Apple M5, macOS 26.6.2 / 26.7.0, measured 2026-09-13 to 2026-09-18, 29
 cells, from tools/live-cells.tsv.
 
 ## The rows, by corpus
@@ -42,23 +45,99 @@ Consecutive utterances of one chapter joined into minute-long passages
 judged on: a row that loses the tail of long speech loses it here and nowhere
 else.
 
-13 rows, ranked by WER.
+15 rows, ranked by WER.
+
+| # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `fluid.parakeet-unified@stream-640` | 20 | 26.6.2 | 1.80% | 1.25 s | 0.77 s | 2.46 s | none | 0.66 GB |
+| 2 | `ggml.parakeet-unified-en-0.6b@q8_0` | 20 | 26.6.2 | 1.89% | 2.29 s | 3.07 s | 3.83 s | none | 0.89 GB |
+| 3 | `fluid.parakeet-unified@stream-2080` | 20 | 26.6.2 | 1.92% | 2.15 s | 2.14 s | 3.07 s | none | 0.67 GB |
+| 4 | `fluid.parakeet-unified@stream-1120` | 20 | 26.6.2 | 1.96% | 1.76 s | 1.27 s | 3.04 s | none | 0.67 GB |
+| 5 | `fluid.parakeet-unified@stream-320` | 20 | 26.6.2 | 2.08% | 1.18 s | 0.75 s | 2.59 s | none | 0.66 GB |
+| 6 | `apple.transcriber` | 20 | 26.6.2 | 2.98% | 3.99 s | 3.88 s | 5.60 s | none | 0.02 GB |
+| 7 | `apple.transcriber` | 20 | 26.7.0 | 2.98% | 4.00 s | 3.80 s | 5.56 s | none | 0.02 GB |
+| 8 | `fluid.nemotron-multilingual@2240` | 20 | 26.6.2 | 3.01% | 2.31 s | 2.21 s | 3.52 s | 1 word | 0.66 GB |
+| 9 | `fluid.nemotron-multilingual@1120` | 20 | 26.6.2 | 3.14% | 1.19 s | 1.12 s | 2.75 s | 1 word | 0.65 GB |
+| 10 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 26.6.2 | 3.60% | 0.91 s | 34.40 s | 54.32 s | 1 word | 1.04 GB |
+| 11 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 26.6.2 | 3.91% | 0.89 s | 1.27 s | 54.33 s | 1 word | 0.78 GB |
+| 12 | `apple.dictation` | 20 | 26.6.2 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
+| 13 | `apple.dictation` | 20 | 26.7.0 | 7.64% | 1.12 s | 1.59 s | 2.21 s | none | 0.02 GB |
+| 14 | `fluid.parakeet-v3@int4` | 20 | 26.6.2 | 10.28% | - | 0.81 s | 11.95 s | 79 words | 0.41 GB |
+| 15 | `fluid.parakeet-v3@int8` | 20 | 26.6.2 | 18.69% | - | 1.27 s | 11.76 s | 318 words | 0.56 GB |
+
+### FLEURS German (de_DE), continuous
+
+Consecutive distinct FLEURS sentences joined into minute-long passages
+(tools/make-continuous-corpus.py). FLEURS is not a reading, so the voice
+changes from sentence to sentence; what the passage has in common with the
+LibriSpeech one is the thing being measured - a minute of speech with no cut
+edge for a session to find a boundary at.
+
+2 rows, ranked by WER.
 
 | # | Model | Recordings | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `fluid.parakeet-unified@stream-640` | 20 | 1.80% | 1.25 s | 0.77 s | 2.46 s | none | 0.66 GB |
-| 2 | `ggml.parakeet-unified-en-0.6b@q8_0` | 20 | 1.89% | 2.29 s | 3.07 s | 3.83 s | none | 0.89 GB |
-| 3 | `fluid.parakeet-unified@stream-2080` | 20 | 1.92% | 2.15 s | 2.14 s | 3.07 s | none | 0.67 GB |
-| 4 | `fluid.parakeet-unified@stream-1120` | 20 | 1.96% | 1.76 s | 1.27 s | 3.04 s | none | 0.67 GB |
-| 5 | `fluid.parakeet-unified@stream-320` | 20 | 2.08% | 1.18 s | 0.75 s | 2.59 s | none | 0.66 GB |
-| 6 | `apple.transcriber` | 20 | 2.98% | 3.99 s | 3.88 s | 5.60 s | none | 0.02 GB |
-| 7 | `fluid.nemotron-multilingual@2240` | 20 | 3.01% | 2.31 s | 2.21 s | 3.52 s | 1 word | 0.66 GB |
-| 8 | `fluid.nemotron-multilingual@1120` | 20 | 3.14% | 1.19 s | 1.12 s | 2.75 s | 1 word | 0.65 GB |
-| 9 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 3.60% | 0.91 s | 34.40 s | 54.32 s | 1 word | 1.04 GB |
-| 10 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 3.91% | 0.89 s | 1.27 s | 54.33 s | 1 word | 0.78 GB |
-| 11 | `apple.dictation` | 20 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
-| 12 | `fluid.parakeet-v3@int4` | 20 | 10.28% | - | 0.81 s | 11.95 s | 79 words | 0.41 GB |
-| 13 | `fluid.parakeet-v3@int8` | 20 | 18.69% | - | 1.27 s | 11.76 s | 318 words | 0.56 GB |
+| 1 | `apple.transcriber` | 20 | 10.67% | 11.74 s | 11.10 s | 13.84 s | 7 words | 0.03 GB |
+| 2 | `apple.dictation` | 20 | 21.00% | 2.78 s | 2.37 s | 4.84 s | 43 words | 0.03 GB |
+
+### FLEURS Spanish (es_419), continuous
+
+Consecutive distinct FLEURS sentences joined into minute-long passages
+(tools/make-continuous-corpus.py). FLEURS is not a reading, so the voice
+changes from sentence to sentence; what the passage has in common with the
+LibriSpeech one is the thing being measured - a minute of speech with no cut
+edge for a session to find a boundary at.
+
+2 rows, ranked by WER.
+
+| # | Model | Recordings | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `apple.transcriber` | 20 | 4.30% | 11.73 s | 10.15 s | 13.00 s | none | 0.02 GB |
+| 2 | `apple.dictation` | 20 | 18.43% | 2.07 s | 2.27 s | 2.52 s | 96 words | 0.02 GB |
+
+### FLEURS French (fr_FR), continuous
+
+Consecutive distinct FLEURS sentences joined into minute-long passages
+(tools/make-continuous-corpus.py). FLEURS is not a reading, so the voice
+changes from sentence to sentence; what the passage has in common with the
+LibriSpeech one is the thing being measured - a minute of speech with no cut
+edge for a session to find a boundary at.
+
+2 rows, ranked by WER.
+
+| # | Model | Recordings | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `apple.transcriber` | 20 | 8.07% | 11.74 s | 10.15 s | 13.31 s | none | 0.02 GB |
+| 2 | `apple.dictation` | 20 | 30.28% | 1.57 s | 2.22 s | 2.67 s | 73 words | 0.02 GB |
+
+### FLEURS Polish (pl_PL), continuous
+
+Consecutive distinct FLEURS sentences joined into minute-long passages
+(tools/make-continuous-corpus.py). FLEURS is not a reading, so the voice
+changes from sentence to sentence; what the passage has in common with the
+LibriSpeech one is the thing being measured - a minute of speech with no cut
+edge for a session to find a boundary at.
+
+1 row, ranked by WER.
+
+| # | Model | Recordings | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `apple.dictation` | 20 | 18.18% | 1.81 s | 2.48 s | 5.50 s | 16 words | 0.02 GB |
+
+### FLEURS Mandarin (cmn_Hans_CN), continuous
+
+Consecutive distinct FLEURS sentences joined into minute-long passages
+(tools/make-continuous-corpus.py). FLEURS is not a reading, so the voice
+changes from sentence to sentence; what the passage has in common with the
+LibriSpeech one is the thing being measured - a minute of speech with no cut
+edge for a session to find a boundary at.
+
+2 rows, ranked by CER.
+
+| # | Model | Recordings | CER | First text | Finals behind | Worst | Tail lost | Peak memory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `apple.transcriber` | 20 | 9.61% | 11.73 s | 11.27 s | 13.13 s | - | 0.02 GB |
+| 2 | `apple.dictation` | 20 | 23.81% | 2.52 s | 2.35 s | 5.66 s | - | 0.02 GB |
 
 ### FLEURS English (en_US)
 
@@ -88,10 +167,12 @@ One sentence per recording, as above.
 
 Two gaps, both from the cost of measuring at real time:
 
-- **Languages.** Only the streaming rows' English is a full battery. Polish
-  exists for the two rows a sweep passed through at their shipping setting, and
-  no other language has a live cell at all. A language with no row here is not
-  a language these rows fail at; it is a language nobody has measured live.
+- **Languages.** The two Apple rows are measured in six languages - five for
+  `apple.transcriber`, which does not claim Polish - because they are part of
+  macOS and a version of macOS stops being measurable once the Mac is upgraded.
+  Every other row has English, plus the Polish that two of them were swept
+  through at their shipping setting. A language with no row here is not a
+  language these rows fail at; it is a language nobody has measured live.
 - **Re-runs.** `ggml.nemotron-3.5-asr-streaming-0.6b`'s final lag was measured
   before the commit-freeze workaround this build carries (docs/live.md): its
   accuracy is unaffected and its lag figure is not what the shipping build

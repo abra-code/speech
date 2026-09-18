@@ -245,6 +245,37 @@ def base_language(tag):
     return tag.split("-")[0].lower() if tag else ""
 
 
+def unspaced(cell):
+    """Whether this cell's language writes no spaces between words.
+
+    Then the whitespace-tokenized counters mean nothing, for the same reason WER
+    does not: the scorer sees one token where the reader sees a sentence. WER has
+    CER to fall back on and `trailing_words_lost` has nothing, so it is published
+    as "-" rather than as a number that reads like a measurement.
+
+    Measured here on macOS 26.7, which is what the guard exists for:
+    apple.transcriber's Mandarin cell reported 3406 of 3662 reference words lost
+    off the ends of its recordings and all 20 rows ending short, with a CER of
+    9.61% over the same audio. Both cannot be true - a transcript missing 93% of
+    its tail cannot be 90% correct by character - and it is the word count that
+    is wrong. FLEURS' Mandarin references mix unspaced runs with per-character
+    spaced ones, and the engine writes unspaced Mandarin, so the tail alignment
+    has nothing to align.
+
+    A cell that recorded no language tag falls back to the CORPORA table, which
+    is the same fallback metric_of makes for the same cell: the two answer one
+    question about one language, and letting them disagree would rank a corpus
+    on CER while publishing a word count for it.
+    """
+    language = base_language(cell.get("language", ""))
+    if language:
+        return language in UNSPACED
+    for cid, _title, corpus_language, _head in CORPORA:
+        if cid == cell.get("corpus"):
+            return corpus_language in UNSPACED
+    return False
+
+
 def metric_of(corpus, cells=()):
     """WER, or CER where the language writes no spaces between words.
 
@@ -328,7 +359,7 @@ def accuracy_table(cells, metric):
             render_seconds(seconds(cell, "median_first_partial_seconds")),
             render_seconds(seconds(cell, "median_final_lag_seconds")),
             render_seconds(seconds(cell, "worst_final_lag_seconds")),
-            render_words(lost),
+            "-" if unspaced(cell) else render_words(lost),
             "%.2f GB" % (memory / 1e9) if memory else "-",
         ]
         if len(versions) > 1:
@@ -364,7 +395,10 @@ usable live, and only the first is accuracy:
 - **Finals behind** - the median, and the worst, delay between a sentence
   ending and its final text.
 - **Tail lost** - words missing from the end of a recording. Anything but
-  "none" is a defect in the row's own windowing, not a speed problem.
+  "none" is a defect in the row's own windowing, not a speed problem. It is
+  counted on whitespace, so it reads "-" for a language that writes none:
+  there the count would see one token per sentence and report a catastrophe
+  that the character error rate over the same audio contradicts.
 
 Throughput is deliberately absent: at a pace of 1.0 every row runs at real
 time by construction, and a row too slow to keep up shows it as dropped
@@ -381,10 +415,12 @@ TAIL = """## What is missing, and why
 
 Two gaps, both from the cost of measuring at real time:
 
-- **Languages.** Only the streaming rows' English is a full battery. Polish
-  exists for the two rows a sweep passed through at their shipping setting, and
-  no other language has a live cell at all. A language with no row here is not
-  a language these rows fail at; it is a language nobody has measured live.
+- **Languages.** The two Apple rows are measured in six languages - five for
+  `apple.transcriber`, which does not claim Polish - because they are part of
+  macOS and a version of macOS stops being measurable once the Mac is upgraded.
+  Every other row has English, plus the Polish that two of them were swept
+  through at their shipping setting. A language with no row here is not a
+  language these rows fail at; it is a language nobody has measured live.
 - **Re-runs.** `ggml.nemotron-3.5-asr-streaming-0.6b`'s final lag was measured
   before the commit-freeze workaround this build carries (docs/live.md): its
   accuracy is unaffected and its lag figure is not what the shipping build
@@ -426,7 +462,11 @@ def tsv_document(cells, prov):
              "# that emits no partials, final_lag_* is how far finals run",
              "# behind the speaker (empty when no final could be timed), and",
              "# trailing_words_lost is words missing from the end of a",
-             "# recording - a defect, not a delay.",
+             "# recording - a defect, not a delay. It is whitespace",
+             "# tokenized, so it is empty for a language that writes no",
+             "# spaces between words, where it would count one token per",
+             "# sentence and read as a catastrophe the character error",
+             "# rate over the same audio contradicts.",
              "#",
              "# Coverage is thin on purpose: real-time measurement costs the",
              "# length of the audio. Read a missing (model, language) as not",
@@ -451,7 +491,7 @@ def tsv_document(cells, prov):
             "" if lag is None else "%.2f" % lag,
             "" if worst is None else "%.2f" % worst,
             "%.2f" % (seconds(cell, "median_finish_seconds") or 0),
-            str(int(live.get("trailing_words_lost", 0) or 0)),
+            "" if unspaced(cell) else str(int(live.get("trailing_words_lost", 0) or 0)),
             str(int(live.get("rows_without_partials", 0) or 0)),
             str(int(live.get("dropped_buffers", 0) or 0)),
             cell["date"] or "-",
