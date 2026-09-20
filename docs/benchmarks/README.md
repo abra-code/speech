@@ -34,11 +34,11 @@ property of the model and the speed as a property of this machine.
 | --- | --- |
 | Machine | Apple M5 |
 | Memory | 25.77 GB |
-| macOS | 26.6.2 / 26.7.0 |
-| Measured | 2026-09-08 to 2026-09-16 |
-| Cells | 207 model-corpus pairs |
+| macOS | 26.6.2 / 26.7.0 / 27.0.0 |
+| Measured | 2026-09-08 to 2026-09-19 |
+| Cells | 222 model-corpus pairs |
 | `speech` | speech 0.1.0 |
-| Apple Speech | bundled with macOS 26.7.0 |
+| Apple Speech | bundled with macOS 27.0.0 |
 | FluidAudio | 0.15.6 |
 | transcribe.cpp | 0.2.3 |
 | mlx-audio-swift | 0.1.3 |
@@ -49,24 +49,25 @@ are not: `speech eval` does not write them into a summary, so they are read
 from the build in this tree and are correct as long as the report is generated
 from the tree that ran the battery.
 
-This battery spans macOS 26.6.2 and 26.7.0. Apple's two rows appear once for
-each version they were measured on, because they are part of the operating
-system - except where a newer version made exactly the same errors as the one
-before it, which shows only the newer row. Every other row is shown from the
-newest version it was measured on, and measurements.tsv holds every cell.
+This battery spans macOS 26.6.2, 26.7.0 and 27.0.0. Apple's two rows appear
+once for each version they were measured on, because they are part of the
+operating system - except where a newer version made exactly the same errors as
+the one before it, which shows only the newer row. Every other row is shown
+from the newest version it was measured on, and measurements.tsv holds every
+cell.
 
 ## The corpora
 
 | Corpus | Rows | Audio | Reference words | Models scored |
 | --- | --- | --- | --- | --- |
-| en_us | 647 | 1.8 h | 14,465 | 33 |
-| de_de | 862 | 3.2 h | 18,703 | 21 |
-| es_419 | 908 | 3.1 h | 23,314 | 21 |
-| fr_fr | 676 | 2.0 h | 17,075 | 21 |
+| en_us | 647 | 1.8 h | 14,465 | 35 |
+| de_de | 862 | 3.2 h | 18,703 | 22 |
+| es_419 | 908 | 3.1 h | 23,314 | 22 |
+| fr_fr | 676 | 2.0 h | 17,075 | 22 |
 | pl_pl | 758 | 2.1 h | 14,380 | 20 |
-| cmn_hans_cn | 945 | 3.1 h | 32,925 | 13 |
-| librispeech-test-clean | 2620 | 5.5 h | 52,576 | 32 |
-| librispeech-test-other | 2939 | 5.4 h | 52,343 | 32 |
+| cmn_hans_cn | 945 | 3.1 h | 32,925 | 14 |
+| librispeech-test-clean | 2620 | 5.5 h | 52,576 | 34 |
+| librispeech-test-other | 2939 | 5.4 h | 52,343 | 34 |
 
 FLEURS - Few-shot Learning Evaluation of Universal Representations of Speech,
 published under the Creative Commons Attribution 4.0 license - is read speech
@@ -92,7 +93,7 @@ splits are ranked apart and never pooled.
 8 corpora, 4 different models on top. `ggml.qwen3-asr-1.7b@q8_0` takes 5, and
 the remaining 3 go to 3 other rows. Both English corpora are read speech, and
 `ggml.granite-speech-4.1-2b-nar@q8_0` is first on librispeech-test-clean and
-20th of 33 on en_us - which is a fact about how alike a model's training data
+20th of 35 on en_us - which is a fact about how alike a model's training data
 and a test set are, not a tie-break. That spread is why all of them are
 published instead of a recommendation.
 

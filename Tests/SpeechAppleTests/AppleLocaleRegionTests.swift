@@ -55,4 +55,54 @@ struct AppleLocaleRegionTests {
             "ar", supportedLocales: { list }, supportedLocale: applePick)
         #expect(arabic?.identifier == "ar_SA")
     }
+
+    // Apple lists four Spanish locales and answers "es-419" with an arbitrary
+    // one of them, redrawn on each process launch. The draw is worth 6.5 WER
+    // points, so Spanish is pinned rather than left to chance.
+    let spanish = ["es_CL", "es_ES", "es_MX", "es_US", "it_IT", "pt_BR"]
+        .map(Locale.init(identifier:))
+
+    @Test("a bare es and es-419 pin to es_MX, a named region is taken as asked")
+    func spanishPin() {
+        #expect(AppleSpeech.pinned("es", in: spanish)?.identifier == "es_MX")
+        #expect(AppleSpeech.pinned("es-419", in: spanish)?.identifier == "es_MX")
+        #expect(AppleSpeech.pinned("es_419", in: spanish)?.identifier == "es_MX")
+        #expect(AppleSpeech.pinned("es-ES", in: spanish) == nil)
+        #expect(AppleSpeech.pinned("es-CL", in: spanish) == nil)
+        #expect(AppleSpeech.pinned("it", in: spanish) == nil)
+    }
+
+    @Test("the pin yields to a module that does not have es_MX")
+    func spanishPinNeedsTheLocale() {
+        let withoutMexico = ["es_ES", "es_US"].map(Locale.init(identifier:))
+        #expect(AppleSpeech.pinned("es-419", in: withoutMexico) == nil)
+    }
+
+    @Test("resolve and install-locale both take the pin, whatever Apple answers")
+    func spanishResolves() async throws {
+        guard #available(macOS 26, *) else { return }
+        let list = spanish
+        // Apple's lookup at its worst: a different Spanish locale every call.
+        var draws = ["es_US", "es_CL", "es_ES", "es_MX"].makeIterator()
+        let applePick: (Locale) async -> Locale? = { locale in
+            guard Locale.Language(identifier: locale.identifier).languageCode?.identifier == "es" else {
+                return nil
+            }
+            return Locale(identifier: draws.next() ?? "es_CL")
+        }
+        for tag in ["es", "es-419"] {
+            let resolved = try await AppleLocaleInstaller.resolve(
+                requested: tag, moduleName: "DictationTranscriber", languages: ["es"],
+                supportedLocales: { list }, supportedLocale: applePick)
+            #expect(resolved.identifier == "es_MX")
+            let installed = await AppleLocaleInstaller.supports(
+                tag, supportedLocales: { list }, supportedLocale: applePick)
+            #expect(installed?.identifier == "es_MX")
+        }
+        // A named region Apple ships is still taken as asked.
+        let spain = try await AppleLocaleInstaller.resolve(
+            requested: "es-ES", moduleName: "DictationTranscriber", languages: ["es"],
+            supportedLocales: { list }, supportedLocale: { _ in Locale(identifier: "es_ES") })
+        #expect(spain.identifier == "es_ES")
+    }
 }

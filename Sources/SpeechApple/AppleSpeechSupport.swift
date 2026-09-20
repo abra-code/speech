@@ -93,13 +93,41 @@ public enum AppleSpeech {
         #endif
     }
 
+    /// Locales this project pins for Apple's engines when the request names no
+    /// region, or a region Apple does not ship.
+    ///
+    /// Spanish is why this exists. Apple lists es_CL, es_ES, es_MX and es_US,
+    /// none of which matches "es-419", and `supportedLocale(equivalentTo:)`
+    /// then answers with an arbitrary one of them - a different draw on each
+    /// process launch, measured on macOS 26.6.2 and 27.0 alike. Twelve launches
+    /// on one Mac answered es_US five times, es_CL four, es_ES twice and es_MX
+    /// once, and the draw is worth 6.5 WER points on continuous speech, because
+    /// es_ES drops the last words of an utterance and es_MX does not.
+    ///
+    /// The Spanish this project measures and ships for is Latin American, so an
+    /// unspecified "es" and an "es-419" both pin to es_MX: deliberately, not by
+    /// CLDR's main region (es_ES) and not by chance. A request that names a
+    /// region Apple does list - "es-ES", "es-CL" - is still taken as asked.
+    static let pinnedLocales: [String: String] = ["es": "es_MX"]
+
+    /// The pinned locale for a tag, when there is one and this module has it.
+    static func pinned(_ tag: String, in available: [Locale]) -> Locale? {
+        guard let wanted = pinnedLocales[Language.primarySubtag(tag)] else { return nil }
+        // Only for a bare language or a region Apple has no locale for. "419"
+        // is the one such region in play; any other is taken as asked, and a
+        // region Apple does ship resolves to itself.
+        let region = Language.region(tag)
+        guard region == nil || region == "419" else { return nil }
+        return available.first { $0.identifier == wanted }
+    }
+
     /// A tag with no region, onto the module's locale for the language's main
     /// region: "it" is it_IT and never it_CH, "nl" is nl_NL and never nl_BE.
     /// nil when the tag names a region, or when the module has no locale for
     /// the main region (Arabic has only ar_SA, and "yue" has no yue_HK), and
     /// then `supportedLocale(equivalentTo:)` decides as before.
     ///
-    /// Asked first because Apple's own answer for a bare language is whichever
+    /// Asked before Apple's lookup because its answer for a bare language is whichever
     /// variant it lists first, and that changes: on macOS 26.6.2 it gave it_CH
     /// for "it" and nl_BE for dictation's "nl", where earlier the same macOS
     /// had given de_AT for "de" and fr_CA for "fr".
@@ -185,6 +213,9 @@ enum AppleLocaleInstaller {
     ) async throws -> Locale {
         let identifier = Language.canonical(requested ?? "en-US")
         let available = await supportedLocales()
+        if let pin = AppleSpeech.pinned(identifier, in: available) {
+            return pin
+        }
         if let main = AppleSpeech.mainRegional(identifier, in: available) {
             return main
         }
@@ -213,6 +244,10 @@ enum AppleLocaleInstaller {
         supportedLocale: (Locale) async -> Locale?
     ) async -> Locale? {
         let available = await supportedLocales()
+        // install-locale has to install what a run will actually use.
+        if let pin = AppleSpeech.pinned(tag, in: available) {
+            return pin
+        }
         if let main = AppleSpeech.mainRegional(tag, in: available) {
             return main
         }

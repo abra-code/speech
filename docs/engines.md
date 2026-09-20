@@ -43,8 +43,12 @@ beyond its locale asset, ANE-resident, and state of the art on clean English
 read speech. This is the baseline every other catalog row has to beat in some
 language, or beat on a capability, to be worth shipping at all.
 
-- 30 locales in 10 languages on macOS 26.6.2: de, en, es, fr, it, ja, ko, pt,
-  yue, zh.
+- 45 locales in 25 languages on macOS 27.0: the 10 of macOS 26.6.2 - de, en,
+  es, fr, it, ja, ko, pt, yue, zh - plus 15 Indian languages macOS 27 added:
+  bn, gu, hi, kn, ks, mai, ml, mr, ne, or, pa, ta, te, ur and a `mul_IN`
+  multilingual model. The list `speech` prints is still the macOS 26.6.2 one
+  (`AppleSpeech.transcriberLanguages`), so the new languages work when asked
+  for but are not advertised.
 - Word timings and confidences.
 - **No custom vocabulary.** SpeechTranscriber ignores contextual strings
   entirely - confirmed by an Apple engineer in developer forum thread 801877 -
@@ -91,10 +95,21 @@ is `pt_BR`, `zh` is `zh_CN`. The main region comes from CLDR's likely subtags
 `supportedLocale(equivalentTo:)` picks whichever variant it lists first, and
 that changes - it gave `it_CH` for `it` and `nl_BE` for dictation's `nl` on
 macOS 26.6.2, and earlier `de_AT` for `de` - so it decides only when there is
-no main-region locale: Arabic resolves to `ar_SA`, and `es-419`, which no Apple
-locale names, to `es_ES`. A tag with a region is taken as asked. Read
-`engine.ready.locale` - or the eval report's "Locale actually used" - to see
-which one a run really used.
+no main-region locale, as for Arabic (`ar_SA`).
+
+Spanish is pinned rather than resolved either way: a bare `es` and `es-419`
+both reach Apple's engines as `es_MX`. Apple lists es_CL, es_ES, es_MX and
+es_US, none of them matching `es-419`, and its own lookup answers with an
+arbitrary one of them - fixed within a process, redrawn on the next launch, on
+macOS 26.6.2 and 27.0 alike. That draw is worth 6.5 WER points on continuous
+speech, because es_ES drops the last words of an utterance where es_MX does
+not, so leaving it to chance would make a Spanish measurement unrepeatable.
+The Spanish this project measures and ships for is Latin American, which is
+why the pin is es_MX and not CLDR's es_ES. A tag naming a region Apple does
+list - `es-ES`, `es-CL` - is taken as asked.
+
+Read `engine.ready.locale` - or the eval report's "Locale actually used" - to
+see which one a run really used.
 
 The same rule picks among a ggml or MLX model's own regional spellings
 (`Language.match`): a bare `es` finds `es-ES` in Nemotron's list, which names
