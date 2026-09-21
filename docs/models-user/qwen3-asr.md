@@ -12,7 +12,7 @@ Alibaba's Qwen3-ASR, which pairs a speech model with a language model. The most 
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. Measured on read speech in the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset; your own recordings can differ.
 
 | | Qwen3-ASR | Built into macOS |
 | --- | --- | --- |

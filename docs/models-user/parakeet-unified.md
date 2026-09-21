@@ -16,7 +16,7 @@ English only. It takes no language setting at all.
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. Read sentences come from the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset, audiobooks from the [LibriSpeech](https://openslr.org/12/) test-clean split; your own recordings can differ.
 
 | | Parakeet Unified | Built into macOS |
 | --- | --- | --- |

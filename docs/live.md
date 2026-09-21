@@ -336,9 +336,9 @@ throughout - so a full stop is almost always in the *middle* of what just
 arrived. Commits therefore accumulate and a segment closes at each complete
 sentence inside the pending text, at a 15-second backstop, or at the end of the
 stream. Sentence end times are interpolated by character fraction across the
-committed span, which is an estimate and is named as one in the code. **Stage
-4.3's voice activity detection replaces all of this**: utterance boundaries
-belong to the audio, not to the text.
+committed span, which is an estimate and is named as one in the code. **Voice
+activity detection replaces all of this**: utterance boundaries belong to the
+audio, not to the text.
 
 Two of the seven built-in ggml families have a streaming decoder (Granite Speech, added later, has none), and which two matters:
 
@@ -578,8 +578,8 @@ timings that are there are real - the detokenizer renders each mark as a space,
 so the words line up with the text exactly as they do in English.
 
 Read the word list in those languages as "where the tokenizer changed its mind",
-not as words. Stage 4.3's VAD is what will give those rows boundaries taken from
-the audio.
+not as words. Voice activity detection is what will give those rows boundaries
+taken from the audio.
 
 **One live session at a time, per engine.** This row's session shares the
 manager the engine already loaded rather than building a second one - that
@@ -673,8 +673,8 @@ The max-lag column is worth reading separately, because it is not the encoder's
 latency at all. A final is published when the sentence rule finds a boundary, so
 a dropped sentence means a missed boundary and text held for seven seconds. On
 single-sentence rows the lag is about one chunk; on continuous speech it is
-whatever the segmentation does. That is the argument for stage 4.3's VAD in one
-number.
+whatever the segmentation does. That is the argument for voice activity
+detection in one number.
 
 **One live session at a time, per engine**, the same contract the Nemotron row
 carries and for the same reason: the session shares the manager the engine

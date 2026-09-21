@@ -16,7 +16,7 @@ English in practice. The models also list French, German, Portuguese, Spanish an
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better. Two English test sets here, because they disagree.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. Two English test sets here, because they disagree: audiobooks from the [LibriSpeech](https://openslr.org/12/) test-clean split, and read sentences from the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset.
 
 | | Granite | Parakeet Unified | Built into macOS |
 | --- | --- | --- | --- |

@@ -17,7 +17,7 @@ Croatian, Czech, Polish, Russian, Slovak and Ukrainian are covered by this engin
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better. Measured on read speech; your own recordings can differ.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. Measured on read speech in the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset; your own recordings can differ.
 
 | | This engine | Apple long-form | Best downloadable model |
 | --- | --- | --- | --- |

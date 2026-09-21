@@ -216,8 +216,8 @@ which is a very different thing from Parakeet's sentence-level alignment even
 though both arrive through the same field.
 
 `peak_memory_gb` is MLX's own opinion and is recorded rather than trusted:
-`peak_memory_bytes` in `speech` is this project's instrument, and stage 1 spent
-a day learning what an inherited memory number is worth. It is omitted entirely
+`peak_memory_bytes` in `speech` is this project's instrument, and a day went
+into learning what an inherited memory number is worth. It is omitted entirely
 when the model reports nothing - Parakeet reports 0.0, and zero gigabytes is not
 a measurement.
 

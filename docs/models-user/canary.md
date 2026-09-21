@@ -12,7 +12,7 @@ NVIDIA's Canary, covering 25 European languages. The best all-round accuracy mea
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. Measured on read speech in the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset; your own recordings can differ.
 
 | | Canary | Built into macOS |
 | --- | --- | --- |

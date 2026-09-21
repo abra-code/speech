@@ -15,7 +15,7 @@ The three builds differ slightly: the FluidAudio (Core ML) one adds Belarusian, 
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better. Measured on read speech; your own recordings can differ.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. Measured on read speech in the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset; your own recordings can differ.
 
 | | Parakeet v3 | Built into macOS |
 | --- | --- | --- |

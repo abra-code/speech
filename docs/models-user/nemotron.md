@@ -16,7 +16,7 @@ About 30, and it works out which one is being spoken on its own.
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better. These come from transcribing finished recordings.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. These come from transcribing finished recordings of read speech in the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset; your own recordings can differ.
 
 | | Nemotron | Built into macOS |
 | --- | --- | --- |

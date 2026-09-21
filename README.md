@@ -10,12 +10,12 @@ CER, real-time factor and peak memory against a reference corpus - and every
 model it later offers has to earn its place against Apple's built-in engines,
 which are free, already installed, and better than most people expect.
 
-Stage 4 of the development plan is complete. The Apple engines, the FluidAudio,
-transcribe.cpp and MLX engines, the model store, the inventory, the scorer, the
-decoder, the event protocol, the evaluation harness, live microphone capture,
-live sessions for every row that can stream and voice-activity segmentation are
-all in place. Speech.app is stage 5, and post-processing, diarization and release
-are stage 6.
+The Apple engines, the FluidAudio, transcribe.cpp and MLX engines, the model
+store, the inventory, the scorer, the decoder, the event protocol, the
+evaluation harness, live microphone capture, live sessions for every row that
+can stream and voice-activity segmentation are all in place. Speech.app is
+built on this tool and ships separately. Post-processing and diarization are
+not here yet.
 
 ## Build
 
@@ -84,8 +84,8 @@ here, and 3 when a model is not installed.
 | `export <json>` | Convert a saved transcript to another format without re-transcribing |
 | `decode <media>` | Write the 16 kHz mono wav every engine would receive |
 
-`notices` is defined by the plan and arrives in a later stage; it refuses with a
-reason rather than pretending not to exist.
+`notices` is not implemented yet; it refuses with a reason rather than
+pretending not to exist.
 
 Global options: `--json` (JSONL events on stdout, see [docs/protocol.md](docs/protocol.md)),
 `--models-dir <path>`, `--log <path>`, `--verbose`.
@@ -119,11 +119,11 @@ A manifest is a UTF-8 TSV with no header:
 
     audio_path <TAB> reference_text [<TAB> language]
 
-`tools/fetch-fleurs.sh pl_pl en_us de_de` downloads FLEURS test splits
-(CC-BY-4.0, no account needed) and writes a manifest for each.
+`tools/fetch-fleurs.sh pl_pl en_us de_de` downloads [FLEURS](https://huggingface.co/datasets/google/fleurs)
+test splits (CC-BY-4.0, no account needed) and writes a manifest for each.
 `tools/make-manifest.sh <folder>` pairs recordings with same-basename `.txt`
-references. `tools/fetch-librispeech.sh` downloads the LibriSpeech test-clean
-and test-other splits (openslr.org/12, CC-BY-4.0, about 350 MB each) into
+references. `tools/fetch-librispeech.sh` downloads the [LibriSpeech](https://openslr.org/12/)
+test-clean and test-other splits (CC-BY-4.0, about 350 MB each) into
 $SPEECH_CORPUS_DIR/LibriSpeech and writes a manifest for each. Public sets
 rank models; your own recordings decide.
 
@@ -182,7 +182,7 @@ See [docs/engines.md](docs/engines.md) for the capability flags and
 [docs/catalog.md](docs/catalog.md) for the inventory; `speech catalog` prints it.
 Four engine families: the two Apple modules (`apple.transcriber`,
 `apple.dictation`; macOS 26 and up), thirteen FluidAudio CoreML rows (`fluid.*`),
-thirteen GGUF rows through transcribe.cpp (`ggml.*`), and five MLX rows
+twenty-one GGUF rows through transcribe.cpp (`ggml.*`), and five MLX rows
 (`mlx.*`). The first three are compiled in; the MLX rows run in a separate
 `speech-mlx` process and are the one family a build can be missing, which
 [docs/mlx-helper.md](docs/mlx-helper.md) specifies.

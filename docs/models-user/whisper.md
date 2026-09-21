@@ -16,7 +16,7 @@ About 99, which in practice means nearly every language with a written standard.
 
 ## Word Error Rate (WER)
 
-Word error rate (WER) is the share of words you would have to fix, so lower is better.
+Word error rate (WER) is the share of words you would have to fix, so lower is better. Measured on read speech in the [FLEURS](https://huggingface.co/datasets/google/fleurs) dataset; your own recordings can differ.
 
 | | Whisper | Built into macOS |
 | --- | --- | --- |

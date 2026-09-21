@@ -124,9 +124,8 @@ a drift gets noticed.
 
 ## `fluid.*` - FluidAudio 0.15.6, CoreML on the Neural Engine
 
-Shipped in stage 1. NVIDIA's Parakeet, Canary and Nemotron models as compiled
-CoreML packages, downloaded from FluidInference on Hugging Face into the tool's
-own model store.
+NVIDIA's Parakeet, Canary and Nemotron models as compiled CoreML packages,
+downloaded from FluidInference on Hugging Face into the tool's own model store.
 
 The distinguishing property is memory. These rows keep most of their cost on the
 Neural Engine rather than in process footprint, so peak RSS cannot see it and
@@ -202,8 +201,8 @@ two different models.
 
 ## `ggml.*` - transcribe.cpp 0.2.3, ggml on Metal
 
-Shipped in stage 2. GGUF weights from handy-computer on Hugging Face, run
-through a vendored Swift wrapper over an xcframework.
+GGUF weights from handy-computer on Hugging Face, run through a vendored Swift
+wrapper over an xcframework.
 
 That xcframework is built here rather than downloaded. Two defects this engine
 hits - the streaming commit freeze in `docs/live.md` and the Metal
@@ -227,10 +226,10 @@ accuracy belong to a machine, an OS and a set of dependency versions, and have
 to be measured where they are going to be used.
 
 Two things this engine does that no other does. It reads every capability fact
-out of the GGUF rather than from a model card, which corrected four assumptions
-in stage 2 - Canary has no timestamps and declares a 400 second ceiling, Nemotron
-does identify its own language, Qwen3-ASR declares about 87 minutes, and
-Parakeet v3 reports 25 languages where the CoreML build advertises 28. And it
+out of the GGUF rather than from a model card, which corrected four
+assumptions - Canary has no timestamps and declares a 400 second ceiling,
+Nemotron does identify its own language, Qwen3-ASR declares about 87 minutes,
+and Parakeet v3 reports 25 languages where the CoreML build advertises 28. And it
 cuts every recording into pieces at local energy minima, stitching the
 transcripts back with offset timestamps.
 
@@ -286,10 +285,10 @@ embeds both - along with `speech-catalog/`, the built-in model catalog, which
 
 ## `mlx.*` - mlx-audio-swift 0.1.3 on mlx-swift 0.31.6, Metal, in another process
 
-Shipped in stage 4B. Safetensors checkpoints from mlx-community on Hugging Face,
-run through `speech-mlx`: a separate binary that turns PCM into spans and does
-nothing else. It does not reach the network, decode a container, read a manifest
-or know that a catalog exists, because `speech` already has all of that.
+Safetensors checkpoints from mlx-community on Hugging Face, run through
+`speech-mlx`: a separate binary that turns PCM into spans and does nothing
+else. It does not reach the network, decode a container, read a manifest or
+know that a catalog exists, because `speech` already has all of that.
 
 The out-of-process split is the distinguishing property and it is not tidiness.
 mlx-swift compiles its Metal kernels into a resource bundle that has to travel
@@ -317,18 +316,18 @@ accepts a custom vocabulary.
 
 Memory is the third shape in this catalog. `peak_memory_bytes` for an `mlx` row
 is this process plus the helper's own peak footprint, because both are resident
-at once and the model is in the second one. Measured in stage 4B, every twin
-landed between 3.0 and 4.1 GB whatever the model was, so the premium over the
-equivalent `ggml` row is largest where the model is smallest: Parakeet v3 pays
-0.98 to 1.00 GB through ggml against 3.93 GB here, near four times, while
-Qwen3-ASR 1.7B at 8 bits moves only from 3.67 to between 3.89 and 4.08 GB. The
-Parakeet twins agreed on accuracy to within four hundredths of a point across
-English, Polish and German.
+at once and the model is in the second one. Every twin landed between 3.0 and
+4.1 GB whatever the model was, so the premium over the equivalent `ggml` row is
+largest where the model is smallest: Parakeet v3 pays 0.98 to 1.00 GB through
+ggml against 3.93 GB here, near four times, while Qwen3-ASR 1.7B at 8 bits
+moves only from 3.67 to between 3.89 and 4.08 GB. The Parakeet twins agreed on
+accuracy to within four hundredths of a point across English, Polish and
+German.
 
-That is the fact worth carrying away from stage 4B: no `mlx` row beat its `ggml`
-twin on both accuracy and memory, and the one place MLX won anything was German
-on Whisper turbo, 4.54 against 5.07, bought with a third of the speed and three
-times the memory. The rows are here as an instrument, not as a recommendation.
+That is the fact worth carrying away: no `mlx` row beat its `ggml` twin on both
+accuracy and memory, and the one place MLX won anything was German on Whisper
+turbo, 4.54 against 5.07, bought with a third of the speed and three times the
+memory. The rows are here as an instrument, not as a recommendation.
 
 Installing a Qwen3-ASR row is not quite finished when the download is. Loading
 one synthesizes a `tokenizer.json` from `vocab.json` and `merges.txt` when the
@@ -394,7 +393,7 @@ copy, so the runtime requirement is still in the binary.
 
 A build without those targets simply has no `fluid` or `ggml` entry in the
 engine registry and reports `unavailable` for those ids, rather than failing to
-link. That is what lets the stages land one engine at a time.
+link. That is what lets one engine land at a time.
 
 `speech-mlx` is built separately and carries the same macOS 15 target, but it is
 absent rather than unregistered when it was not built: the `mlx` rows stay in the
