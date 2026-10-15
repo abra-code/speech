@@ -1,11 +1,14 @@
-// HelperPinsTests.swift - the helper's version strings against the manifest
+// HelperPinsTests.swift - the helper's version strings against the resolution
 // that decides them.
 //
 // `speech-mlx` reports its dependency versions in the handshake, and those
 // numbers end up beside a measurement. Neither mlx-swift nor mlx-audio-swift
 // exposes a runtime version, so the helper carries literals - and a literal
-// that drifts from the pin is worse than no version at all, because it is a
-// claim about which library produced a number.
+// that drifts from the resolved version is worse than no version at all,
+// because it is a claim about which library produced a number. project.yml
+// declares ranges, so the version a build used is the one in the project's
+// Package.resolved; build-speech-mlx.sh's update step copies it into the
+// literals.
 //
 // The same shape as `packagePinMatchesLiteral` for FluidAudio, and here for the
 // same reason. It lives in this test target rather than the helper's project
@@ -24,21 +27,33 @@ struct HelperPinsTests {
             .deletingLastPathComponent()   // repository root
     }
 
-    /// `exactVersion: 0.1.3` under a named package in project.yml.
-    private func pin(_ package: String, in spec: String) -> String? {
+    /// `from: 0.1.3` under a named package in project.yml: the floor of the
+    /// range, which is what the generated project has to carry.
+    private func floor(_ package: String, in spec: String) -> String? {
         guard let range = spec.range(of: "\n  \(package):\n") else { return nil }
         let rest = spec[range.upperBound...]
         for line in rest.split(separator: "\n", omittingEmptySubsequences: false) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("exactVersion:") {
-                return trimmed.replacingOccurrences(of: "exactVersion:", with: "")
+            if trimmed.hasPrefix("from:") {
+                return trimmed.replacingOccurrences(of: "from:", with: "")
                     .trimmingCharacters(in: .whitespaces)
             }
             // Stop at the next package or the next top-level key, so a missing
-            // exactVersion reads as absent rather than as the next entry's.
+            // floor reads as absent rather than as the next entry's.
             if !line.hasPrefix("    ") && !trimmed.isEmpty { break }
         }
         return nil
+    }
+
+    /// The version a package identity is resolved to in the helper project's
+    /// Package.resolved.
+    private func resolved(_ identity: String) throws -> String? {
+        let file = repositoryRoot.appendingPathComponent(
+            "Helpers/speech-mlx/speech-mlx.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: file))
+        let pins = (json as? [String: Any])?["pins"] as? [[String: Any]] ?? []
+        let pin = pins.first { $0["identity"] as? String == identity }
+        return (pin?["state"] as? [String: Any])?["version"] as? String
     }
 
     /// `static let mlxSwift = "0.31.6"` in the helper's Version.swift.
@@ -49,22 +64,19 @@ struct HelperPinsTests {
         return String(rest[rest.startIndex..<end])
     }
 
-    @Test("the helper reports the versions project.yml pins")
+    @Test("the helper reports the versions Package.resolved pins")
     func helperPinsMatchTheProject() throws {
-        let spec = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Helpers/speech-mlx/project.yml"),
-            encoding: .utf8)
         let source = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Helpers/speech-mlx/Sources/speech-mlx/Version.swift"),
             encoding: .utf8)
 
         for (package, constant) in [("mlx-audio-swift", "mlxAudio"), ("mlx-swift", "mlxSwift")] {
-            let pinned = pin(package, in: spec)
+            let pinned = try resolved(package)
             let reported = literal(constant, in: source)
-            #expect(pinned != nil, "project.yml pins no exact version for \(package)")
+            #expect(pinned != nil, "Package.resolved pins no version for \(package)")
             #expect(reported != nil, "Version.swift has no literal for \(constant)")
-            let detail = "\(package): project.yml says \(pinned ?? "nothing"),"
+            let detail = "\(package): Package.resolved says \(pinned ?? "nothing"),"
                 + " the helper reports \(reported ?? "nothing")"
             #expect(pinned == reported, "\(detail)")
         }
@@ -109,15 +121,15 @@ struct HelperPinsTests {
 
         #expect(checked >= 2, "found \(checked) source paths in project.yml; the parser is broken")
 
-        // And both pins must have reached it, so a version bump in the spec
-        // cannot sit in a project that still resolves the old one.
+        // And both ranges must have reached it, so a raised floor in the spec
+        // cannot sit in a project that still allows the old one.
         for package in ["mlx-audio-swift", "mlx-swift"] {
-            guard let version = pin(package, in: spec) else {
-                Issue.record("project.yml pins no exact version for \(package)")
+            guard let version = floor(package, in: spec) else {
+                Issue.record("project.yml gives no `from:` version for \(package)")
                 continue
             }
-            #expect(generated.contains(version),
-                    "\(package) is pinned at \(version) in the spec but not in the project")
+            #expect(generated.contains("minimumVersion = \(version);"),
+                    "\(package) starts at \(version) in the spec but not in the project")
         }
     }
 }

@@ -39,16 +39,20 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
 
 packages:
-  # Exact pins, like every other dependency in this project. mlx-audio-swift
-  # asks for mlx-swift 0.30.6 and up; naming the resolved version here is what
-  # makes a measurement reproducible, since a floating minor would otherwise
-  # change the runtime under a recorded number.
+  # Ranges, not exact pins. build-speech-mlx.sh moves both to the newest
+  # releases they allow before every build (tools/update-packages.sh), and the
+  # committed Package.resolved inside speech-mlx.xcodeproj records the exact
+  # versions each build used - that file is what makes a measurement
+  # reproducible, and `./build-speech-mlx.sh --no-update` builds exactly what it
+  # pins. Ranges rather than bumped exact pins because the MLX packages move
+  # together: mlx-audio-swift 0.1.5 needs mlx-swift-lm 3.32.3, which needs
+  # mlx-swift 0.32.x, and only the resolver can pick a set that agrees.
   mlx-audio-swift:
     url: https://github.com/Blaizzy/mlx-audio-swift
-    exactVersion: 0.1.3
+    from: 0.1.3
   mlx-swift:
     url: https://github.com/ml-explore/mlx-swift
-    exactVersion: 0.31.6
+    from: 0.31.6
 
 targets:
   # The wire format, compiled from the main repository rather than copied. A

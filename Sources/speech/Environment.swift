@@ -18,10 +18,12 @@ import SpeechCore
 import TranscribeCpp
 
 enum SpeechEnvironment {
-    /// FluidAudio has no runtime version to ask for, so this is the pin from
-    /// Package.swift. `packagePinMatchesLiteral` in the test suite parses the
-    /// manifest and fails if the two drift, because a stale version string is
-    /// worse than none: it is a claim about which library produced a number.
+    /// FluidAudio has no runtime version to ask for, so this is the version
+    /// Package.resolved pins. build.sh's update step (tools/update-packages.sh)
+    /// rewrites it whenever that version moves, and `packagePinMatchesLiteral`
+    /// in the test suite fails if the catalog header drifts from the file,
+    /// because a stale version string is worse than none: it is a claim about
+    /// which library produced a number.
     static let fluidAudioVersion = "0.15.6"
 
     /// transcribe.cpp does report itself, so it is asked rather than pinned.

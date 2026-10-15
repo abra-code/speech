@@ -8,6 +8,15 @@
 #                                       # answer the Metal toolchain question with
 #                                       # yes rather than asking, for a run with no
 #                                       # terminal to prompt on
+#   ./build-speech-mlx.sh --no-update   # build exactly what Package.resolved pins
+#
+# By default the Swift package dependencies are first moved to the newest
+# releases project.yml's ranges allow (tools/update-packages.sh speech-mlx,
+# which says what moved and what a range still holds back). The project's
+# Package.resolved is committed, so a move shows up as a diff to review.
+# --no-update skips that, for a build that has to match a recorded measurement
+# or a machine with no network. An update that fails leaves the pins as they
+# were and the build goes on.
 #
 # Separate from build.sh because the helper is separate from the product.
 # `speech` runs with no MLX at all: with no helper beside it, the `mlx` rows
@@ -26,33 +35,54 @@
 # the resource bundles copied beside it, the same way build/speech needs
 # CTranscribe.framework, and for the same reason - a copy of the binary on its
 # own is a binary that aborts.
+#
+# No `set -e`: each step that can fail is checked where it runs, so a failure
+# names the step instead of ending the script with nothing said.
 
-set -e
+fail() {
+    echo "error: $*" >&2
+    exit 1
+}
 
-cd "$(dirname "$0")"
+# Runs a command and fails the build, naming it, when it does not succeed.
+step() {
+    "$@"
+    step_status=$?
+    if [ "$step_status" -ne 0 ]; then
+        fail "'$*' failed (exit $step_status)"
+    fi
+}
+
+CDPATH= cd -P -- "$(/usr/bin/dirname -- "$0")" || fail "cannot change to the directory holding build-speech-mlx.sh"
 
 # ask: prompt when there is a terminal to prompt on and refuse with instructions
 # when there is not. A 688 MB download is not something to start behind
 # someone's back, and a script that hangs on a prompt nobody can see is worse
 # than one that says why it stopped.
 download_metal="ask"
+update="yes"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --download-metal-toolchain) download_metal="yes" ;;
+        --no-update) update="no" ;;
         -h|--help)
-            echo "Usage: $0 [-h|--help] [--download-metal-toolchain]"
+            echo "Usage: $0 [-h|--help] [--download-metal-toolchain] [--no-update]"
             echo
             echo "Builds build/speech-mlx and the resource bundles that have to sit"
             echo "beside it. With --download-metal-toolchain, a missing Metal"
             echo "component is downloaded without asking - for a run with no terminal"
             echo "to prompt on (stdin or stderr redirected), where the question would"
             echo "otherwise go unanswered."
+            echo
+            echo "The Swift packages are updated to the newest versions project.yml"
+            echo "allows before building. With --no-update, the build uses exactly"
+            echo "what the committed Package.resolved pins."
             exit 0
             ;;
         *)
             echo "error: unknown argument: '$1'" >&2
-            echo "Usage: $0 [-h|--help] [--download-metal-toolchain]" >&2
+            echo "Usage: $0 [-h|--help] [--download-metal-toolchain] [--no-update]" >&2
             exit 2
             ;;
     esac
@@ -80,8 +110,7 @@ done
 # xcrun's own lookup failure exits 72. Neither number is a contract.
 #
 # The status is returned in a variable rather than as the function's exit code,
-# and that matters under `set -e`: a call whose status were non-zero
-# would end the script here instead of reaching the offer below.
+# so the caller reads it the same way after either probe.
 #
 # ASKED TWICE, AND WHY NEITHER WAY IS ENOUGH ALONE. xcrun keeps a lookup cache
 # in the per-user Darwin temp directory - it does not follow $TMPDIR, so it
@@ -113,13 +142,13 @@ done
 # output ("couldn't create cache file") and is handled where the download would
 # otherwise be offered.
 check_metal_compiler() {
-    metal_status=0
     metal_output=""
     fresh_output=""
-    metal_output="$(xcrun metal --version 2>&1)" || metal_status=$?
+    metal_output="$(/usr/bin/xcrun metal --version 2>&1)"
+    metal_status=$?
     if [ "$metal_status" -ne 0 ]; then
-        fresh_status=0
-        fresh_output="$(xcrun --no-cache metal --version 2>&1)" || fresh_status=$?
+        fresh_output="$(/usr/bin/xcrun --no-cache metal --version 2>&1)"
+        fresh_status=$?
         if [ "$fresh_status" -eq 0 ]; then
             metal_status=0
             metal_output="$fresh_output"
@@ -130,12 +159,12 @@ check_metal_compiler() {
 # Whatever a tool said about why it will not run beats anything guessed here.
 # The empty case is spelled out rather than skipped: a tool killed by a signal
 # or a policy fails with nothing to say, and a heading followed by nothing reads
-# like the script lost the message. `|| :` because this runs under `set -e` and
-# ahead of the lines that say what to do about the failure - a sed that died
-# must not take that advice down with it.
+# like the script lost the message. A sed that died is not acted on: this runs
+# ahead of the lines that say what to do about the failure, and must not take
+# that advice down with it.
 print_indented() {
     if [ -n "$1" ]; then
-        printf '%s\n' "$1" | sed 's/^/  /' >&2 || :
+        printf '%s\n' "$1" | /usr/bin/sed 's/^/  /' >&2
     else
         echo "  (no output)" >&2
     fi
@@ -181,8 +210,8 @@ $fresh_output" in
     # answer a misconfigured developer directory with two remedies that cannot
     # help it. Measured: this check still exits 0 in the unwritable-cache state
     # on a full Xcode, so the genuinely undecidable case still reaches it.
-    xcodebuild_status=0
-    xcodebuild_output="$(xcodebuild -version 2>&1)" || xcodebuild_status=$?
+    xcodebuild_output="$(/usr/bin/xcodebuild -version 2>&1)"
+    xcodebuild_status=$?
     if [ "$xcodebuild_status" -ne 0 ]; then
         echo "error: no Metal compiler, and xcodebuild will not run to download one." >&2
         echo "       xcodebuild -version said:" >&2
@@ -235,10 +264,10 @@ $fresh_output" in
         if [ -t 0 ] && [ -t 2 ]; then
             printf 'Download it now (xcodebuild -downloadComponent MetalToolchain)? [y/N] ' >&2
             answer=""
-            # `|| :` rather than `|| answer=""`: read returns non-zero at end of
-            # input but has already assigned what it read, so clearing the
-            # variable would turn a "y" typed without a newline into a no.
-            read -r answer || :
+            # Its status is not acted on: read returns non-zero at end of input
+            # but has already assigned what it read, so treating that as "no"
+            # would turn a "y" typed without a newline into a no.
+            read -r answer
             case "$answer" in
                 [yY]|[yY][eE][sS]) download_metal="yes" ;;
                 *) download_metal="no" ;;
@@ -256,8 +285,8 @@ $fresh_output" in
     fi
 
     echo "== downloading the Metal toolchain ==" >&2
-    download_status=0
-    xcodebuild -downloadComponent MetalToolchain || download_status=$?
+    /usr/bin/xcodebuild -downloadComponent MetalToolchain
+    download_status=$?
     if [ "$download_status" -ne 0 ]; then
         echo "error: xcodebuild -downloadComponent MetalToolchain exited $download_status." >&2
         echo "       The component installs outside your home directory, so on some" >&2
@@ -289,15 +318,26 @@ project="Helpers/speech-mlx/speech-mlx.xcodeproj"
 # is an accident rather than an answer. XcodeGen is idempotent - regenerating an
 # unchanged spec produces a byte-identical project - so this costs nothing and
 # removes the class of failure where a build silently uses the previous spec.
-if command -v xcodegen > /dev/null 2>&1; then
+#
+# XcodeGen comes from Homebrew or wherever its user put it, so it is the one tool
+# here found on PATH rather than named by an absolute path.
+xcodegen="$(command -v xcodegen 2>/dev/null)"
+if [ -n "$xcodegen" ]; then
     before=""
-    [ -f "$project/project.pbxproj" ] && before="$(md5 -q "$project/project.pbxproj")"
-    ( cd Helpers/speech-mlx && xcodegen generate ) > /dev/null
+    if [ -f "$project/project.pbxproj" ]; then
+        before="$(/sbin/md5 -q "$project/project.pbxproj")"
+    fi
+    ( CDPATH= cd -P -- Helpers/speech-mlx && "$xcodegen" generate ) > /dev/null
+    xcodegen_status=$?
+    if [ "$xcodegen_status" -ne 0 ]; then
+        fail "xcodegen generate failed (exit $xcodegen_status)"
+    fi
     # Regeneration is idempotent for a given XcodeGen, but XcodeGen itself is a
-    # floor rather than an exact pin - the one dependency here that is - so a
-    # different local version can rewrite the project without the spec having
-    # changed. Say so rather than leaving a dirty tree to be discovered later.
-    if [ -n "$before" ] && [ "$before" != "$(md5 -q "$project/project.pbxproj")" ]; then
+    # floor rather than an exact version, so a different local version can
+    # rewrite the project without the spec having changed. Say so rather than
+    # leaving a dirty tree to be discovered later.
+    after="$(/sbin/md5 -q "$project/project.pbxproj")"
+    if [ -n "$before" ] && [ "$before" != "$after" ]; then
         echo "note: xcodegen rewrote $project/project.pbxproj." >&2
         echo "      Review the diff and commit it, or check your xcodegen version." >&2
     fi
@@ -310,6 +350,39 @@ else
 fi
 
 derived="Helpers/speech-mlx/build"
+resolved="$project/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+version_swift="Helpers/speech-mlx/Sources/speech-mlx/Version.swift"
+
+# The package update, against the project just generated. Exit 1 means it
+# failed and put the previous pins back, which is not a reason to stop a build:
+# it is what happens offline, and the pins it leaves are the committed ones.
+# Anything else - the pins could not be restored, a version string could not be
+# rewritten, an interrupt - is. It resolves in a folder of its own (see the
+# script), so the build below re-checks-out only the packages that moved.
+update_result="skipped"
+if [ "$update" = "yes" ]; then
+    # What moved is compared, not the file's bytes: SwiftPM rewrites
+    # Package.resolved's originHash whenever the manifest's dependency lines
+    # change, with every pin where it was. The literal file is compared too, in
+    # case a version string was behind pins that did not move.
+    pins_before="$(/usr/bin/awk -f tools/package_pin_versions.awk "$resolved" 2>/dev/null)"
+    literal_before="$(/sbin/md5 -q "$version_swift" 2>/dev/null)"
+    ./tools/update-packages.sh speech-mlx
+    update_status=$?
+    case "$update_status" in
+        0)
+            pins_after="$(/usr/bin/awk -f tools/package_pin_versions.awk "$resolved" 2>/dev/null)"
+            literal_after="$(/sbin/md5 -q "$version_swift" 2>/dev/null)"
+            if [ "$pins_before" != "$pins_after" ] || [ "$literal_before" != "$literal_after" ]; then
+                update_result="changed"
+            else
+                update_result="current"
+            fi
+            ;;
+        1) update_result="failed" ;;
+        *) fail "the package update stopped (exit $update_status); see above." ;;
+    esac
+fi
 
 # The two -skip flags trust the package plugin and the swift-syntax macros in
 # this graph; without them xcodebuild stops on a validation prompt that no
@@ -322,7 +395,14 @@ derived="Helpers/speech-mlx/build"
 # with ARCHS only in the spec, every dependency compiled twice, arm64 and
 # x86_64, for a binary that is arm64 alone. A command-line override is the one
 # form that reaches package targets.
-xcodebuild \
+#
+# CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO for the same reach: when Xcode signs to
+# run locally it injects get-task-allow, in Release too, and notarization
+# rejects a binary that has it - mlx-agent, also an xcodebuild build, shipped it
+# that way. The re-sign below drops entitlements anyway; this keeps the
+# entitlement out of the products in the first place, and the check after the
+# re-sign proves neither one slipped.
+/usr/bin/xcodebuild \
     -project "$project" \
     -scheme speech-mlx \
     -destination 'platform=macOS,arch=arm64' \
@@ -332,28 +412,35 @@ xcodebuild \
     -skipMacroValidation \
     ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=NO \
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
     build
+xcodebuild_status=$?
+if [ "$xcodebuild_status" -ne 0 ]; then
+    if [ "$update_result" = "changed" ]; then
+        echo "note: this build follows a package update that moved the pins. To build the" >&2
+        echo "      previous ones: git checkout -- '$resolved' '$version_swift'" >&2
+        echo "      and then ./build-speech-mlx.sh --no-update" >&2
+    fi
+    fail "xcodebuild failed (exit $xcodebuild_status)"
+fi
 
 products="$derived/Build/Products/Release"
-[ -x "$products/speech-mlx" ] || {
-    echo "error: no speech-mlx in $products" >&2
-    exit 1
-}
+if [ ! -x "$products/speech-mlx" ]; then
+    fail "no speech-mlx in $products"
+fi
 
-mkdir -p build
+step /bin/mkdir -p build
 
 # The Metal library is not optional and not something to warn about: without it
 # the binary aborts on its first array operation, so a build that cannot find it
 # has produced something that only looks like a helper.
 metal_bundle="mlx-swift_Cmlx.bundle"
-[ -d "$products/$metal_bundle" ] || {
-    echo "error: $metal_bundle not found in $products; build/speech-mlx would abort at startup" >&2
-    exit 1
-}
-[ -f "$products/$metal_bundle/Contents/Resources/default.metallib" ] || {
-    echo "error: $metal_bundle carries no default.metallib" >&2
-    exit 1
-}
+if [ ! -d "$products/$metal_bundle" ]; then
+    fail "$metal_bundle not found in $products; build/speech-mlx would abort at startup"
+fi
+if [ ! -f "$products/$metal_bundle/Contents/Resources/default.metallib" ]; then
+    fail "$metal_bundle carries no default.metallib"
+fi
 
 # Every resource bundle the graph produced, not a list written down here: the
 # set depends on the dependency versions, and a bundle left behind is a runtime
@@ -361,30 +448,36 @@ metal_bundle="mlx-swift_Cmlx.bundle"
 # because a stale resource beside a new binary is the same abort.
 for bundle in "$products"/*.bundle; do
     [ -d "$bundle" ] || continue
-    name="$(basename "$bundle")"
-    rm -rf "build/$name.new"
-    cp -R "$bundle" "build/$name.new"
-    codesign -f -s - "build/$name.new"
-    rm -rf "build/$name.old"
-    [ -d "build/$name" ] && mv "build/$name" "build/$name.old"
-    mv "build/$name.new" "build/$name"
-    rm -rf "build/$name.old"
+    name="$(/usr/bin/basename "$bundle")"
+    step /bin/rm -rf "build/$name.new"
+    step /bin/cp -R "$bundle" "build/$name.new"
+    step /usr/bin/codesign -f -s - "build/$name.new"
+    step ./tools/check-release-binary.sh "build/$name.new"
+    step /bin/rm -rf "build/$name.old"
+    if [ -d "build/$name" ]; then
+        step /bin/mv "build/$name" "build/$name.old"
+    fi
+    step /bin/mv "build/$name.new" "build/$name"
+    step /bin/rm -rf "build/$name.old"
 done
 
 # Assembled under a temporary name and renamed into place only when finished,
 # like build.sh: a copy that dies partway would otherwise leave a truncated
 # binary that still looks like a build product.
-rm -f build/speech-mlx.new
-cp "$products/speech-mlx" build/speech-mlx.new
-strip -x build/speech-mlx.new
+step /bin/rm -f build/speech-mlx.new
+step /bin/cp "$products/speech-mlx" build/speech-mlx.new
+step /usr/bin/strip -x build/speech-mlx.new
 # -f because xcodebuild already signed its product and, unlike SwiftPM's, that
 # signature survives the strip; codesign then refuses to sign an already signed
-# binary and under `set -e` that ends the build after everything worked.
-codesign -f -s - build/speech-mlx.new
+# binary, which would end the build after everything worked.
+step /usr/bin/codesign -f -s - build/speech-mlx.new
+# No --preserve-metadata above, so any entitlement xcodebuild signed in is gone;
+# checked rather than trusted, with the strip.
+step ./tools/check-release-binary.sh build/speech-mlx.new
 
 # The notices for everything statically linked into what was just built, and
-# they are written BEFORE the binary is moved into place. `set -e` then makes
-# the pair consistent in both directions: a generator that fails leaves the
+# they are written BEFORE the binary is moved into place. Stopping on a failure
+# here makes the pair consistent in both directions: a generator that fails leaves the
 # previous binary beside the previous notices, rather than a new binary beside
 # a file describing the dependency graph of an older build. The pins come out
 # of the resolution xcodebuild just used, so the file cannot lag what it sits
@@ -393,8 +486,12 @@ codesign -f -s - build/speech-mlx.new
 # only asks whether one exists.
 Helpers/speech-mlx/tools/generate-third-party-notices.sh \
     --bundles build --output build/speech-mlx-THIRD-PARTY-NOTICES.txt
+notices_status=$?
+if [ "$notices_status" -ne 0 ]; then
+    fail "the third-party notices could not be generated (exit $notices_status); build/speech-mlx was left as it was"
+fi
 
-mv build/speech-mlx.new build/speech-mlx
+step /bin/mv build/speech-mlx.new build/speech-mlx
 
 
 # Prove it launches and reaches the GPU rather than trusting that it linked.
@@ -405,24 +502,47 @@ mv build/speech-mlx.new build/speech-mlx
 # dies inside MTLCopyAllDevices() before it can say anything, and that is a
 # property of where this is running rather than of what was just built.
 # Reporting a good artifact as a failed build would be worse than saying so.
-handshake_err="$(mktemp -t speech-mlx-handshake)"
-if printf '{"op":"bye"}\n' | ./build/speech-mlx > /dev/null 2> "$handshake_err"; then
-    :
-elif grep -q 'NSRangeException' "$handshake_err" \
-    && grep -qE 'MTLCopyAllDevices|mlx4core5metal6Device' "$handshake_err"; then
-    echo "note: this process cannot reach the GPU, so the handshake could not be" >&2
-    echo "      checked. The build itself is complete." >&2
-else
-    echo "error: build/speech-mlx did not complete a handshake." >&2
-    # `|| :` for the same reason as in print_indented: under `set -e` a sed that
-    # died would end the script here, leaking the temp file below and exiting
-    # with sed's status instead of 1.
-    sed 's/^/  /' "$handshake_err" >&2 || :
-    rm -f "$handshake_err"
-    exit 1
+handshake_err="$(/usr/bin/mktemp -t speech-mlx-handshake)"
+if [ -z "$handshake_err" ]; then
+    fail "mktemp failed; the handshake could not be checked"
 fi
-rm -f "$handshake_err"
+printf '{"op":"bye"}\n' | ./build/speech-mlx > /dev/null 2> "$handshake_err"
+handshake_status=$?
+if [ "$handshake_status" -ne 0 ]; then
+    no_gpu="no"
+    /usr/bin/grep -q 'NSRangeException' "$handshake_err"
+    range_status=$?
+    /usr/bin/grep -qE 'MTLCopyAllDevices|mlx4core5metal6Device' "$handshake_err"
+    device_status=$?
+    if [ "$range_status" -eq 0 ] && [ "$device_status" -eq 0 ]; then
+        no_gpu="yes"
+    fi
+    if [ "$no_gpu" = "yes" ]; then
+        echo "note: this process cannot reach the GPU, so the handshake could not be" >&2
+        echo "      checked. The build itself is complete." >&2
+    else
+        echo "error: build/speech-mlx did not complete a handshake." >&2
+        /usr/bin/sed 's/^/  /' "$handshake_err" >&2
+        /bin/rm -f "$handshake_err"
+        exit 1
+    fi
+fi
+/bin/rm -f "$handshake_err"
 
-lipo -info build/speech-mlx
+step /usr/bin/lipo -info build/speech-mlx
+
+# Said again here, after the build log, where nothing scrolls past it.
+case "$update_result" in
+    changed)
+        echo "note: the package update moved the pins (listed above the build log). Review" >&2
+        echo "      and commit $resolved" >&2
+        echo "      and $version_swift." >&2
+        ;;
+    failed)
+        echo "WARNING: the package update failed (see above the build log), so this is a" >&2
+        echo "         build of the pins in Package.resolved as they were. --no-update" >&2
+        echo "         skips the attempt." >&2
+        ;;
+esac
 
 echo "Done."

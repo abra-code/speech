@@ -450,27 +450,30 @@ struct CatalogFileOnDiskTests {
 
     /// The inventory's header claims which engine versions produced its
     /// capability columns. FluidAudio has no runtime version to ask, so the
-    /// claim is a literal, and a literal that drifts from the manifest is worse
-    /// than no claim at all - it attributes an answer to the wrong library.
-    @Test("the FluidAudio version claimed in the header is the one pinned")
+    /// claim is a literal, and a literal that drifts from the resolved version
+    /// is worse than no claim at all - it attributes an answer to the wrong
+    /// library. Package.swift declares a range, so the version a build actually
+    /// used is the one in Package.resolved; build.sh's update step copies it
+    /// into the literal, and the header is regenerated from that.
+    @Test("the FluidAudio version claimed in the header is the one resolved")
     func packagePinMatchesLiteral() throws {
-        let manifest = Self.url
+        let resolved = Self.url
             .deletingLastPathComponent()  // docs
             .deletingLastPathComponent()  // package root
-            .appendingPathComponent("Package.swift")
-        let text = try String(contentsOf: manifest, encoding: .utf8)
-        let line = try #require(
-            text.split(separator: "\n").first { $0.contains("FluidInference/FluidAudio") },
-            "the FluidAudio dependency is gone from Package.swift")
-        // `.package(url: "...", exact: "0.15.6"),`
-        let pin = try #require(
-            line.split(separator: "\"").last(where: { $0.contains(".") }).map(String.init))
+            .appendingPathComponent("Package.resolved")
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: resolved))
+        let pins = try #require((json as? [String: Any])?["pins"] as? [[String: Any]],
+                                "Package.resolved has no pins array")
+        let fluid = try #require(pins.first { $0["identity"] as? String == "fluidaudio" },
+                                 "FluidAudio is not in Package.resolved")
+        let pin = try #require((fluid["state"] as? [String: Any])?["version"] as? String,
+                               "FluidAudio is resolved to no version")
         let claimed = try String(contentsOf: Self.url, encoding: .utf8)
             .split(separator: "\n")
             .first { $0.hasPrefix("#   fluidaudio: ") }
             .map { String($0.dropFirst("#   fluidaudio: ".count)) }
         #expect(claimed == pin,
-                "the catalog header says FluidAudio \(claimed ?? "nothing") and Package.swift pins \(pin)")
+                "the catalog header says FluidAudio \(claimed ?? "nothing") and Package.resolved has \(pin)")
     }
 
     @Test("every row names a macOS floor and at least one mode")

@@ -113,12 +113,23 @@ time rather than correctness.
 
 ## Dependency pins
 
-Two direct dependencies, declared in `project.yml` with `exactVersion` rather
-than a range. Exact, because a floating minor would change the runtime under a
-recorded measurement: the numbers in the SpeechApp repository's `reference/`
-are only reproducible if the graph is. The resolved set is committed in
+Two direct dependencies, declared in `project.yml` as ranges (`from:`). The
+resolved set is committed in
 `speech-mlx.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`,
-which is the file that actually makes a build reproducible - review it in diffs.
+which is the file that makes a build reproducible - review it in diffs. The
+numbers in the SpeechApp repository's `reference/` are only reproducible with
+the graph that produced them.
+
+`build-speech-mlx.sh` updates that set before every build
+(`tools/update-packages.sh speech-mlx`): it re-resolves to the newest versions
+the ranges allow, prints which pins moved, rewrites the versions the helper
+reports in `Sources/speech-mlx/Version.swift`, and names any direct dependency
+whose newest release a range still blocks - mlx-swift-lm, for instance, holds
+mlx-swift to its own minor version. `./build-speech-mlx.sh --no-update` builds
+exactly what `Package.resolved` pins.
+
+The table below is the set as of the last time it was written down; the
+committed `Package.resolved` is the authority.
 
 | package | version | why it is in the graph |
 | --- | --- | --- |

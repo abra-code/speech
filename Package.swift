@@ -11,7 +11,11 @@ let package = Package(
         .library(name: "SpeechCore", targets: ["SpeechCore"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.15.6"),
+        // A range, not an exact pin: build.sh moves to the newest release it
+        // allows before every build (tools/update-packages.sh), and the
+        // committed Package.resolved records the exact version each build used.
+        // `./build.sh --no-update` builds exactly what that file pins.
+        .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.6"),
     ],
     targets: [
         // transcribe.cpp v0.2.3, built from source, plus its own Swift wrapper

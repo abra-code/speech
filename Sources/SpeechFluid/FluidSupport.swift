@@ -40,7 +40,7 @@ enum FluidProgress {
     /// `ModelHub.download(_:subdirectory:to:)`, which Nemotron's
     /// `downloadVariant` uses, runs to 1.0. Passed through, every download but
     /// Nemotron's stopped at 50% and then jumped to installed. Checked against
-    /// FluidAudio 0.15.6, which Package.swift pins exactly.
+    /// FluidAudio 0.15.6.
     enum Activity {
         case installingRepo
         case installingSubdirectory

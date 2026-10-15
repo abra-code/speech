@@ -20,7 +20,9 @@ not here yet.
 ## Build
 
     ./build.sh              # produces build/speech (arm64, ad-hoc signed), with
-                            # CTranscribe.framework and speech-catalog/ beside it
+                            # CTranscribe.framework and speech-catalog/ beside it,
+                            # after updating the Swift packages (see below)
+    ./build.sh --no-update  # the same, building exactly what Package.resolved pins
     ./test.sh               # builds, runs the unit tests and the CLI smoke tests
     ./build-speech-mlx.sh   # optional: produces build/speech-mlx, for the mlx.* rows
 
@@ -34,10 +36,20 @@ linked, and report why when they are unavailable. arm64 only: FluidAudio's sourc
 unavailable on x86_64 macOS, and its CoreML pipelines want the Neural Engine in
 any case.
 
-Two dependencies: FluidAudio, pinned to 0.15.6, which brings the Parakeet, Canary
-and Nemotron CoreML pipelines; and transcribe.cpp, pinned to v0.2.3 and built
-from source as the `CTranscribe` binary target. Both need the network on the
-first build.
+Two dependencies: FluidAudio, which brings the Parakeet, Canary and Nemotron
+CoreML pipelines; and transcribe.cpp, pinned to v0.2.3 and built from source as
+the `CTranscribe` binary target. Both need the network on the first build.
+
+`build.sh` and `build-speech-mlx.sh` update the Swift package dependencies
+before every build: each moves to the newest release its manifest's range allows
+(`tools/update-packages.sh`), prints what moved, and names any direct dependency
+whose newest release a range still blocks. The committed `Package.resolved`
+files record the exact versions a build used, so an update shows up as a diff
+to review and commit, and the version strings the binaries report are rewritten
+to match. Pass `--no-update` to build exactly what `Package.resolved` pins, for
+example offline or to reproduce a recorded measurement. An update that fails,
+offline for instance, leaves the pins as they were and the build goes on with
+them, with a warning at the end.
 
 transcribe.cpp is built rather than downloaded because two fixes `speech`
 depends on are in no published release. `build.sh` runs
@@ -56,9 +68,9 @@ frameworks. The measuring tools under `tools/` are Python, and the optional MLX
 helper wants XcodeGen and Apple's Metal toolchain, but neither is on the path to
 the binary.
 
-The optional `speech-mlx` helper has its own pins - mlx-audio-swift 0.1.3 on
-mlx-swift 0.31.6 - and its own project, deliberately off the main binary's
-dependency graph. `speech` builds, tests and ships without it; the `mlx.*` rows
+The optional `speech-mlx` helper has its own dependencies - mlx-audio-swift on
+mlx-swift, versions in its project's `Package.resolved` - and its own project,
+deliberately off the main binary's dependency graph. `speech` builds, tests and ships without it; the `mlx.*` rows
 then report `unavailable` with a reason rather than disappearing.
 
 ## Usage
