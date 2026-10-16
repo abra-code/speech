@@ -18,8 +18,9 @@ let package = Package(
         .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.6"),
     ],
     targets: [
-        // transcribe.cpp v0.2.3, built from source, plus its own Swift wrapper
-        // vendored under Sources/TranscribeCpp (MIT).
+        // transcribe.cpp at the release in patches/transcribe.cpp/PIN, built
+        // from source, plus its own Swift wrapper vendored under
+        // Sources/TranscribeCpp (MIT).
         //
         // Not the published release asset: speech needs two fixes no release
         // carries - the Parakeet streaming commit freeze and the Metal

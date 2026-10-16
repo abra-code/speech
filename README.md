@@ -37,8 +37,9 @@ unavailable on x86_64 macOS, and its CoreML pipelines want the Neural Engine in
 any case.
 
 Two dependencies: FluidAudio, which brings the Parakeet, Canary and Nemotron
-CoreML pipelines; and transcribe.cpp, pinned to v0.2.3 and built from source as
-the `CTranscribe` binary target. Both need the network on the first build.
+CoreML pipelines; and transcribe.cpp, built from source as the `CTranscribe`
+binary target from the release pinned in `patches/transcribe.cpp/PIN`. Both need
+the network on the first build.
 
 `build.sh` and `build-speech-mlx.sh` update the Swift package dependencies
 before every build: each moves to the newest release its manifest's range allows
@@ -56,10 +57,14 @@ depends on are in no published release. `build.sh` runs
 `tools/vendor-transcribe.sh`, which clones the pinned tag, applies the patches
 in `patches/transcribe.cpp/` and builds `vendor/TranscribeCpp.xcframework`; that
 needs cmake and Xcode (ninja is used if it is there), takes a few minutes on a
-cold tree, and is a no-op afterwards until the pin or a patch changes. A patch
-that stops applying fails the build instead of dropping the fix silently, and a
-newer published transcribe.cpp release is reported in a banner when that script
-finishes and again at the very end of the build, after the Swift log. `swift
+cold tree, and is a no-op afterwards until the pin or a patch changes. By default
+`build.sh` moves transcribe.cpp to its newest release too, and the pin with it
+once the framework builds. A patch that stops applying - or that the release
+already carries - fails the build instead of dropping the fix silently, as does
+a vendored Swift wrapper that does not match the release; the pin then stays
+where it was, and `--no-update` builds it. With `--no-update`, a newer published
+release is reported in a banner when that script finishes and again at the very
+end of the build, after the Swift log. `swift
 build` on its own does not work until that script has run once, since `vendor/`
 is not committed.
 Beyond them `build/speech` needs no Python, no ffmpeg and no package manager:

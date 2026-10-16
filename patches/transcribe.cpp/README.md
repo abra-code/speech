@@ -6,8 +6,10 @@ in this directory, and builds `vendor/TranscribeCpp.xcframework`, which
 `Package.swift` points at. The patches live here, in this repository, so the
 same clone plus the same patches produce the same library on any machine.
 
-Pinned tag and commit: `tools/vendor-transcribe.sh` (`PINNED_TAG`,
-`PINNED_COMMIT`). Today that is `v0.2.3` at `63a44d9`.
+Pinned tag and commit: `PIN` in this directory. `./build.sh` moves it to the
+newest release by default (`tools/vendor-transcribe.sh --update`), but only once
+the framework builds from that release with every patch here applied; until
+then it stays where it was, and `./build.sh --no-update` builds it.
 
 ## Layout
 
@@ -86,12 +88,19 @@ The build fails, on purpose, and nothing is produced. A patch that no longer
 applies means upstream changed the code a fix depends on, and the right response
 is to look at what changed - not to ship a binary quietly missing the fix.
 
+Before applying anything the script checks every patch on its own against the
+clean tree and lists each one: `applies`, `DOES NOT APPLY` (rework it), or
+`ALREADY IN <tag>` (the release carries the fix: delete the patch and its
+section above). On an update to a newer release, `PIN` keeps the old release
+until all of that is sorted out, so `./build.sh --no-update` keeps working.
+
 To rework one:
 
-1. Clone the pinned tag by hand, or use the one the failed run left in
-   `vendor/transcribe.cpp`. Read `vendor/transcribe.cpp/.speech-patch-state`
-   first: a tree left by a failure carries the patches ordered *before* the
-   failing one and none after it, so it is a diagnostic tree, not the patched
+1. Clone the tag the failed run named (the pin, or the newer release on an
+   update) by hand, or use the one that run left in `vendor/transcribe.cpp`.
+   Read `vendor/transcribe.cpp/.speech-patch-state` first: a tree left by a
+   failure carries no patches (the pre-check failed) or only those ordered
+   *before* the failing one, so it is a diagnostic tree, not the patched
    source. Never build from it - it compiles perfectly well and produces a
    library missing fixes. Only a tree whose state file says `complete` is what
    the shipped framework was built from.
@@ -100,18 +109,25 @@ To rework one:
    criteria.
 3. Regenerate the patch with `git diff` from the clone root (`git diff` inside
    `ggml/` for the ggml series) and drop it back here under the same name.
-4. Run `tools/vendor-transcribe.sh --force`.
+4. Run `tools/vendor-transcribe.sh --force`, adding `--update` when the patch
+   was reworked for a newer release than `PIN` names (or run `./build.sh`).
 
-If a fix has landed upstream, delete the patch instead and move the pin.
+If a fix has landed upstream, delete the patch instead.
 
 ## When upstream publishes a release
 
-Every build checks for a newer tag and prints a banner when
-`tools/vendor-transcribe.sh` finishes, and `./build.sh` prints it again at the
-end of its own output, after the Swift build log, from what that check recorded
-in `vendor/.newer-tag`. It never fails the build, it costs one `git ls-remote`,
-and it is skipped with `SPEECH_VENDOR_OFFLINE=1`. Moving
-the pin means bumping `PINNED_TAG` and `PINNED_COMMIT`, re-vendoring
-`Sources/TranscribeCpp` if the ABI hash moved (the script refuses to build on a
-mismatch), dropping any patch the release now carries, and re-running the
-measurements in `docs/` that name a transcribe.cpp version.
+Every build checks for a newer tag; it costs one `git ls-remote`, and is skipped
+with `SPEECH_VENDOR_OFFLINE=1`. A default `./build.sh` then builds the new
+release, and that build stops, leaving `PIN` where it was, until:
+
+- every patch here applies to it, and any patch it already carries is deleted;
+- `Sources/TranscribeCpp` is re-vendored from it when the ABI hash moved, or
+  when its `MAJOR.MINOR.PATCH` differs from the wrapper's `compiledVersion` -
+  the wrapper refuses at load time to run against any other version, so the
+  script refuses to build one.
+
+Once it builds, the script writes the new release into `PIN`; review and commit
+that with the patch changes, and re-run the measurements in `docs/` that name a
+transcribe.cpp version. `./build.sh --no-update` (or the script run without
+`--update`) builds the pin instead and prints a banner naming the newer release,
+when the script finishes and again at the end of `./build.sh`.

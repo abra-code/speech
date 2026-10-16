@@ -6,12 +6,15 @@
 #   ./build.sh arm64             # the only supported architecture (see below)
 #   ./build.sh --no-update       # build exactly what Package.resolved pins
 #
-# By default the Swift package dependencies are first moved to the newest
-# releases Package.swift's ranges allow (tools/update-packages.sh root, which
-# says what moved and what a range still holds back). Package.resolved is
-# committed, so a move shows up as a diff to review. --no-update skips that,
-# for a build that has to match a recorded one or a machine with no network.
-# An update that fails leaves the pins as they were and the build goes on.
+# By default the dependencies are first moved to their newest releases: the
+# Swift packages within Package.swift's ranges (tools/update-packages.sh root,
+# which says what moved and what a range still holds back), and transcribe.cpp
+# (tools/vendor-transcribe.sh --update). Package.resolved and
+# patches/transcribe.cpp/PIN are committed, so a move shows up as a diff to
+# review. --no-update skips both, for a build that has to match a recorded one
+# or a machine with no network. A package update that fails leaves the pins as
+# they were and the build goes on; a transcribe.cpp update that fails stops the
+# build (see below).
 #
 # Mirrors pdfutil's and langid's build.sh deliberately - same contract, same
 # shape, so an applet's update script treats every helper identically. The
@@ -87,10 +90,28 @@ esac
 # once the pin and the patches have not changed, and it is where the fixes in
 # patches/transcribe.cpp/ are applied (a patch that no longer applies stops the
 # build here).
-./tools/vendor-transcribe.sh
+#
+# It updates like the Swift packages: --update moves to the newest
+# transcribe.cpp release, and patches/transcribe.cpp/PIN records which one a
+# build used. Unlike a package update, one that fails stops the build - a patch
+# that no longer applies, or that the release already carries, or a Swift
+# wrapper that does not match the release, each needs a person - and leaves PIN
+# as it was, so --no-update still builds the pinned release.
+vendor_args=""
+if [ "$update" = "yes" ]; then
+    vendor_args="--update"
+fi
+pin_before="$(/sbin/md5 -q patches/transcribe.cpp/PIN 2>/dev/null)"
+# shellcheck disable=SC2086  # an empty $vendor_args must expand to no argument.
+./tools/vendor-transcribe.sh $vendor_args
 vendor_status=$?
 if [ "$vendor_status" -ne 0 ]; then
     fail "the transcribe.cpp vendor build failed; see above."
+fi
+pin_after="$(/sbin/md5 -q patches/transcribe.cpp/PIN 2>/dev/null)"
+transcribe_moved="no"
+if [ "$pin_before" != "$pin_after" ]; then
+    transcribe_moved="yes"
 fi
 
 # The package update, after the vendor step because it loads Package.swift.
@@ -257,6 +278,10 @@ step /usr/bin/lipo -info build/speech
 # step already found - no second network call - and a reminder that fails to
 # print is still not a failed build, which is why its status is not acted on.
 ./tools/vendor-transcribe.sh --report-upstream
+if [ "$transcribe_moved" = "yes" ]; then
+    echo "note: transcribe.cpp moved to a new release (see above the build log). Review" >&2
+    echo "      and commit patches/transcribe.cpp/PIN, and re-measure the ggml rows." >&2
+fi
 case "$update_result" in
     changed)
         echo "note: the package update moved the pins (listed above the build log)." >&2

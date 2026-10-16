@@ -1,0 +1,8 @@
+# The transcribe.cpp release the patches in this directory are written against,
+# and the commit its tag pointed at (a tag can be moved; a commit cannot, so the
+# clone is verified against it). Read by tools/vendor-transcribe.sh. With
+# --update - which ./build.sh passes unless given --no-update - that script
+# moves this pin to the newest release once the framework builds from it with
+# every patch applied. Commit it with the patches.
+tag v0.2.3
+commit 63a44d9239d610b3908e8a66b384924cd4a77217
