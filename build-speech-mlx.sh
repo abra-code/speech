@@ -358,7 +358,8 @@ version_swift="Helpers/speech-mlx/Sources/speech-mlx/Version.swift"
 # it is what happens offline, and the pins it leaves are the committed ones.
 # Anything else - the pins could not be restored, a version string could not be
 # rewritten, an interrupt - is. It resolves in a folder of its own (see the
-# script), so the build below re-checks-out only the packages that moved.
+# script), so a build where nothing moved keeps its checkouts and stays
+# incremental.
 update_result="skipped"
 if [ "$update" = "yes" ]; then
     # What moved is compared, not the file's bytes: SwiftPM rewrites
@@ -382,6 +383,21 @@ if [ "$update" = "yes" ]; then
         1) update_result="failed" ;;
         *) fail "the package update stopped (exit $update_status); see above." ;;
     esac
+fi
+
+# After an update that moved the pins, the build's checkouts start over from
+# the new Package.resolved. xcodebuild checks out the new versions but never
+# removes a package that left the graph. Measured 2026-10-15: mlx-swift 0.32
+# dropped swift-argument-parser, its checkout stayed, and the notices generator
+# below refused the build ("Checkouts with no pin") - rightly, since it cannot
+# tell a stale checkout from a linked package it would not cover. Removing only
+# that folder is not enough either: workspace-state.json still lists it. With
+# Package.resolved present the new checkouts are exactly what it pins, so the
+# stale-checkout trap in tools/update-packages.sh does not apply here. The
+# clone cache (repositories/) stays, so this costs a re-checkout and a
+# recompile, not a download - and only on a build where something moved.
+if [ "$update_result" = "changed" ]; then
+    step /bin/rm -rf "$derived/SourcePackages/checkouts" "$derived/SourcePackages/workspace-state.json"
 fi
 
 # The two -skip flags trust the package plugin and the swift-syntax macros in

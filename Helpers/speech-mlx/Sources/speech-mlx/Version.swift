@@ -11,6 +11,6 @@
 
 enum HelperVersion {
     static let helper = "0.1.0"
-    static let mlxAudio = "0.1.3"
-    static let mlxSwift = "0.31.6"
+    static let mlxAudio = "0.1.5"
+    static let mlxSwift = "0.32.3"
 }

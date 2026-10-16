@@ -35,8 +35,9 @@
 #        DOWN). So the resolve runs in a derived-data folder of its own,
 #        Helpers/speech-mlx/build/package-update, whose checkouts are removed
 #        before and after and whose clone cache is kept for the next run. The
-#        build's own folder is left alone, so the build that follows re-checks-out
-#        only what moved instead of recompiling MLX from scratch every time.
+#        build's own folder is left alone, so a build where nothing moved keeps
+#        its checkouts and stays incremental. (When pins did move,
+#        build-speech-mlx.sh resets the build's checkouts itself; see there.)
 #
 #   3. Copies the new versions into the literals the binaries report:
 #      fluidAudioVersion in Sources/speech/Environment.swift, and mlxAudio and

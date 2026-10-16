@@ -128,6 +128,23 @@ fi
 # subdirectories in here, so build/speech does not collide with anything it owns.
 scratch="build"
 
+# After an update that moved the pins, the build products start over. Measured
+# 2026-10-15 on the FluidAudio 0.15.6 -> 0.17.7 update, which also moved its
+# NemoTextProcessing.xcframework from v0.3.0 to v0.3.1: the first incremental
+# build compiled the framework's C module before its module.modulemap had been
+# copied into Products/Release/include, and failed with "error reading
+# .../include/module.modulemap"; the same build run again succeeded. A build
+# that fails once after every update is not a default worth keeping.
+#
+# Only the build systems' own output folders go: out/ (Swift Build) and the
+# per-triple folder (SwiftPM's native build system). Not `swift package clean`,
+# which also deletes build/speech, the framework and the catalog beside it, so
+# a failed rebuild would leave nothing that runs. Checkouts, repositories and
+# downloaded artifacts stay, so this costs a recompile, not a download.
+if [ "$update_result" = "changed" ]; then
+    step /bin/rm -rf "$scratch/out" "$scratch/arm64-apple-macosx"
+fi
+
 # `swift build` runs lipo itself when given more than one --arch, so there is no
 # separate universal step. Repeating the flags for --show-bin-path is not a
 # rebuild: it re-resolves and prints the path, which differs by architecture

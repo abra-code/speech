@@ -24,7 +24,7 @@ enum SpeechEnvironment {
     /// in the test suite fails if the catalog header drifts from the file,
     /// because a stale version string is worse than none: it is a claim about
     /// which library produced a number.
-    static let fluidAudioVersion = "0.15.6"
+    static let fluidAudioVersion = "0.17.7"
 
     /// transcribe.cpp does report itself, so it is asked rather than pinned.
     static var transcribeCppVersion: String { Transcribe.version() }
