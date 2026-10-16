@@ -52,9 +52,9 @@ example offline or to reproduce a recorded measurement. An update that fails,
 offline for instance, leaves the pins as they were and the build goes on with
 them, with a warning at the end.
 
-transcribe.cpp is built rather than downloaded because two fixes `speech`
-depends on are in no published release. `build.sh` runs
-`tools/vendor-transcribe.sh`, which clones the pinned tag, applies the patches
+transcribe.cpp is built rather than downloaded because a fix `speech` depends
+on, for the Parakeet streaming commit freeze, is in no published release.
+`build.sh` runs `tools/vendor-transcribe.sh`, which clones the pinned tag, applies the patches
 in `patches/transcribe.cpp/` and builds `vendor/TranscribeCpp.xcframework`; that
 needs cmake and Xcode (ninja is used if it is there), takes a few minutes on a
 cold tree, and is a no-op afterwards until the pin or a patch changes. By default

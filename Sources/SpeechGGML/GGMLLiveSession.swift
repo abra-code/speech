@@ -51,7 +51,8 @@ actor GGMLLiveSession: LiveSession {
 
     /// Streams whose tentative text is committed here rather than by the library.
     ///
-    /// A workaround for transcribe.cpp v0.2.3, and only that. Its parakeet
+    /// A workaround for one transcribe.cpp defect, present from v0.2.3 through
+    /// v0.4.0 (patches/transcribe.cpp/0001 fixes it in the library). Its parakeet
     /// cache-aware family marks every decoded token committed, but the library
     /// grows `committed` only while the per-token texts, concatenated, match
     /// the full text byte for byte - and the full text has runs of spaces

@@ -30,6 +30,7 @@ struct GGMLPiecesTests {
     @Test("a refusal for length is retried in shorter pieces, any other is not")
     func retriable() {
         #expect(GGMLEngine.isRetriableWithShorterPieces(.outputTruncated(message: "x", partial: nil)))
+        #expect(GGMLEngine.isRetriableWithShorterPieces(.outputRepetition(message: "x", partial: nil)))
         #expect(GGMLEngine.isRetriableWithShorterPieces(.inputTooLong("x")))
         #expect(GGMLEngine.isRetriableWithShorterPieces(.outOfMemory("x")))
         #expect(!GGMLEngine.isRetriableWithShorterPieces(.modelLoad("x")))

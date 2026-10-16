@@ -22,11 +22,11 @@ let package = Package(
         // from source, plus its own Swift wrapper vendored under
         // Sources/TranscribeCpp (MIT).
         //
-        // Not the published release asset: speech needs two fixes no release
-        // carries - the Parakeet streaming commit freeze and the Metal
-        // out-of-memory crash - so tools/vendor-transcribe.sh clones the pinned
-        // tag, applies patches/transcribe.cpp/, and builds the xcframework this
-        // target points at. The pin and the patches are in this repository, so
+        // Not the published release asset: speech needs a fix no release
+        // carries - the Parakeet streaming commit freeze - so
+        // tools/vendor-transcribe.sh clones the pinned tag, applies
+        // patches/transcribe.cpp/, and builds the xcframework this target
+        // points at. The pin and the patches are in this repository, so
         // the framework is reproducible; vendor/ itself is not committed.
         //
         // `swift build` on its own fails here with "artifact not found" until

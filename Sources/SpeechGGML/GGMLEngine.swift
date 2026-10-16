@@ -135,9 +135,21 @@ actor GGMLEngine: TranscriptionEngine {
             throw SpeechError.runtime(
                 "cannot load '\(id)' from \(path): \(Self.describe(error))")
         }
+        // Throws since transcribe.cpp 0.4.0, whose models declare roles: a GGUF
+        // that only diarizes, identifies languages or detects speech has no
+        // speech-to-text capabilities to read, and says so as `.unsupportedRole`.
+        // In practice the session creation inside `GGMLSession.load` refuses
+        // such a model first, with the same error, so this is the backstop.
+        let capabilities: Capabilities
+        do {
+            capabilities = try loadedPair.model.capabilities
+        } catch {
+            throw SpeechError.runtime(
+                "'\(id)' loaded from \(path) but cannot transcribe: \(Self.describe(error))")
+        }
         self.model = loadedPair.model
         self.session = loadedPair.session
-        self.loaded = loadedPair.model.capabilities
+        self.loaded = capabilities
     }
 
     /// The language this run will use, spelled the way this model spells it.
@@ -308,9 +320,14 @@ actor GGMLEngine: TranscriptionEngine {
     /// generation budget on as little as ten seconds (Granite 4.0 1B did, on one
     /// of four 5-minute recordings), and memory and context are length limits by
     /// definition. One such piece must not cost a long recording its transcript.
+    ///
+    /// Since transcribe.cpp 0.4.0 the library also catches the loop itself and
+    /// stops with `.outputRepetition` instead of running out the budget; its
+    /// header says the same audio loops again but "splitting it at a different
+    /// point may not", which is exactly this retry.
     static func isRetriableWithShorterPieces(_ error: TranscribeError) -> Bool {
         switch error {
-        case .outputTruncated, .inputTooLong, .outOfMemory: return true
+        case .outputTruncated, .outputRepetition, .inputTooLong, .outOfMemory: return true
         default: return false
         }
     }
@@ -596,9 +613,10 @@ actor GGMLEngine: TranscriptionEngine {
         switch error {
         case .invalidArgument(let m), .notImplemented(let m), .modelFileNotFound(let m),
              .modelLoad(let m), .outOfMemory(let m), .backend(let m), .unsupported(let m),
-             .badStructSize(let m), .inputTooLong(let m), .versionMismatch(let m), .busy(let m):
+             .badStructSize(let m), .inputTooLong(let m), .versionMismatch(let m), .busy(let m),
+             .unsupportedRole(let m), .inputTooShort(let m):
             return m
-        case .aborted(let m, _), .outputTruncated(let m, _):
+        case .aborted(let m, _), .outputTruncated(let m, _), .outputRepetition(let m, _):
             return m
         case .other(let status, let message):
             return "\(message) (status \(status))"

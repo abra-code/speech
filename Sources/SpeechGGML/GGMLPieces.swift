@@ -13,13 +13,13 @@
 //   Speech NAR has a 4096-token context instead, which 5 minutes overfills.
 // - **Encoder families grow their compute graph with the square of the audio.**
 //   Parakeet, Parakeet Unified and Nemotron finished 10 minutes but asked Metal
-//   for a 13.7 GB buffer at 20. An unpatched ggml does not survive that failed
-//   allocation - the process crashes with SIGSEGV rather than returning an
-//   error - which is why this repository builds transcribe.cpp with the two
-//   patches in patches/transcribe.cpp/ggml/. With them the run returns an
-//   out-of-memory error, so the retry below can act on it instead of the
-//   process disappearing. The piece lengths still matter: a refusal that costs
-//   a retry is worse than a length that never asks.
+//   for a 13.7 GB buffer at 20. The ggml in transcribe.cpp 0.2.3 did not
+//   survive that failed allocation - the process crashed with SIGSEGV rather
+//   than returning an error - which this repository patched until 0.4.0, whose
+//   newer ggml carries both fixes. Now the run returns an out-of-memory error,
+//   so the retry below can act on it instead of the process disappearing. The
+//   piece lengths still matter: a refusal that costs a retry is worse than a
+//   length that never asks.
 // - **Whisper windows its own input at 30 seconds** and ran 20 minutes in 1.3 GB
 //   at 21x, so it is given the file whole.
 //

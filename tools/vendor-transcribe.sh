@@ -143,7 +143,9 @@ target_commit="$PINNED_COMMIT"
 # Patches under patches/transcribe.cpp/ggml/ apply inside the vendored ggml
 # tree, because they are written against the ggml repository and are meant to go
 # upstream to ggml unchanged (transcribe.cpp keeps its own in patches/ggml/ the
-# same way).
+# same way). There are none at v0.4.0, whose newer ggml carries both of the
+# fixes that used to live there; the folder is simply absent until another one
+# is needed.
 
 root_patches() { /usr/bin/find "$patch_root" -maxdepth 1 -name '*.patch' 2>/dev/null | /usr/bin/sort; }
 ggml_patches() { /usr/bin/find "$patch_root/ggml" -maxdepth 1 -name '*.patch' 2>/dev/null | /usr/bin/sort; }
@@ -296,16 +298,6 @@ fi
 if [ ! -d "$patch_root" ]; then
     die "patches/transcribe.cpp/ is missing from this checkout." \
         "The patched build cannot be reproduced without it."
-fi
-
-# Same guard for the ggml half of the series. find prints nothing for a missing
-# directory, so without this a checkout that lost patches/transcribe.cpp/ggml/
-# would build with the root patches only and report success. If the ggml fixes
-# ever land upstream, delete this check along with the directory.
-if [ ! -d "$patch_root/ggml" ]; then
-    die "patches/transcribe.cpp/ggml/ is missing from this checkout." \
-        "The Metal out-of-memory fixes live there; a build without them crashes" \
-        "on a long recording instead of returning an error."
 fi
 
 # An empty series would build a clean upstream tree and hand back a framework

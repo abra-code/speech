@@ -1,8 +1,8 @@
-diff --git a/src/transcribe.cpp b/src/transcribe.cpp
-index dfeb5fb..32c9430 100644
---- a/src/transcribe.cpp
-+++ b/src/transcribe.cpp
-@@ -1147,6 +1147,39 @@ static bool starts_with_bytes(const std::string & s, const std::string & prefix)
+diff --git a/src/transcribe-asr.cpp b/src/transcribe-asr.cpp
+index ffbfa0c..a5c2c53 100644
+--- a/src/transcribe-asr.cpp
++++ b/src/transcribe-asr.cpp
+@@ -467,6 +467,39 @@ static bool starts_with_bytes(const std::string & s, const std::string & prefix)
      return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
  }
  
@@ -42,7 +42,7 @@ index dfeb5fb..32c9430 100644
  static size_t token_prefix_raw_bytes(const transcribe_session * session, int n_tokens) {
      if (session == nullptr || n_tokens <= 0 || session->tokens.empty()) {
          return 0;
-@@ -1157,17 +1190,14 @@ static size_t token_prefix_raw_bytes(const transcribe_session * session, int n_t
+@@ -477,17 +510,14 @@ static size_t token_prefix_raw_bytes(const transcribe_session * session, int n_t
      for (int i = 0; i < capped; ++i) {
          prefix += session->tokens[static_cast<size_t>(i)].text;
      }
@@ -69,7 +69,7 @@ index dfeb5fb..32c9430 100644
  
  static size_t family_candidate_raw_prefix_bytes(const transcribe_session * session) {
 diff --git a/tests/stream_dispatch_unit.cpp b/tests/stream_dispatch_unit.cpp
-index fa0df5e..c7fb887 100644
+index 2725321..bb7eae8 100644
 --- a/tests/stream_dispatch_unit.cpp
 +++ b/tests/stream_dispatch_unit.cpp
 @@ -828,6 +828,54 @@ void test_stream_family_token_prefix_maps_trimmed_leading_space() {
@@ -127,7 +127,7 @@ index fa0df5e..c7fb887 100644
  void test_stream_text_stable_prefix_does_not_rewrite_committed() {
      transcribe_model model;
      init_streaming_model(model);
-@@ -1572,6 +1620,7 @@ int main() {
+@@ -1636,6 +1684,7 @@ int main() {
      test_stream_auto_unknown_family_falls_back_to_generic_stable_prefix();
      test_stream_stable_prefix_known_family_uses_family_boundary();
      test_stream_family_token_prefix_maps_trimmed_leading_space();
