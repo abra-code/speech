@@ -36,7 +36,7 @@ off the network and off a second repository.
 Still needed at `v0.4.0`: `token_prefix_raw_bytes` moved to
 `src/transcribe-asr.cpp` unchanged, and the patch was carried over by changing
 only its file name. Checked on 2026-10-15 with upstream's own unit test built
-for the CPU: `transcribe_stream_dispatch_unit` fails four checks in the new
+for the CPU: `transcribe_stream_dispatch_unit` fails five checks in the new
 `collapsed_space_run` case on unpatched `v0.4.0` (the committed text stops
 growing) and passes with the patch.
 
