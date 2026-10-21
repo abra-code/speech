@@ -82,6 +82,29 @@ struct HelperPinsTests {
         }
     }
 
+    /// speech and speech-mlx ship together under one number, so the helper's
+    /// `helper` literal has to be the tool's `kVersionNumber`.
+    @Test("the helper's version is the tool's version")
+    func helperVersionMatchesTheTool() throws {
+        let helperSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Helpers/speech-mlx/Sources/speech-mlx/Version.swift"),
+            encoding: .utf8)
+        let toolSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Sources/speech/CLI.swift"),
+            encoding: .utf8)
+        let helper = literal("helper", in: helperSource)
+        let toolPrefix = "let kVersionNumber = \""
+        let tool = toolSource.range(of: toolPrefix).flatMap { range -> String? in
+            let rest = toolSource[range.upperBound...]
+            return rest.firstIndex(of: "\"").map { String(rest[rest.startIndex..<$0]) }
+        }
+        #expect(helper != nil, "Version.swift has no literal for helper")
+        #expect(tool != nil, "CLI.swift has no kVersionNumber literal")
+        #expect(helper == tool,
+                "speech-mlx reports \(helper ?? "nothing") but speech is \(tool ?? "nothing")")
+    }
+
     @Test("the generated project describes the manifest that is checked in")
     func projectMatchesTheSpec() throws {
         // Not a timestamp comparison: git does not preserve modification times,

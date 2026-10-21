@@ -128,8 +128,11 @@ stop, not "finish what you have".
 Sent unprompted, once, before any request is read.
 
 ```jsonl
-{"cache_mb":512,"event":"ready","helper":"0.1.0","mlx_audio":"0.1.3","mlx_swift":"0.31.6","types":["parakeet","whisper","qwen3_asr"]}
+{"cache_mb":512,"event":"ready","helper":"0.2.0","mlx_audio":"0.1.6","mlx_swift":"0.32.3","types":["parakeet","whisper","qwen3_asr"]}
 ```
+
+`helper` is the version of the `speech` it ships with; the two are released
+under one number.
 
 It is emitted only after the helper has run a trivial MLX operation, which makes
 it answer the question that is most expensive to answer late: whether this build

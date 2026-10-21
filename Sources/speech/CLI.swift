@@ -9,7 +9,7 @@ import Foundation
 import SpeechCore
 
 let kProgram = "speech"
-let kVersionNumber = "0.1.0"
+let kVersionNumber = "0.2.0"
 let kVersion = "\(kProgram) \(kVersionNumber)"
 
 /// Flags that mean the same thing to every verb. Extracted in a pre-pass so

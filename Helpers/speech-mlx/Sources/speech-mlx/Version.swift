@@ -8,9 +8,13 @@
 // (tools/update-packages.sh) rewrites them whenever those move, and
 // `helperPinsMatchTheProject` in the main test suite fails when they drift,
 // because a stale version string is worse than none.
+//
+// `helper` is the version of `speech` it ships with, not a count of its own
+// changes: the two are released together, so one number names the pair.
+// `helperVersionMatchesTheTool` fails when it differs from `kVersionNumber`.
 
 enum HelperVersion {
-    static let helper = "0.1.0"
+    static let helper = "0.2.0"
     static let mlxAudio = "0.1.6"
     static let mlxSwift = "0.32.3"
 }
