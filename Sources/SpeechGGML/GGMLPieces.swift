@@ -59,6 +59,8 @@
 // and retried. A model that declares a shorter limit gets that limit and no
 // shorter one: the fewest cuts it accepts.
 
+import Foundation
+
 enum GGMLPieces {
     /// Audio this long or shorter is one utterance, cut only where the model's
     /// declared limit forces it; see above.
@@ -86,10 +88,28 @@ enum GGMLPieces {
     /// Architectures without an autoregressive text decoder.
     static let encoders: Set<String> = ["parakeet", "gigaam", "medasr", "sensevoice", "moonshine"]
 
+    /// `SPEECH_GGML_PIECE_SECONDS`, for measuring: a positive number replaces
+    /// every family's length (whisper's windowing excepted), so a sweep like
+    /// the one above can run one build at several lengths. The whole-utterance
+    /// rule and a model's declared limit still apply. Unset in normal use;
+    /// anything but a finite number of at least a second is ignored, so a typo
+    /// cannot turn a recording into a million one-sample runs.
+    static let overrideVariable = "SPEECH_GGML_PIECE_SECONDS"
+
+    static func overrideSeconds(_ environment: [String: String]) -> Double? {
+        guard let raw = environment[overrideVariable], let seconds = Double(raw),
+              seconds.isFinite, seconds >= 1 else { return nil }
+        return seconds
+    }
+
     /// The longest audio, in seconds, one run of `architecture` is given; nil
     /// when the architecture needs no ceiling of this engine's.
-    static func practicalMaxSeconds(architecture: String) -> Double? {
+    static func practicalMaxSeconds(
+        architecture: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Double? {
         if selfWindowing.contains(architecture) { return nil }
+        if let override = overrideSeconds(environment) { return override }
         if let measured = measuredSeconds[architecture] { return measured }
         if encoders.contains(architecture) { return encoderSeconds }
         return textDecoderSeconds

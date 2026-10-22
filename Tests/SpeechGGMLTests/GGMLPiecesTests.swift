@@ -91,6 +91,18 @@ struct GGMLPiecesTests {
         #expect(GGMLPieces.ceilingSeconds(architecture: "canary", declaredMs: 20_000, audioSeconds: 20) == 20)
     }
 
+    @Test("the measuring override replaces every family's length but whisper's, and nothing else")
+    func measuringOverride() {
+        let env = [GGMLPieces.overrideVariable: "45"]
+        #expect(GGMLPieces.practicalMaxSeconds(architecture: "qwen3_asr", environment: env) == 45)
+        #expect(GGMLPieces.practicalMaxSeconds(architecture: "parakeet", environment: env) == 45)
+        #expect(GGMLPieces.practicalMaxSeconds(architecture: "whisper", environment: env) == nil)
+        for junk in ["", "0", "-5", "abc", "inf", "nan", "1e-6", "0.5"] {
+            #expect(GGMLPieces.practicalMaxSeconds(
+                architecture: "qwen3_asr", environment: [GGMLPieces.overrideVariable: junk]) == 10, "\(junk)")
+        }
+    }
+
     @Test("an architecture this engine does not know gets the short ceiling, and so does a model that names none")
     func unknown() {
         #expect(GGMLPieces.ceilingSeconds(architecture: "some_new_family", declaredMs: 0) == GGMLPieces.textDecoderSeconds)

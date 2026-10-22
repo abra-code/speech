@@ -130,6 +130,131 @@ struct AudioSegmenterTests {
         Self.check(wild, cover: Int(20 * AudioDecoder.sampleRate), cap: 5)
     }
 
+    /// Noise everywhere except the given gaps, each (center, length) in seconds.
+    static func audio(seconds: Double, gaps: [(center: Double, length: Double)]) -> [Float] {
+        var samples = audio(seconds: seconds)
+        let rate = AudioDecoder.sampleRate
+        for gap in gaps {
+            let from = max(0, Int((gap.center - gap.length / 2) * rate))
+            let to = min(samples.count, Int((gap.center + gap.length / 2) * rate))
+            for index in from..<to { samples[index] = 0 }
+        }
+        return samples
+    }
+
+    @Test("a sentence pause wins over a quieter dip nearer the cap")
+    func sentencePauseBeatsADip() async throws {
+        // The old cutter looked at the last 3 s only and took the quietest
+        // 20 ms there: the dip at 19.5 s, mid-word, over the pause at 12 s.
+        let samples = Self.audio(seconds: 40, gaps: [(12, 0.6), (19.5, 0.03)])
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(abs(firstCut - 12) < 0.1, "cut at \(firstCut)s, expected the pause at 12s")
+        Self.check(ranges, cover: samples.count, cap: 20)
+    }
+
+    @Test("of two sentence pauses, the later one: the longest piece")
+    func laterSentencePause() async throws {
+        let samples = Self.audio(seconds: 40, gaps: [(11, 0.7), (17, 0.6)])
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(abs(firstCut - 17) < 0.1, "cut at \(firstCut)s, expected 17s")
+    }
+
+    @Test("a sentence pause wins over a later phrase pause")
+    func sentenceBeforePhrase() async throws {
+        let samples = Self.audio(seconds: 40, gaps: [(13, 0.6), (18, 0.25)])
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(abs(firstCut - 13) < 0.1, "cut at \(firstCut)s, expected 13s")
+    }
+
+    @Test("with no pause long enough, the longest quiet run")
+    func longestShortRun() async throws {
+        let samples = Self.audio(seconds: 40, gaps: [(14, 0.15), (18, 0.06)])
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(abs(firstCut - 14) < 0.1, "cut at \(firstCut)s, expected 14s")
+    }
+
+    @Test("no cut nearer the start than half the cap")
+    func pauseTooEarlyIsIgnored() async throws {
+        // A pause at 6 s is outside the default window (10 to 20 s), so the
+        // cut is somewhere later rather than a 6 s piece.
+        let samples = Self.audio(seconds: 40, gaps: [(6, 1.0)])
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(firstCut >= 10, "cut at \(firstCut)s")
+        Self.check(ranges, cover: samples.count, cap: 20)
+    }
+
+    @Test("the last piece is never a second long")
+    func noTinyTail() async throws {
+        // 21 s at a 20 s cap, with a pause at 19.5 s: cutting there leaves
+        // 1.5 s, the shape that came back as "Okay." The pause at 15 s leaves
+        // 6 s.
+        let samples = Self.audio(seconds: 21, gaps: [(15, 0.6), (19.5, 0.6)])
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        #expect(ranges.count == 2)
+        let last = try #require(ranges.last)
+        #expect(last.endSeconds - last.startSeconds >= 3, "a last piece of \(last.endSeconds - last.startSeconds)s")
+        #expect(abs(last.startSeconds - 15) < 0.1)
+        Self.check(ranges, cover: samples.count, cap: 20)
+    }
+
+    @Test("a noisy recording's pauses are found at its floor")
+    func noisyFloor() async throws {
+        // Speech at 0.5 and pauses at 0.05 amplitude: the floor is 20 dB down,
+        // short of the 25 dB rule, so the floor rule has to find them.
+        var samples = Self.audio(seconds: 40)
+        let rate = AudioDecoder.sampleRate
+        var generator = SystemRandomNumberGenerator()
+        for center in stride(from: 3.0, to: 40.0, by: 3.0) {
+            let from = Int((center - 0.35) * rate)
+            let to = Int((center + 0.35) * rate)
+            for index in from..<to { samples[index] = Float.random(in: -0.05...0.05, using: &generator) }
+        }
+        let energies = EnergySegmenter.frameEnergies(samples, frame: 320)
+        let threshold = try #require(EnergySegmenter.quietThreshold(energies))
+        #expect(EnergySegmenter.quietRuns(energies, threshold: threshold).count >= 10)
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(abs(firstCut - 18) < 0.1, "cut at \(firstCut)s, expected the pause at 18s")
+    }
+
+    @Test("all silence has no threshold and still cuts")
+    func silentRecording() async throws {
+        let samples = [Float](repeating: 0, count: Int(50 * AudioDecoder.sampleRate))
+        #expect(EnergySegmenter.quietThreshold(EnergySegmenter.frameEnergies(samples, frame: 320)) == nil)
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        Self.check(ranges, cover: samples.count, cap: 20)
+    }
+
+    @Test("a recording that is mostly digital silence cuts at the latest silence")
+    func mostlyDigitalSilence() async throws {
+        // 3.5 s bursts every 8 s, digital zero between: the median frame is 0.
+        // Without a threshold the cut fell to the first zero frame in the
+        // window, 11.5 s, instead of the silence that reaches the cap.
+        let rate = AudioDecoder.sampleRate
+        var samples = [Float](repeating: 0, count: Int(60 * rate))
+        let noise = Self.audio(seconds: 3.5)
+        for burst in stride(from: 0.0, to: 60.0, by: 8.0) {
+            let from = Int(burst * rate)
+            for (offset, value) in noise.enumerated() where from + offset < samples.count {
+                samples[from + offset] = value
+            }
+        }
+        // The zeros are quiet against the speech at the 95th percentile.
+        let threshold = try #require(EnergySegmenter.quietThreshold(EnergySegmenter.frameEnergies(samples, frame: 320)))
+        #expect(threshold > 0)
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
+        let firstCut = try #require(ranges.first).endSeconds
+        // The silence from 19.5 s runs past the cap; the cut is in its
+        // in-window part.
+        #expect(firstCut > 19.5 && firstCut < 20, "cut at \(firstCut)s")
+        Self.check(ranges, cover: samples.count, cap: 20)
+    }
+
     @Test("sample ranges convert to seconds at the decoder's rate")
     func rangeSeconds() {
         let range = SampleRange(start: 16000, end: 48000)
