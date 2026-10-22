@@ -21,7 +21,9 @@
 // `peak_memory_bytes` is peak footprint plus the Neural Engine's mapping,
 // which over those same three runs stayed within 0.4% - 1291, 1286, 1286 MB.
 // (The Neural Engine half alone was identical to the byte; the footprint is
-// what moves the last few megabytes.) Rank engines by that one. The baseline taken before prepare() and the resulting deltas go
+// what moves the last few megabytes.) Rank engines by that one. A ggml row adds
+// the resident pages of its memory-mapped model file, which the footprint does
+// not count (`TranscriptionEngine.residentMappedModelBytes`). The baseline taken before prepare() and the resulting deltas go
 // into the written report, where the question "what did the model cost" is
 // actually being asked.
 
@@ -37,6 +39,9 @@ public struct EvalOutcome: Sendable {
     /// does not carry the ledgers. Nil means the report says so rather than
     /// printing a footprint that omits half a gigabyte of model.
     public var memory: SystemInfo.MemorySnapshot?
+    /// The resident part of a memory-mapped model file, already included in
+    /// `summary.peakMemoryBytes`; nil for an engine that maps none.
+    public var mappedModelBytes: Int64?
     public var loadSeconds: Double
     /// The locale identifiers the engine actually used, comma separated. A run
     /// that asked for "es-419" and measured es_ES has to say so, or its numbers
@@ -220,19 +225,26 @@ public enum Evaluator {
         // the run needed. nil for every engine but `mlx`, so this changes no
         // number that has already been recorded.
         let helperMemory = await engine.peakOutOfProcessMemoryBytes() ?? 0
+        // And an engine whose weights are mapped from the model file adds the
+        // pages of it that are resident, which the footprint leaves out. nil
+        // for every engine but `ggml`.
+        let mappedModel = await engine.residentMappedModelBytes()
         let summary = SpeechEvent.EvalSummary(
             model: catalogID, language: language, rows: emitted.count,
             wer: word.rate, cer: character.rate,
             audioSeconds: totalAudio, wallSeconds: totalWall,
             peakRSSBytes: memory?.residentPeak ?? SystemInfo.peakResidentBytes(),
-            peakMemoryBytes: (memory?.peak ?? SystemInfo.peakResidentBytes()) + helperMemory,
+            // Without the ledgers the resident peak stands in, and it already
+            // counts the mapped pages.
+            peakMemoryBytes: (memory.map { $0.peak + (mappedModel ?? 0) } ?? SystemInfo.peakResidentBytes())
+                + helperMemory,
             worst: Array(worst))
         sink.emit(.evalSummary(summary))
 
         let outcome = EvalOutcome(
             summary: summary, rows: emitted, skipped: skipped,
             baselineRSSBytes: baselineRSS, baselineMemoryBytes: baselineMemory,
-            memory: memory, loadSeconds: loadSeconds,
+            memory: memory, mappedModelBytes: mappedModel, loadSeconds: loadSeconds,
             resolvedLocales: resolvedLocales.isEmpty ? nil : resolvedLocales.joined(separator: ","))
 
         if let reportDirectory {
@@ -278,6 +290,10 @@ public enum Evaluator {
         /// that does not report the ledgers.
         var peakFootprintBytes: Int64?
         var peakNeuralBytes: Int64?
+        /// The third part, for an engine that maps its model file: the
+        /// resident pages of that file at the end of the run. Absent for every
+        /// other engine.
+        var mappedModelBytes: Int64?
         /// Present only for `eval --live`. Its absence is how a reader tells a
         /// batch report from a live one at a glance.
         var live: SpeechEvent.LiveSummary?
@@ -301,6 +317,7 @@ public enum Evaluator {
             case peakMemoryDeltaBytes = "peak_memory_delta_bytes"
             case peakFootprintBytes = "peak_footprint_bytes"
             case peakNeuralBytes = "peak_neural_bytes"
+            case mappedModelBytes = "mapped_model_bytes"
         }
     }
 
@@ -344,6 +361,7 @@ public enum Evaluator {
             peakMemoryDeltaBytes: max(0, summary.peakMemoryBytes - outcome.baselineMemoryBytes),
             peakFootprintBytes: outcome.memory?.footprintPeak,
             peakNeuralBytes: outcome.memory?.neuralPeak,
+            mappedModelBytes: outcome.mappedModelBytes,
             live: summary.live)
 
         let encoder = JSONEncoder()
@@ -382,6 +400,9 @@ public enum Evaluator {
         if let footprint = document.peakFootprintBytes, let neural = document.peakNeuralBytes {
             markdown += row("  of which process footprint", SystemInfo.formatBytes(footprint))
             markdown += row("  of which Neural Engine", SystemInfo.formatBytes(neural))
+            if let mapped = document.mappedModelBytes {
+                markdown += row("  of which mapped model file", SystemInfo.formatBytes(mapped))
+            }
         } else {
             // Without the ledgers "peak memory" is the resident peak wearing a
             // better name, and a reader comparing this report against another

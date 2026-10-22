@@ -4,6 +4,7 @@
 // tests are bounds checks against physical RAM for exactly that reason: a
 // misread field lands orders of magnitude outside them.
 
+import Foundation
 import Testing
 @testable import SpeechCore
 
@@ -51,6 +52,31 @@ struct SystemInfoTests {
     @Test("peakMemoryBytes answers even though it is allowed to fall back")
     func peakMemoryAlwaysAnswers() {
         #expect(SystemInfo.peakMemoryBytes() > 1_000_000)
+    }
+
+    @Test("a mapped file's resident pages are counted, and a file nothing maps is nil")
+    func mappedFileIsCounted() throws {
+        let size = 4 * 1_048_576
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("speech-mapped-\(UUID().uuidString).bin")
+        try Data(repeating: 7, count: size).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(SystemInfo.residentMappedBytes(ofFile: url.path) == nil)
+
+        let fd = open(url.path, O_RDONLY)
+        try #require(fd >= 0)
+        defer { close(fd) }
+        let mapping = try #require(mmap(nil, size, PROT_READ, MAP_PRIVATE, fd, 0))
+        try #require(mapping != MAP_FAILED)
+        defer { munmap(mapping, size) }
+        // Touch every page, the way a forward pass reads every weight.
+        let bytes = mapping.assumingMemoryBound(to: UInt8.self)
+        var sum = 0
+        for offset in stride(from: 0, to: size, by: Int(getpagesize())) { sum += Int(bytes[offset]) }
+        #expect(sum > 0)
+
+        // Under /var, which the kernel reports as /private/var.
+        #expect(SystemInfo.residentMappedBytes(ofFile: url.path) == Int64(size))
     }
 
     @Test("ru_maxrss is bytes on Darwin, not the kilobytes the manual claims")

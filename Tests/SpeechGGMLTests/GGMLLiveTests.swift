@@ -66,7 +66,7 @@ struct GGMLStreamingRowTests {
 struct GGMLCommittedTextWorkaroundTests {
     @Test("only the parakeet cache-aware stream commits its tentative text")
     func scopedToParakeetStream() {
-        // The transcribe.cpp defect (v0.2.3 through v0.4.0) is in that family's
+        // The transcribe.cpp defect (v0.2.3 through v0.4.1) is in that family's
         // commit boundary.
         // Widening this to the buffered kind or to a family that has never been
         // measured would be trusting tentative text nobody checked.

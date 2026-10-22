@@ -4,5 +4,5 @@
 # --update - which ./build.sh passes unless given --no-update - that script
 # moves this pin to the newest release once the framework builds from it with
 # every patch applied. Commit it with the patches.
-tag v0.4.0
-commit f1dcd15858c4bbba87ca97862b4e448b2cf15b8f
+tag v0.4.1
+commit 4d7c1ccefd39e5a9ea36cca5f8fefc6dcc14b99b

@@ -95,11 +95,64 @@ public enum SystemInfo {
             neuralPeak: Int64(info.ledger_tag_neural_nofootprint_peak))
     }
 
+    /// Resident bytes of this process's mappings of the file at `path`, or nil
+    /// when nothing in the address space maps it.
+    ///
+    /// A memory-mapped model's weights are clean file-backed pages: the OS may
+    /// evict them, so neither the footprint ledger nor jetsam counts them, and
+    /// `memorySnapshot()` cannot see them. They are still what the model
+    /// occupies while it runs - transcribe.cpp 0.4.1 maps every GGUF it loads,
+    /// and a 1.7B Qwen3-ASR measured a 0.40 GB footprint over 2.19 GB of mapped
+    /// weights. This walks the regions with `PROC_PIDREGIONPATHINFO` and sums
+    /// the resident pages of those backed by that file, so a page that was
+    /// evicted, or never touched, is not counted.
+    public static func residentMappedBytes(ofFile path: String) -> Int64? {
+        // The kernel names a region by its real path. `realpath(3)`, not
+        // `URL.resolvingSymlinksInPath`, which strips the "/private" that
+        // /var and /tmp resolve to instead of adding it.
+        var wanted: Set<String> = [path]
+        if let resolved = realpath(path, nil) {
+            wanted.insert(String(cString: resolved))
+            free(resolved)
+        }
+        let pid = getpid()
+        let size = Int32(MemoryLayout<proc_regionwithpathinfo>.size)
+        var address: UInt64 = 0
+        var total: Int64 = 0
+        var found = false
+        while true {
+            var info = proc_regionwithpathinfo()
+            // Answers the first region at or above `address`; anything short
+            // of a whole struct is the end of the address space or an error.
+            guard proc_pidinfo(pid, PROC_PIDREGIONPATHINFO, address, &info, size) == size else { break }
+            let region = info.prp_prinfo
+            let regionPath = withUnsafeBytes(of: info.prp_vip.vip_path) { bytes in
+                String(decoding: bytes.prefix(while: { $0 != 0 }), as: UTF8.self)
+            }
+            if wanted.contains(regionPath) {
+                total += Int64(region.pri_pages_resident) * Int64(getpagesize())
+                found = true
+            }
+            let next = region.pri_address + region.pri_size
+            guard next > address else { break }
+            address = next
+        }
+        return found ? total : nil
+    }
+
     /// `memorySnapshot()?.peak`, falling back to the resident peak on a kernel
     /// too old to answer. Callers that report the number to a human should say
     /// which one they got; callers that just need a figure can use this.
     public static func peakMemoryBytes() -> Int64 {
         memorySnapshot()?.peak ?? peakResidentBytes()
+    }
+
+    /// `peakMemoryBytes()` plus a mapped model's resident pages, which the
+    /// ledgers leave out. The resident-peak fallback already counts them, so
+    /// on that path they are not added a second time.
+    public static func peakMemoryBytes(addingMapped mapped: Int64?) -> Int64 {
+        guard let snapshot = memorySnapshot() else { return peakResidentBytes() }
+        return snapshot.peak + (mapped ?? 0)
     }
 
     public static var physicalMemoryBytes: Int64 {

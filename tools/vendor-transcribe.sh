@@ -143,7 +143,7 @@ target_commit="$PINNED_COMMIT"
 # Patches under patches/transcribe.cpp/ggml/ apply inside the vendored ggml
 # tree, because they are written against the ggml repository and are meant to go
 # upstream to ggml unchanged (transcribe.cpp keeps its own in patches/ggml/ the
-# same way). There are none at v0.4.0, whose newer ggml carries both of the
+# same way). There are none since v0.4.0, whose newer ggml carries both of the
 # fixes that used to live there; the folder is simply absent until another one
 # is needed.
 

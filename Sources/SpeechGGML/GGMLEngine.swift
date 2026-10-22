@@ -55,6 +55,10 @@ actor GGMLEngine: TranscriptionEngine {
     /// advisory; this one gates.
     private var loaded: Capabilities?
     private var loading: Task<Void, Error>?
+    /// The GGUF transcribe.cpp mapped, while it is loaded. Since 0.4.1 the
+    /// library maps the file rather than copying it wherever Metal can use
+    /// host memory, which on Apple silicon is always.
+    private var weightsPath: String?
 
     init(spec: EngineSpec, row: GGMLRow, quant: String, segmenter: any AudioSegmenter) {
         self.spec = spec
@@ -150,6 +154,12 @@ actor GGMLEngine: TranscriptionEngine {
         self.model = loadedPair.model
         self.session = loadedPair.session
         self.loaded = capabilities
+        self.weightsPath = path
+    }
+
+    func residentMappedModelBytes() async -> Int64? {
+        guard model != nil, let weightsPath else { return nil }
+        return SystemInfo.residentMappedBytes(ofFile: weightsPath)
     }
 
     /// The language this run will use, spelled the way this model spells it.
@@ -268,6 +278,7 @@ actor GGMLEngine: TranscriptionEngine {
         session = nil
         model = nil
         loaded = nil
+        weightsPath = nil
     }
 
     // MARK: - Transcription

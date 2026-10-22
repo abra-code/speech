@@ -440,6 +440,8 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
                 code: "refine_incomplete")
         }
     }
+    // Read while the model is still loaded, as in TranscribeVerb.
+    let mappedModel = await engine.residentMappedModelBytes()
     await engine.unload()
     if let vadEngine { await vadEngine.unload() }
     if let refineEngine {
@@ -464,7 +466,7 @@ func runStream(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [String
         audioSeconds: captureSeconds,
         wallSeconds: sink.elapsed,
         peakRSSBytes: SystemInfo.peakResidentBytes(),
-        peakMemoryBytes: SystemInfo.peakMemoryBytes(),
+        peakMemoryBytes: SystemInfo.peakMemoryBytes(addingMapped: mappedModel),
         output: nil)))
 
     if let runError { throw runError }

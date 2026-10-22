@@ -337,6 +337,18 @@ public protocol TranscriptionEngine: Sendable {
     /// Sampled while the helper is alive rather than at the end: the kernel
     /// keeps no ledger for a process that has exited.
     func peakOutOfProcessMemoryBytes() async -> Int64?
+
+    /// Resident bytes of the model files this engine has memory-mapped, read
+    /// now. nil for every engine that copies its weights into memory the
+    /// footprint ledger counts, which is all of them but `ggml`.
+    ///
+    /// Reported ADDED to the peak for the same reason as the helper's: mapped
+    /// weights are clean file pages, which the footprint excludes, so without
+    /// this a ggml row reports what its process allocated beside the model and
+    /// not the model (0.40 GB for a run holding 2.19 GB of Qwen3-ASR weights).
+    /// Read at the end of a run, with the model still loaded; mapped weights
+    /// only grow while a model runs, unless the system evicts them.
+    func residentMappedModelBytes() async -> Int64?
 }
 
 extension TranscriptionEngine {
@@ -347,6 +359,8 @@ extension TranscriptionEngine {
     public func validate(_ options: TranscribeOptions) async throws {}
 
     public func peakOutOfProcessMemoryBytes() async -> Int64? { nil }
+
+    public func residentMappedModelBytes() async -> Int64? { nil }
 
     public func install(progress: @escaping LoadProgressHandler) async throws {
         throw SpeechError.usage("'\(id)' has no downloadable weights of its own")

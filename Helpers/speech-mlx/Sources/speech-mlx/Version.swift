@@ -14,7 +14,7 @@
 // `helperVersionMatchesTheTool` fails when it differs from `kVersionNumber`.
 
 enum HelperVersion {
-    static let helper = "0.2.0"
+    static let helper = "0.2.1"
     static let mlxAudio = "0.1.6"
     static let mlxSwift = "0.32.3"
 }

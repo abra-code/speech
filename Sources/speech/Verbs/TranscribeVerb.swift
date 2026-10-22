@@ -143,6 +143,8 @@ func runTranscribe(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [St
         await engine.unload()
         throw error
     }
+    // Read while the model is still loaded: unloading unmaps it.
+    let mappedModel = await engine.residentMappedModelBytes()
     await engine.unload()
 
     if timestamps != .word {
@@ -186,7 +188,8 @@ func runTranscribe(_ globals: GlobalOptions, _ sink: EventSink, _ arguments: [St
         audioSeconds: audioSeconds,
         wallSeconds: sink.elapsed,
         peakRSSBytes: SystemInfo.peakResidentBytes(),
-        peakMemoryBytes: SystemInfo.peakMemoryBytes() + (await engine.peakOutOfProcessMemoryBytes() ?? 0),
+        peakMemoryBytes: SystemInfo.peakMemoryBytes(addingMapped: mappedModel)
+            + (await engine.peakOutOfProcessMemoryBytes() ?? 0),
         output: output?.path)))
 }
 

@@ -206,12 +206,14 @@ public enum LiveEvaluator {
             }
 
         let memory = SystemInfo.memorySnapshot()
+        // A mapped model file's resident pages, as in `Evaluator.run`.
+        let mappedModel = await engine.residentMappedModelBytes()
         let summary = SpeechEvent.EvalSummary(
             model: catalogID, language: language, rows: emitted.count,
             wer: word.rate, cer: character.rate,
             audioSeconds: totalAudio, wallSeconds: totalWall,
             peakRSSBytes: memory?.residentPeak ?? SystemInfo.peakResidentBytes(),
-            peakMemoryBytes: memory?.peak ?? SystemInfo.peakResidentBytes(),
+            peakMemoryBytes: memory.map { $0.peak + (mappedModel ?? 0) } ?? SystemInfo.peakResidentBytes(),
             worst: Array(worst),
             live: aggregate(measurements, rows: emitted, pace: pace))
         sink.emit(.evalSummary(summary))
@@ -219,7 +221,7 @@ public enum LiveEvaluator {
         let outcome = EvalOutcome(
             summary: summary, rows: emitted, skipped: skipped,
             baselineRSSBytes: baselineRSS, baselineMemoryBytes: baselineMemory,
-            memory: memory, loadSeconds: prepared.loadSeconds,
+            memory: memory, mappedModelBytes: mappedModel, loadSeconds: prepared.loadSeconds,
             resolvedLocales: prepared.resolvedLocales.isEmpty
                 ? nil : prepared.resolvedLocales.joined(separator: ","))
 

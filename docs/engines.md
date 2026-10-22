@@ -201,9 +201,9 @@ two different models.
 
 ## `ggml.*` - transcribe.cpp, ggml on Metal
 
-Built from the release in `patches/transcribe.cpp/PIN` - 0.4.0 since
-2026-10-15. The measurements in this section were taken on 0.2.3 and have not
-been repeated on 0.4.0 yet.
+Built from the release in `patches/transcribe.cpp/PIN` - 0.4.1 since
+2026-10-22. The measurements in this section were taken on 0.2.3 and have not
+been repeated on 0.4.x yet.
 
 GGUF weights from handy-computer on Hugging Face, run through a vendored Swift
 wrapper over an xcframework.

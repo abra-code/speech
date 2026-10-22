@@ -212,6 +212,15 @@ for it. Both halves come from one `TASK_VM_INFO` read, and both are stable -
 five identical runs of `fluid.parakeet-v3@int8` reported the same Neural Engine
 figure to the byte and footprints within 1 MB of each other.
 
+A `ggml` row adds a third part. transcribe.cpp 0.4.1 memory-maps the GGUF
+instead of copying it, and mapped weights are clean file pages, which the
+footprint excludes: a 1.7B Qwen3-ASR run measured a 0.40 GB footprint while
+holding 2.19 GB of weights. So `speech eval`, `transcribe` and `stream` also sum
+the resident pages of the mapped model file, read at the end of the run with
+the model still loaded, and add them to `peak_memory_bytes`. The `--report`
+JSON carries that part as `mapped_model_bytes`; it is absent for every other
+engine.
+
 On a kernel that does not report those ledgers, `peak_memory_bytes` falls back
 to the resident peak and equals `peak_rss_bytes`. The event stream carries no
 separate flag for that; the signal is the `--report` JSON, where

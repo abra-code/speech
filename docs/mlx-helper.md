@@ -128,7 +128,7 @@ stop, not "finish what you have".
 Sent unprompted, once, before any request is read.
 
 ```jsonl
-{"cache_mb":512,"event":"ready","helper":"0.2.0","mlx_audio":"0.1.6","mlx_swift":"0.32.3","types":["parakeet","whisper","qwen3_asr"]}
+{"cache_mb":512,"event":"ready","helper":"0.2.1","mlx_audio":"0.1.6","mlx_swift":"0.32.3","types":["parakeet","whisper","qwen3_asr"]}
 ```
 
 `helper` is the version of the `speech` it ships with; the two are released
