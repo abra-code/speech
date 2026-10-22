@@ -288,10 +288,12 @@ actor GGMLEngine: TranscriptionEngine {
             specKDrafts: -1)
 
         // The declared `maxAudioMs` is an input bound, not a length a run
-        // survives: see `GGMLPieces`. Audio under the ceiling comes back from
-        // the segmenter as one range and this is a plain single run.
+        // survives: see `GGMLPieces`. Audio under the ceiling, which includes
+        // any single utterance, comes back from the segmenter as one range and
+        // this is a plain single run.
         let cap = GGMLPieces.ceilingSeconds(
-            architecture: model?.arch ?? "", declaredMs: loaded.maxAudioMs)
+            architecture: model?.arch ?? "", declaredMs: loaded.maxAudioMs,
+            audioSeconds: Double(samples.count) / AudioDecoder.sampleRate)
         let ranges = try await segmenter.split(samples: samples, maxSeconds: cap)
 
         var segments: [SpeechCore.Segment] = []

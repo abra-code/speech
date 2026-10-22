@@ -63,6 +63,34 @@ struct GGMLPiecesTests {
         #expect(GGMLPieces.practicalMaxSeconds(architecture: "whisper") == nil)
     }
 
+    @Test("an utterance is given whole, a long recording is cut to the family's length")
+    func wholeUtterances() {
+        // The FLEURS clip that came back as "... sand parks." plus "Okay."
+        #expect(GGMLPieces.ceilingSeconds(architecture: "qwen3_asr", declaredMs: 5_218_560, audioSeconds: 10.92)
+            == 5_218.56)
+        #expect(GGMLPieces.ceilingSeconds(architecture: "granite_speech", declaredMs: 0, audioSeconds: 35)
+            == .infinity)
+        // FLEURS German's longest clip.
+        #expect(GGMLPieces.ceilingSeconds(architecture: "parakeet", declaredMs: 0, audioSeconds: 47.94)
+            == .infinity)
+        #expect(GGMLPieces.ceilingSeconds(architecture: "whisper", declaredMs: 0, audioSeconds: 300) == .infinity)
+        #expect(GGMLPieces.ceilingSeconds(
+            architecture: "qwen3_asr", declaredMs: 5_218_560, audioSeconds: GGMLPieces.wholeSeconds) == 5_218.56)
+        // One past the limit is a recording, and gets the measured length.
+        #expect(GGMLPieces.ceilingSeconds(
+            architecture: "qwen3_asr", declaredMs: 5_218_560, audioSeconds: GGMLPieces.wholeSeconds + 1) == 10)
+        #expect(GGMLPieces.ceilingSeconds(architecture: "parakeet", declaredMs: 0, audioSeconds: 300) == 30)
+    }
+
+    @Test("an utterance longer than the declared limit is cut at that limit, not at the family's shorter one")
+    func declaredCutsAnUtterance() {
+        #expect(GGMLPieces.ceilingSeconds(architecture: "qwen3_asr", declaredMs: 5_000, audioSeconds: 8) == 5)
+        // 20 s pieces, not qwen3_asr's 10 s: the fewest cuts the model accepts.
+        #expect(GGMLPieces.ceilingSeconds(architecture: "qwen3_asr", declaredMs: 20_000, audioSeconds: 25) == 20)
+        // Audio exactly at the declared limit is one run.
+        #expect(GGMLPieces.ceilingSeconds(architecture: "canary", declaredMs: 20_000, audioSeconds: 20) == 20)
+    }
+
     @Test("an architecture this engine does not know gets the short ceiling, and so does a model that names none")
     func unknown() {
         #expect(GGMLPieces.ceilingSeconds(architecture: "some_new_family", declaredMs: 0) == GGMLPieces.textDecoderSeconds)

@@ -44,8 +44,26 @@
 // writes text is the common shape among new speech models, and a piece too
 // short costs a little accuracy where a piece too long costs the transcript. A
 // piece that is refused anyway is cut again (GGMLEngine.transcribePiece).
+//
+// Those lengths are for long recordings. **Audio up to `wholeSeconds` is given
+// whole** whatever the family's length, because cutting one utterance is what
+// costs accuracy: from 2026-09-17 to 2026-10-22 a FLEURS clip of 10.9 s went
+// to Qwen3-ASR as 10 s plus 0.9 s, the first piece ended in a full stop
+// mid-sentence and the second came back as "Okay." On FLEURS English that put
+// Qwen3-ASR 1.7B at 5.46% WER against 3.74% when it was measured whole, and on
+// 50 of its rows every clip over 10 s came out different from transcribe.cpp's
+// own CLI, which does not cut. 50 s is past the longest utterance in FLEURS
+// (German, 47.9 s) and in LibriSpeech (35 s), and its English text - over a
+// hundred tokens - fits the 256 that every run of these families is allowed;
+// Mandarin is denser and may not, and a piece refused for that is still cut
+// and retried. A model that declares a shorter limit gets that limit and no
+// shorter one: the fewest cuts it accepts.
 
 enum GGMLPieces {
+    /// Audio this long or shorter is one utterance, cut only where the model's
+    /// declared limit forces it; see above.
+    static let wholeSeconds: Double = 50
+
     /// For a family whose decoder writes text, when it has no measured length.
     static let textDecoderSeconds: Double = 15
 
@@ -84,5 +102,13 @@ enum GGMLPieces {
         let declared = declaredMs > 0 ? Double(declaredMs) / 1000 : .infinity
         guard let practical = practicalMaxSeconds(architecture: architecture) else { return declared }
         return min(declared, practical)
+    }
+
+    /// The ceiling for `audioSeconds` of audio: the declared limit alone when
+    /// the audio is no longer than `wholeSeconds`, so that it arrives in one
+    /// run or in as few as the model accepts, and `ceilingSeconds` otherwise.
+    static func ceilingSeconds(architecture: String, declaredMs: Int64, audioSeconds: Double) -> Double {
+        if audioSeconds <= wholeSeconds { return declaredMs > 0 ? Double(declaredMs) / 1000 : .infinity }
+        return ceilingSeconds(architecture: architecture, declaredMs: declaredMs)
     }
 }
