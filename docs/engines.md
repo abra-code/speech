@@ -260,16 +260,26 @@ input and nothing else:
 
 Staying under those limits is not enough either: every family drops whole
 sentences from long pieces. So each architecture now has a measured length
-(`GGMLPieces`), chosen on four 5-minute recordings per language joined from
-unique FLEURS sentences:
+(`GGMLPieces`): the longest of 10, 15, 20, 30, 45 and 70 seconds (60, 120 and
+300 for Parakeet) that loses nothing against the shorter ones. It was measured
+on 2026-10-22 with speech 0.2.1 on transcribe.cpp 0.4.1, on four 5-minute
+recordings per language joined from unique FLEURS sentences, and on 20
+one-speaker LibriSpeech passages of about a minute:
 
-| architecture | piece | WER at that length (one sentence at a time) | WER at 45 s, or 300 s for Parakeet |
+| architecture | piece | WER at that length (FLEURS one sentence at a time) | WER at 45 s, or 300 s for Parakeet |
 | --- | --- | --- | --- |
-| `qwen3_asr` (1.7B Q8_0) | 10 s | en 11.3% (4.2%), pl 17.0% (13.9%) | en 17.2%, pl refused one recording |
-| `canary` (1B v2 Q8_0) | 30 s | en 11.4% (5.0%), pl 8.7% (8.2%) | en 14.7%, pl 13.9% |
-| `granite_speech` (4.0 1B Q8_0) | 15 s | en 7.7% (7.4%) | en 14.6% |
-| `granite_speech_nar` (4.1 2B NAR Q8_0) | 15 s | en 14.9% (5.9%) | en 23.8% |
-| `parakeet` (TDT 0.6B v3 Q8_0) | 30 s | en 9.0% (5.0%), pl 8.9% (8.4%) | en 46.6%, pl 14.4% |
+| `qwen3_asr` (1.7B Q8_0) | 15 s | en 9.2% (4.2%), pl 13.9% (14.0%), LibriSpeech 1.6% | en 15.5%, pl 18.2%, LibriSpeech 1.7% |
+| `canary` (1B v2 Q8_0) | 15 s | en 6.4% (4.9%), pl 8.1% (8.2%), LibriSpeech 2.1% | en 12.1%, pl 13.9%, LibriSpeech 6.6% |
+| `granite_speech` (4.0 1B Q8_0) | 20 s | en 6.8% (7.4%), LibriSpeech 2.4% | en 8.0%, LibriSpeech 4.4% |
+| `granite_speech_nar` (4.1 2B NAR Q8_0) | 10 s | en 8.6% (5.9%), LibriSpeech 1.7% | en 24.5%, LibriSpeech 1.6% |
+| `parakeet` (TDT 0.6B v3 Q8_0) | 30 s | en 6.7% (5.0%), pl 8.8% (8.4%), LibriSpeech 1.9% | en 47.5%, pl 10.1% |
+
+The one-speaker passages barely care about length. What a long piece costs is
+the quieter of two speakers in it: the FLEURS English speakers span 49 dB, and
+the sentences a long piece drops are the quiet speakers'. So the joined
+recordings decide, as a meeting with a quiet participant would. Qwen3-ASR does
+better in English at 10 s (7.9%) but worse in Polish (15.9%). Lengths shorter
+than 10 s, and 10 s for Canary, were not tried.
 
 Whisper keeps the whole file; another encoder gets 30 seconds, and any other
 architecture 15, since a piece too short costs a little accuracy where one too
@@ -278,10 +288,12 @@ itself can fill its budget on ten seconds, as Granite 4.0 did once - is cut in
 half at quiet points and retried, down to 5 seconds, so one bad piece does not
 fail a long recording.
 
-A new speaker every sentence makes that corpus harsher than a talk: Parakeet v3
-on FluidAudio, which is not cut this way, scored 10.1% on one of its English
-recordings. The table is for comparing lengths, not for quoting as accuracy.
-The raw reports are in `Private/ggml-pieces-2026-09-17/`.
+A new speaker every sentence makes the joined recordings harsher than a talk:
+Parakeet v3 on FluidAudio, which is not cut this way, scored 10.1% on one of
+the English ones. The table is for comparing lengths, not for quoting as
+accuracy. The raw reports are in `Private/ggml-pieces-2026-10-22b/` (the
+September lengths, measured with the earlier cutter, in
+`Private/ggml-pieces-2026-09-17/`).
 
 Its xcframework is dynamic, unlike FluidAudio's static dependency, so
 `CTranscribe.framework` ships beside `build/speech` and whoever embeds one

@@ -12,10 +12,10 @@ struct GGMLPiecesTests {
     @Test("a family that writes text gets its measured length, not its declared one")
     func textDecoders() {
         // Qwen3-ASR declares 5,218,560 ms and refused five minutes.
-        #expect(GGMLPieces.ceilingSeconds(architecture: "qwen3_asr", declaredMs: 5_218_560) == 10)
+        #expect(GGMLPieces.ceilingSeconds(architecture: "qwen3_asr", declaredMs: 5_218_560) == 15)
         // Canary declares 400 s.
-        #expect(GGMLPieces.ceilingSeconds(architecture: "canary", declaredMs: 400_000) == 30)
-        #expect(GGMLPieces.ceilingSeconds(architecture: "granite_speech_nar", declaredMs: 0) == 15)
+        #expect(GGMLPieces.ceilingSeconds(architecture: "canary", declaredMs: 400_000) == 15)
+        #expect(GGMLPieces.ceilingSeconds(architecture: "granite_speech_nar", declaredMs: 0) == 10)
         // A text family with no measurement of its own.
         #expect(GGMLPieces.ceilingSeconds(architecture: "moss", declaredMs: 0) == GGMLPieces.textDecoderSeconds)
     }
@@ -78,14 +78,14 @@ struct GGMLPiecesTests {
             architecture: "qwen3_asr", declaredMs: 5_218_560, audioSeconds: GGMLPieces.wholeSeconds) == 5_218.56)
         // One past the limit is a recording, and gets the measured length.
         #expect(GGMLPieces.ceilingSeconds(
-            architecture: "qwen3_asr", declaredMs: 5_218_560, audioSeconds: GGMLPieces.wholeSeconds + 1) == 10)
+            architecture: "qwen3_asr", declaredMs: 5_218_560, audioSeconds: GGMLPieces.wholeSeconds + 1) == 15)
         #expect(GGMLPieces.ceilingSeconds(architecture: "parakeet", declaredMs: 0, audioSeconds: 300) == 30)
     }
 
     @Test("an utterance longer than the declared limit is cut at that limit, not at the family's shorter one")
     func declaredCutsAnUtterance() {
         #expect(GGMLPieces.ceilingSeconds(architecture: "qwen3_asr", declaredMs: 5_000, audioSeconds: 8) == 5)
-        // 20 s pieces, not qwen3_asr's 10 s: the fewest cuts the model accepts.
+        // 20 s pieces, not qwen3_asr's 15 s: the fewest cuts the model accepts.
         #expect(GGMLPieces.ceilingSeconds(architecture: "qwen3_asr", declaredMs: 20_000, audioSeconds: 25) == 20)
         // Audio exactly at the declared limit is one run.
         #expect(GGMLPieces.ceilingSeconds(architecture: "canary", declaredMs: 20_000, audioSeconds: 20) == 20)
@@ -99,7 +99,7 @@ struct GGMLPiecesTests {
         #expect(GGMLPieces.practicalMaxSeconds(architecture: "whisper", environment: env) == nil)
         for junk in ["", "0", "-5", "abc", "inf", "nan", "1e-6", "0.5"] {
             #expect(GGMLPieces.practicalMaxSeconds(
-                architecture: "qwen3_asr", environment: [GGMLPieces.overrideVariable: junk]) == 10, "\(junk)")
+                architecture: "qwen3_asr", environment: [GGMLPieces.overrideVariable: junk]) == 15, "\(junk)")
         }
     }
 

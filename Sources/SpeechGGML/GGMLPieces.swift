@@ -24,21 +24,33 @@
 //   at 21x, so it is given the file whole.
 //
 // Staying under those limits is not enough: every family also transcribes long
-// pieces worse, dropping whole sentences. The lengths below are the best of
-// 10, 15, 20, 30 and 45 seconds (60, 120 and 300 for Parakeet) on four 5-minute
-// recordings each of English and Polish, joined from unique FLEURS sentences,
-// WER against the same sentences transcribed one at a time:
+// pieces worse, dropping whole sentences. Each length below is the longest of
+// 10, 15, 20, 30, 45 and 70 seconds (60, 120 and 300 for Parakeet) that loses
+// nothing against the shorter ones, measured on 2026-10-22 (speech 0.2.1,
+// transcribe.cpp 0.4.1, the windowed EnergySegmenter; Private/ggml-pieces-
+// 2026-10-22b) on two kinds of long recording: four 5-minute recordings each of
+// English and Polish joined from unique FLEURS sentences - a new speaker every
+// sentence, the English ones 49 dB apart in level - and 20 one-speaker
+// LibriSpeech passages of about a minute. WER at the chosen length, with the
+// same FLEURS sentences transcribed one at a time in parentheses:
 //
-//   Qwen3-ASR 1.7B  en 11.3% at 10 s (4.2% by sentence), pl 17.0% (13.9%)
-//   Canary 1B v2    en 11.4% at 30 s (5.0%), pl 8.7% (8.2%)
-//   Granite 4.0 1B  en 7.7% at 15 s (7.4%)
-//   Granite NAR     en 14.9% at 15 s (5.9%)
-//   Parakeet v3     en 9.0% at 30 s (5.0%), pl 8.9% (8.4%); 24.7% and 11.1% at
-//                   60 s, 46.6% and 14.4% at 300 s, and fastest at 30 s (76x)
+//   Qwen3-ASR 1.7B  15 s: en 9.2% (4.2%), pl 13.9% (14.0%), LibriSpeech 1.6%;
+//                   en 7.9% at 10 s but pl 15.9%; en 15.5% at 45 s
+//   Canary 1B v2    15 s: en 6.4% (4.9%), pl 8.1% (8.2%), LibriSpeech 2.1%;
+//                   en 8.9% at 20 s, 13.8% at 30 s; LibriSpeech 25.5% at 70 s
+//   Granite 4.0 1B  20 s: en 6.8% (7.4%), LibriSpeech 2.4%; en 8.4% at 30 s,
+//                   LibriSpeech 4.4% at 45 s
+//   Granite NAR     10 s: en 8.6% (5.9%), LibriSpeech 1.7%; en 11.0% at 15 s,
+//                   24.5% at 45 s
+//   Parakeet v3     30 s: en 6.7% (5.0%), pl 8.8% (8.4%), LibriSpeech 1.9%;
+//                   en 19.5% at 60 s, 47.5% at 300 s
 //
-// A new speaker every sentence makes that corpus harsher than a talk: the
-// 36-minute recording came out at about the same word count from Qwen3-ASR and
-// Parakeet. The differences between lengths are what these numbers are for.
+// The one-speaker passages barely care: every family but Canary and Granite
+// 4.0 holds its WER to 70 s there. What a long piece costs is the quieter of
+// two speakers in it - the sentences dropped are the quiet speakers' - so the
+// joined recordings decide, as a meeting with a quiet participant would.
+// Shorter than the shortest length measured was not tried: Canary at 15 s and
+// Granite NAR at 10 s may have room to go lower.
 //
 // An architecture not listed gets the text-decoder default: a decoder that
 // writes text is the common shape among new speech models, and a piece too
@@ -74,10 +86,10 @@ enum GGMLPieces {
 
     /// Measured per architecture; see the table above.
     static let measuredSeconds: [String: Double] = [
-        "qwen3_asr": 10,
-        "canary": 30,
-        "granite_speech": 15,
-        "granite_speech_nar": 15,
+        "qwen3_asr": 15,
+        "canary": 15,
+        "granite_speech": 20,
+        "granite_speech_nar": 10,
         "parakeet": 30,
     ]
 
