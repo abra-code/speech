@@ -59,10 +59,10 @@ public protocol AudioSegmenter: Sendable {
 /// so a piece should come as close to it as a good cut allows - and a good cut
 /// is a pause, because a cut inside a word or a sentence costs words on both
 /// sides of it. Every 20 ms frame is scored by mean square amplitude, and a
-/// frame is quiet when it is 35 dB below the recording's loud speech, its
-/// 95th-percentile frame (or, on a noisy recording whose floor sits above
-/// that, within 3 dB of the floor). Then, looking back from the cap over the
-/// last `searchSeconds`:
+/// frame is quiet when it is 35 dB below the loud speech around it, the
+/// 95th-percentile frame of the `contextSeconds` before it or after it,
+/// whichever is quieter (or, where the floor sits above that, within 3 dB of
+/// the floor). Then, looking back from the cap over the last `searchSeconds`:
 ///
 ///  1. the latest run of quiet frames at least `sentencePauseSeconds` long;
 ///  2. else the latest one at least `phrasePauseSeconds` long;
@@ -76,6 +76,14 @@ public protocol AudioSegmenter: Sendable {
 /// the cap ended in a piece of a second or less - which a text decoder answers
 /// with words nobody said ("Okay."). The last piece is now never shorter than
 /// `minimumTailSeconds`.
+///
+/// The speech a pause is measured against is local because levels are not
+/// constant: a quiet participant can be 40 dB under a loud one. Measured
+/// against the whole recording, 4 x 5 minutes of FLEURS English sentences
+/// (speech levels from -63 to -14 dB) had its quieter half counted as 86-96%
+/// pause, and at a 20 s cap 57 of 68 cuts landed inside a sentence. Against the
+/// quieter side, quiet speakers read 11-14% pause, like loud ones, and 48 of 72
+/// cuts land between sentences; one-speaker LibriSpeech passages cut the same.
 ///
 /// It deliberately does not try to *detect speech* - it never drops a region
 /// for being quiet. Trimming silence is a different job with a different
@@ -93,17 +101,24 @@ public struct EnergySegmenter: AudioSegmenter {
     public var phrasePauseSeconds: Double
     /// The shortest last piece; never more than half the cap.
     public var minimumTailSeconds: Double
+    /// How much speech on each side of a frame decides whether it is quiet;
+    /// from half a second to a minute.
+    public var contextSeconds: Double
+
+    /// The context is measured in blocks of this, not frame by frame.
+    static let blockSeconds = 0.5
 
     public init(
         searchSeconds: Double? = nil, frameSeconds: Double = 0.02,
         sentencePauseSeconds: Double = 0.5, phrasePauseSeconds: Double = 0.2,
-        minimumTailSeconds: Double = 3
+        minimumTailSeconds: Double = 3, contextSeconds: Double = 5
     ) {
         self.searchSeconds = searchSeconds
         self.frameSeconds = frameSeconds
         self.sentencePauseSeconds = sentencePauseSeconds
         self.phrasePauseSeconds = phrasePauseSeconds
         self.minimumTailSeconds = minimumTailSeconds
+        self.contextSeconds = contextSeconds
     }
 
     /// A run of quiet frames, `start..<end` in frame indices.
@@ -131,38 +146,90 @@ public struct EnergySegmenter: AudioSegmenter {
         return energies
     }
 
-    /// The energy at or below which a frame counts as a pause, or nil when the
-    /// recording has no quiet to speak of (all of it silent).
-    static func quietThreshold(_ energies: [Double]) -> Double? {
-        guard !energies.isEmpty else { return nil }
+    /// Loud speech and the floor of some frames: their 95th and 5th
+    /// percentiles. Loud speech is the reference, not the median frame: in real
+    /// speech the median is a quiet consonant or a gap, about 40 dB under loud
+    /// speech (30 FLEURS English clips joined: 5th percentile -85.7 dB, median
+    /// -58.9, 95th -18.3).
+    static func levels(_ energies: ArraySlice<Double>) -> (speech: Double, floor: Double) {
         let sorted = energies.sorted()
-        guard let loudest = sorted.last, loudest > 0 else { return nil }
-        // Loud speech is the reference, not the median frame: in real speech
-        // the median is a quiet consonant or a gap, about 40 dB under loud
-        // speech (30 FLEURS English clips joined: 5th percentile -85.7 dB,
-        // median -58.9, 95th -18.3). 25 dB under the median put the line at
-        // -83 dB and found 3 of the 29 pauses between clips; 35 dB under the
-        // 95th percentile finds 28. A recording that is mostly digital silence
-        // still has speech at its 95th percentile, so its zeros are pauses.
-        let speech = sorted[min(sorted.count - 1, sorted.count * 19 / 20)]
-        guard speech > 0 else { return 0 }
+        return (sorted[min(sorted.count - 1, sorted.count * 19 / 20)], sorted[sorted.count / 20])
+    }
+
+    /// The energy at or below which a frame counts as a pause, given the
+    /// speech and floor it is judged against.
+    static func pauseLine(speech: Double, floor: Double) -> Double {
+        // 25 dB under the median put the line at -83 dB and found 3 of the 29
+        // pauses between those clips; 35 dB under the 95th percentile finds 28.
         let belowSpeech = speech * 0.000_316
         // A noisy recording's pauses sit at its floor, which can be above that.
         // Trusted only when the floor is at least 10 dB under speech: in a
-        // recording with almost no pauses the 5th percentile is quiet speech,
+        // stretch with almost no pauses the 5th percentile is quiet speech,
         // and 3 dB above it would mark syllables as pauses.
-        let floor = sorted[sorted.count / 20]
         if floor < speech * 0.1, floor * 2 > belowSpeech { return floor * 2 }
         return belowSpeech
     }
 
-    /// Every run of quiet frames in the recording, in order.
-    static func quietRuns(_ energies: [Double], threshold: Double?) -> [QuietRun] {
-        guard let threshold else { return [] }
+    /// The whole recording's pause line, or nil when it has no quiet to speak
+    /// of (all of it silent). Pauses are judged locally (`quietThresholds`);
+    /// this only tells a stretch with no speech in it from a quiet speaker.
+    static func quietThreshold(_ energies: [Double]) -> Double? {
+        guard let loudest = energies.max(), loudest > 0 else { return nil }
+        let (speech, floor) = levels(energies[...])
+        // A recording that is mostly digital silence still has speech at its
+        // 95th percentile, so its zeros are pauses.
+        guard speech > 0 else { return 0 }
+        return pauseLine(speech: speech, floor: floor)
+    }
+
+    /// The pause line of every frame, judged against the speech on each side
+    /// of it - `sideBlocks` blocks of `blockFrames` frames, plus the frame's
+    /// own block - and set by the quieter side. Empty when the recording has
+    /// no pause line at all.
+    static func quietThresholds(_ energies: [Double], blockFrames: Int, sideBlocks: Int) -> [Double] {
+        guard let line = quietThreshold(energies) else { return [] }
+        let blocks = (energies.count + blockFrames - 1) / blockFrames
+        // A side longer than the recording is clipped to it anyway; unclipped,
+        // a huge context sorts the whole recording once per block it reaches.
+        let sideBlocks = min(sideBlocks, blocks)
+        // The speech in blocks first...first + sideBlocks, or nil when there is
+        // none: 35 dB under the recording's line (70 dB under its loud speech;
+        // FLEURS speakers span 49 dB), which also covers all silent, or so flat
+        // (under 10 dB from floor to speech) and quiet (under the recording's
+        // line) that it is one long pause: room noise, never speech, whose
+        // syllables and word gaps move it more than that. A side without
+        // speech cannot set the line; with neither side, all is pause.
+        func side(_ first: Int) -> (speech: Double, floor: Double)? {
+            let from = max(0, first) * blockFrames
+            let to = min(energies.count, (first + sideBlocks + 1) * blockFrames)
+            guard from < to else { return nil }
+            let (speech, floor) = levels(energies[from..<to])
+            if speech <= line * 0.000_316 || (speech < floor * 10 && speech <= line) { return nil }
+            return (speech, floor)
+        }
+        // Index i holds the window starting at block i - sideBlocks: block b's
+        // before side is at b, its after side at b + sideBlocks.
+        let sides = (-sideBlocks..<blocks).map(side)
+        var thresholds = [Double](repeating: 0, count: energies.count)
+        for block in 0..<blocks {
+            let present = [sides[block], sides[block + sideBlocks]].compactMap { $0 }
+            let threshold = present.min { $0.speech < $1.speech }
+                .map { pauseLine(speech: $0.speech, floor: $0.floor) } ?? .infinity
+            for index in (block * blockFrames)..<min(energies.count, (block + 1) * blockFrames) {
+                thresholds[index] = threshold
+            }
+        }
+        return thresholds
+    }
+
+    /// Every run of quiet frames in the recording, in order: each frame
+    /// against its own threshold, none when there are no thresholds.
+    static func quietRuns(_ energies: [Double], thresholds: [Double]) -> [QuietRun] {
+        guard thresholds.count == energies.count else { return [] }
         var runs: [QuietRun] = []
         var runStart: Int?
         for (index, energy) in energies.enumerated() {
-            if energy <= threshold {
+            if energy <= thresholds[index] {
                 if runStart == nil { runStart = index }
             } else if let start = runStart {
                 runs.append(QuietRun(start: start, end: index))
@@ -261,8 +328,17 @@ public struct EnergySegmenter: AudioSegmenter {
         let sentenceFrames = max(1, Self.samples(sentencePauseSeconds, rate: rate) / frame)
         let phraseFrames = max(1, Self.samples(phrasePauseSeconds, rate: rate) / frame)
 
+        let blockFrames = max(1, Self.samples(Self.blockSeconds, rate: rate) / frame)
+        // Clamped before the conversion, which traps on NaN or a huge value.
+        // A minute is the most context that means anything for a pause, and
+        // sorting each block's window costs its length; infinity is the most.
+        let contextBlocks = contextSeconds.isNaN ? 10 : contextSeconds / Self.blockSeconds
+        let sideBlocks = Int(min(max(contextBlocks, 1), 120).rounded())
+
         let energies = Self.frameEnergies(samples, frame: frame)
-        let runs = Self.quietRuns(energies, threshold: Self.quietThreshold(energies))
+        let runs = Self.quietRuns(
+            energies,
+            thresholds: Self.quietThresholds(energies, blockFrames: blockFrames, sideBlocks: sideBlocks))
 
         var ranges: [SampleRange] = []
         var start = 0

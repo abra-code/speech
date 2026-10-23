@@ -215,8 +215,8 @@ struct AudioSegmenterTests {
             for index in from..<to { samples[index] = Float.random(in: -0.05...0.05, using: &generator) }
         }
         let energies = EnergySegmenter.frameEnergies(samples, frame: 320)
-        let threshold = try #require(EnergySegmenter.quietThreshold(energies))
-        #expect(EnergySegmenter.quietRuns(energies, threshold: threshold).count >= 10)
+        let thresholds = EnergySegmenter.quietThresholds(energies, blockFrames: 25, sideBlocks: 10)
+        #expect(EnergySegmenter.quietRuns(energies, thresholds: thresholds).count >= 10)
         let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 20)
         let firstCut = try #require(ranges.first).endSeconds
         #expect(abs(firstCut - 18) < 0.1, "cut at \(firstCut)s, expected the pause at 18s")
@@ -253,6 +253,81 @@ struct AudioSegmenterTests {
         // in-window part.
         #expect(firstCut > 19.5 && firstCut < 20, "cut at \(firstCut)s")
         Self.check(ranges, cover: samples.count, cap: 20)
+    }
+
+    /// Noise at `amplitude` from `from` to `to` seconds, overwriting.
+    static func speak(_ samples: inout [Float], from: Double, to: Double, amplitude: Float) {
+        let rate = AudioDecoder.sampleRate
+        var generator = SystemRandomNumberGenerator()
+        for index in Int(from * rate)..<min(samples.count, Int(to * rate)) {
+            samples[index] = Float.random(in: -amplitude...amplitude, using: &generator)
+        }
+    }
+
+    /// Syllables at `amplitude` from `from` to `to` seconds: 0.25 s of sound,
+    /// then 0.08 s 20 dB down, as speech moves. Steady sound this quiet would
+    /// read as one long pause, which is what a quiet steady noise is.
+    static func syllables(_ samples: inout [Float], from: Double, to: Double, amplitude: Float) {
+        var start = from
+        while start < to {
+            speak(&samples, from: start, to: min(to, start + 0.25), amplitude: amplitude)
+            speak(&samples, from: min(to, start + 0.25), to: min(to, start + 0.33), amplitude: amplitude / 10)
+            start += 0.33
+        }
+    }
+
+    @Test("a quiet speaker after a loud one is speech, not pause")
+    func quietSpeaker() async throws {
+        // Loud to 12 s, a pause, then a speaker 60 dB down with one pause of
+        // their own at 20 s, then loud again from 30 s. Against the whole
+        // recording the quiet speaker is all pause, and the cut went to the
+        // middle of their speech; against the speech around it, only the real
+        // pauses are long enough to cut at.
+        var samples = [Float](repeating: 0, count: Int(50 * AudioDecoder.sampleRate))
+        Self.syllables(&samples, from: 0, to: 12, amplitude: 0.5)
+        Self.syllables(&samples, from: 12.6, to: 20, amplitude: 0.0005)
+        Self.syllables(&samples, from: 20.6, to: 29.4, amplitude: 0.0005)
+        Self.syllables(&samples, from: 30, to: 50, amplitude: 0.5)
+        let energies = EnergySegmenter.frameEnergies(samples, frame: 320)
+        let runs = EnergySegmenter.quietRuns(
+            energies, thresholds: EnergySegmenter.quietThresholds(energies, blockFrames: 25, sideBlocks: 10))
+        // Phrase-length runs (0.2 s and up) are the three real pauses only.
+        let middles = runs.filter { $0.length >= 10 }.map { Double($0.start + $0.end) * 0.01 }
+        let pauses = [12.3, 20.3, 29.7]
+        #expect(middles.count == pauses.count, "pauses at \(middles)")
+        for (middle, pause) in zip(middles, pauses) {
+            #expect(abs(middle - pause) < 0.1, "pause at \(middle)s, expected \(pause)s")
+        }
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 25)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(firstCut > 20 && firstCut < 20.6, "cut at \(firstCut)s, expected the pause at 20s")
+        Self.check(ranges, cover: samples.count, cap: 25)
+    }
+
+    @Test("a long silence is pause all through")
+    func longSilence() async throws {
+        // Ten seconds of silence leave no speech on either side of its middle;
+        // it is still a pause, not a stretch with nothing to compare.
+        var samples = [Float](repeating: 0, count: Int(40 * AudioDecoder.sampleRate))
+        Self.speak(&samples, from: 0, to: 10, amplitude: 0.5)
+        Self.speak(&samples, from: 25, to: 40, amplitude: 0.5)
+        Self.speak(&samples, from: 15, to: 17, amplitude: 0.000_000_1)
+        let energies = EnergySegmenter.frameEnergies(samples, frame: 320)
+        let thresholds = EnergySegmenter.quietThresholds(energies, blockFrames: 25, sideBlocks: 10)
+        let runs = EnergySegmenter.quietRuns(energies, thresholds: thresholds)
+        #expect(runs.contains { $0.start <= 500 + 5 && $0.end >= 1250 - 5 }, "\(runs)")
+        let ranges = try await EnergySegmenter().split(samples: samples, maxSeconds: 30)
+        let firstCut = try #require(ranges.first).endSeconds
+        #expect(firstCut > 15 && firstCut < 25, "cut at \(firstCut)s")
+    }
+
+    @Test("an unusable context still cuts")
+    func wildContext() async throws {
+        let samples = Self.audio(seconds: 40, gaps: [(15, 0.6)])
+        for context in [0, -1, .nan, .infinity, 1e300] as [Double] {
+            let ranges = try await EnergySegmenter(contextSeconds: context).split(samples: samples, maxSeconds: 20)
+            Self.check(ranges, cover: samples.count, cap: 20)
+        }
     }
 
     @Test("sample ranges convert to seconds at the decoder's rate")
