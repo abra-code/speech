@@ -5,7 +5,7 @@ NVIDIA's Canary, covering 25 European languages. The best all-round accuracy mea
 | | |
 | --- | --- |
 | **Best for** | Accurate transcription in European languages |
-| **Speed** | 47 to 56 times real time, so an hour takes about a minute |
+| **Speed** | 48 to 57 times real time, so an hour takes about a minute |
 | **Memory** | 1.3 GB |
 | **Live typing** | No |
 | **Subtitles** | No - it produces no timestamps |

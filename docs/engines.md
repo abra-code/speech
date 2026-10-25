@@ -334,17 +334,20 @@ accepts a custom vocabulary.
 Memory is the third shape in this catalog. `peak_memory_bytes` for an `mlx` row
 is this process plus the helper's own peak footprint, because both are resident
 at once and the model is in the second one. Every twin landed between 3.0 and
-4.1 GB whatever the model was, so the premium over the equivalent `ggml` row is
-largest where the model is smallest: Parakeet v3 pays 0.98 to 1.00 GB through
+4.2 GB whatever the model was, so the premium over the equivalent `ggml` row is
+largest where the model is smallest: Parakeet v3 pays 0.99 to 1.01 GB through
 ggml against 3.93 GB here, near four times, while Qwen3-ASR 1.7B at 8 bits
-moves only from 3.67 to between 3.89 and 4.08 GB. The Parakeet twins agreed on
-accuracy to within four hundredths of a point across English, Polish and
-German.
+moves from 2.59 GB to between 3.93 and 4.15 GB. The Parakeet twins agreed on
+accuracy to within seven hundredths of a point across English, Polish and
+German (speech 0.2, macOS 27.0.1).
 
 That is the fact worth carrying away: no `mlx` row beat its `ggml` twin on both
-accuracy and memory, and the one place MLX won anything was German on Whisper
-turbo, 4.54 against 5.07, bought with a third of the speed and three times the
-memory. The rows are here as an instrument, not as a recommendation.
+accuracy and memory. Where MLX wins, it wins one figure and pays in memory:
+German on Whisper turbo, 4.61 against 5.07, with a quarter less speed and three
+times the memory; Qwen3-ASR 1.7B in Spanish and French by six hundredths at 8
+bits, and in English and Polish by 0.3 and 1.5 points at 4 bits against
+`@q4_k_m`; and Parakeet v3, about 1.6 times faster than through ggml. The rows
+are here as an instrument, not as a recommendation.
 
 Installing a Qwen3-ASR row is not quite finished when the download is. Loading
 one synthesizes a `tokenizer.json` from `vocab.json` and `merges.txt` when the

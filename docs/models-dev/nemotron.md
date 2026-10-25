@@ -1,6 +1,7 @@
 # Nemotron 3.5 ASR streaming
 
-> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> Measured on an Apple M5 with macOS 26.6.2 and 27.0.1 in September and
+> October 2026, over the full
 > FLEURS test sets. Use these numbers as a guide: results on your Mac and with
 > your own recordings can differ.
 
@@ -8,11 +9,12 @@ NVIDIA's Nemotron 3.5 ASR Streaming Multilingual 0.6B, covering 32 locales. It i
 
 ## Measurements
 
-Full FLEURS test sets, 2026-09-04 and 2026-09-05, transcribed as files. Word error rate (WER) in percent, lower is better; speed in multiples of real time.
+Full FLEURS test sets, transcribed as files: the GGUF builds on 2026-10-23 and 2026-10-24 on macOS 27.0.1 (speech 0.2.1, transcribe.cpp 0.4.1), the Core ML builds on 2026-09-04 and 2026-09-05 on macOS 26.6.2. Word error rate (WER) in percent, lower is better; speed in multiples of real time.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
-| `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 10.36 | 17.75 | 10.29 | 50-55x | 1.03-1.05 GB |
+| `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 10.37 | 17.78 | 10.31 | 49-56x | 1.03-1.07 GB |
+| `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 10.94 | 19.12 | 11.08 | 48-54x | 0.77-0.81 GB |
 | `fluid.nemotron-multilingual@2240` | 10.58 | 17.24 | 10.28 | 67-73x | 0.65 GB |
 | `fluid.nemotron-multilingual@1120` | 10.63 | 17.39 | 10.37 | 58-76x | 0.65 GB |
 | `fluid.nemotron-multilingual@560` | not measured | | | | |

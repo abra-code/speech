@@ -1,6 +1,6 @@
 # Canary 1B v2
 
-> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> Measured on an Apple M5 with macOS 27.0.1 in October 2026, over the full
 > FLEURS test sets. Use these numbers as a guide: results on your Mac and with
 > your own recordings can differ.
 
@@ -8,17 +8,17 @@ NVIDIA's Canary-1B-v2, covering 25 European languages. The best all-round model 
 
 ## Measurements
 
-Full FLEURS test sets, 2026-09-04 and 2026-09-05. Word error rate (WER) in percent, lower is better; speed in multiples of real time.
+Full FLEURS test sets, 2026-10-23 to 2026-10-24, speech 0.2.1 (transcribe.cpp 0.4.1); the Core ML build on macOS 26.6.2 in September 2026 (FluidAudio 0.15.6). Word error rate (WER) in percent, lower is better; speed in multiples of real time.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
-| `ggml.canary-1b-v2@q8_0` | 4.92 | 6.82 | 4.41 | 47-56x | 1.32-1.38 GB |
-| `ggml.canary-1b-v2@q4_k_m` | not measured | | | | |
-| `fluid.canary-1b-v2@int4` | 6.36 | 11.77 | 6.96 | 6-8x | 0.31-0.34 GB |
+| `ggml.canary-1b-v2@q8_0` | 4.92 | 6.82 | 4.41 | 48-57x | 1.33-1.39 GB |
+| `ggml.canary-1b-v2@q4_k_m` | 5.04 | 7.18 | 4.59 | 54-64x | 0.92-0.99 GB |
+| `fluid.canary-1b-v2@int4` | 6.36 | 11.77 | 6.96 | 6-8x | 0.30-0.34 GB |
 
 ## The 4-bit Core ML build
 
-FluidInference publishes this model for Core ML only in 4-bit form. That build is 1.4 to 5 WER points worse than the 8-bit GGUF build in every language, and about seven times slower. Its only advantage is memory: 0.31-0.34 GB against 1.32-1.38 GB. It is hidden from the model list, but still runs when its full id is given.
+FluidInference publishes this model for Core ML only in 4-bit form. That build is 1.4 to 5 WER points worse than the 8-bit GGUF build in every language, and about seven times slower. Its only advantage is memory: 0.30-0.34 GB against 1.33-1.39 GB, or 0.92-0.99 GB for the 4-bit GGUF build, which is 0.1 to 0.4 points behind the 8-bit one. It is hidden from the model list, but still runs when its full id is given.
 
 ## Limits
 

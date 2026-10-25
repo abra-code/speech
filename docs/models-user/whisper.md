@@ -5,7 +5,7 @@ OpenAI's Whisper, covering about 99 languages - far more than anything else offe
 | | |
 | --- | --- |
 | **Best for** | Languages nothing else covers, and ones the other models handle poorly |
-| **Speed** | 13 to 17 times real time, so an hour of audio takes about four minutes |
+| **Speed** | 12 to 16 times real time, so an hour of audio takes about four minutes |
 | **Memory** | 1.1 GB, or 3.6 GB for the heavier build |
 | **Live typing** | No |
 | **Subtitles** | Yes, by sentence rather than by word |
@@ -30,7 +30,7 @@ It is strongest where the widely supported models are weakest. Polish, the least
 
 **Pick it if** your language is not covered elsewhere, or the models with shorter language lists do poorly on it.
 
-**Skip it if** you transcribe English or German and care about speed - other models here are both more accurate and five to ten times faster.
+**Skip it if** you transcribe English or German and care about speed - other models here are both more accurate and three to ten times faster.
 
 **Worth knowing**
 

@@ -6,7 +6,7 @@ NVIDIA's streaming model. It writes text while you are still speaking, which is 
 | --- | --- |
 | **Best for** | Live typing as you speak |
 | **Speed** | Keeps up with speech comfortably |
-| **Memory** | 0.65 GB to 1.0 GB |
+| **Memory** | 0.65 GB to 1.1 GB |
 | **Download** | About 664 MB per version |
 | **Live typing** | Yes - this is its purpose |
 

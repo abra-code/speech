@@ -5,8 +5,8 @@ IBM's Granite Speech, in four versions. It takes the top four places of every mo
 | | |
 | --- | --- |
 | **Best for** | Clear, prepared English speech: audiobooks, read scripts, narration |
-| **Speed** | 9 to 17 times real time, so an hour takes 4 to 7 minutes |
-| **Memory** | 3.6 GB to 5.4 GB, the heaviest here |
+| **Speed** | 12 to 35 times real time, so an hour takes 2 to 5 minutes |
+| **Memory** | 2.7 GB to 2.9 GB |
 | **Live typing** | No |
 | **Subtitles** | Only from the Plus version |
 
@@ -27,12 +27,12 @@ Both are clear English read aloud. A model that leads on one and not the other i
 
 ## Choosing
 
-**Pick it if** your recordings are audiobook-like and the last half point of accuracy is worth several gigabytes of memory and a few minutes per hour.
+**Pick it if** your recordings are audiobook-like and the last half point of accuracy is worth two gigabytes of memory and a few minutes per hour.
 
-**Skip it if** you want one model for everything. Parakeet Unified is within half a point on audiobooks, ahead on ordinary sentences, and runs five to ten times faster in under 1 GB.
+**Skip it if** you want one model for everything. Parakeet Unified is within half a point on audiobooks, ahead on ordinary sentences, and runs four to thirteen times faster in under 1 GB.
 
 **Worth knowing**
 
-- Four versions: the fastest and most accurate on audiobooks needs the most memory of anything offered, 5.4 GB; the Plus version is the only one that can make subtitles; the oldest version is behind the others on every test and can be ignored.
+- Four versions: the fastest is also the most accurate on audiobooks; the Plus version is the only one that can make subtitles; the oldest version is behind the two best on every test and can be ignored.
 - **You must tell it the language**; it cannot detect one.
 - Neither test set contains meetings, phone calls, strong accents or noisy rooms, which is where most errors really happen.

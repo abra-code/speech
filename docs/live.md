@@ -410,11 +410,15 @@ Measured on the same 20 passages, q8_0, M5, no buffers dropped:
 | v0.2.3 unpatched, before the workaround | 34.39 / 54.27 s | 3.60% |
 | v0.2.3 unpatched, with the workaround | 0.46 / 2.45 s | 3.60% |
 | v0.2.3 with the patched library, no workaround | 0.46 / 1.74 s | 3.60% |
+| v0.4.1 with the patched library and the workaround | 0.36 / 0.53 s | 3.60% |
 
 The third row was measured against a hand-built library carrying what is now
 `patches/transcribe.cpp/0001-stream-commit-collapsed-spaces.patch`. It is the
 number to reproduce before the Swift workaround is removed; what ships today is
-that library with the workaround still on top of it.
+that library with the workaround still on top of it. The fourth row is that
+shipping build, speech 0.2.1 on macOS 27.0.1 (2026-10-23, the live row in
+docs/benchmarks/live.md): it measures the patch and the workaround together,
+so the removal is still unmeasured.
 
 It is scoped to `parakeet_stream` on purpose, even though `parakeet_buffered` goes
 through the same library boundary. Whether a stream freezes depends on the model

@@ -1,6 +1,6 @@
 # Qwen3-ASR
 
-> Measured on an Apple M5 with macOS 26.6.2 in September 2026, over the full
+> Measured on an Apple M5 with macOS 27.0.1 in October 2026, over the full
 > FLEURS test sets. Use these numbers as a guide: results on your Mac and with
 > your own recordings can differ.
 
@@ -8,26 +8,26 @@ Alibaba's Qwen3-ASR, a speech encoder paired with a language-model decoder, in 0
 
 ## Measurements
 
-Full FLEURS test sets, 2026-09-05 (MLX builds 2026-09-07). Word error rate (WER) in percent, lower is better; speed in multiples of real time.
+Full FLEURS test sets, 2026-10-21 to 2026-10-25, speech 0.2 (transcribe.cpp 0.4.1, mlx-audio-swift 0.1.6). Word error rate (WER) in percent, lower is better; speed in multiples of real time.
 
 | row | en | pl | de | speed | memory |
 | --- | --- | --- | --- | --- | --- |
-| `ggml.qwen3-asr-1.7b@q8_0` | 3.74 | 12.21 | 4.06 | 10-14x | 3.67 GB |
-| `ggml.qwen3-asr-1.7b@q4_k_m` | 4.29 | 16.95 | 5.03 | 12-20x | 2.36 GB |
-| `ggml.qwen3-asr-0.6b@q8_0` | 4.83 | 24.80 | 6.62 | 22-34x | 1.58 GB |
-| `mlx.qwen3-asr-1.7b@8bit` | 4.11 | 17.43 | 5.07 | 9-14x | 3.89-4.08 GB |
-| `mlx.qwen3-asr-1.7b@4bit` | 4.89 | 21.77 | 6.10 | 13-19x | 3.03-3.23 GB |
-| `ggml.qwen3-asr-0.6b@q4_k_m` | not measured | | | | |
+| `ggml.qwen3-asr-1.7b@q8_0` | 3.74 | 12.19 | 4.05 | 10-16x | 2.59 GB |
+| `mlx.qwen3-asr-1.7b@8bit` | 3.84 | 12.43 | 4.23 | 9-14x | 3.93-4.15 GB |
+| `mlx.qwen3-asr-1.7b@4bit` | 4.02 | 15.50 | 5.07 | 13-20x | 2.98-3.28 GB |
+| `ggml.qwen3-asr-1.7b@q4_k_m` | 4.29 | 16.95 | 5.03 | 14-21x | 1.72 GB |
+| `ggml.qwen3-asr-0.6b@q8_0` | 4.87 | 24.83 | 6.65 | 24-36x | 1.25 GB |
+| `ggml.qwen3-asr-0.6b@q4_k_m` | 5.48 | 31.17 | 8.12 | 29-43x | 0.99 GB |
 
-The MLX builds use the same weights and are worse in every language: by 0.4 points in English and about five in Polish. MLX spends one token budget across a whole request, so a long recording sent in one piece loses its ending without an error; `speech` sends it to the MLX builds in five-minute pieces.
+The MLX builds use the same weights and are now close to the GGUF builds or ahead of them: the 8-bit one trails `ggml.qwen3-asr-1.7b@q8_0` by 0.1 to 0.25 points in English, Polish and German and edges ahead of it in Spanish and French, and the 4-bit one beats `@q4_k_m` in English and Polish. They need more memory: 3.9 to 4.1 GB for the 8-bit build against 2.59 GB. MLX spends one token budget across a whole request, so a long recording sent in one piece loses its ending without an error; `speech` sends it to the MLX builds in five-minute pieces.
 
 ## A language on its list is not a language it is good at
 
-Its 30 languages are not equally served, and the six measured here spread further apart than for any other model. German is its best: 4.06, the lowest German measured and 37.6 percent fewer errors than Apple. Polish is its worst: 12 to 25 percent, where even the best build's 12.21 fails to beat Apple's 13.16 by the 15 percent this project asks for. Check the language you care about in the table above rather than trusting the list.
+Its 30 languages are not equally served, and the six measured here spread further apart than for any other model. German is its best: 4.05, the lowest German measured and 37.8 percent fewer errors than Apple. Polish is its worst: 12 to 31 percent, where even the best build's 12.19 fails to beat Apple's 13.16 by the 15 percent this project asks for. Check the language you care about in the table above rather than trusting the list.
 
 ## Cost
 
-The 8-bit 1.7B build uses 3.67 GB of memory, 23 percent of a 16 GB Mac, and runs at about 12 times real time, so an hour of audio takes about five minutes. The 4-bit build saves 1.3 GB and costs half a point in English and nearly five in Polish: a fair trade where memory is short and the recording is in one of its stronger languages.
+The 8-bit 1.7B build uses 2.59 GB of memory, 16 percent of a 16 GB Mac, and runs at about 15 times real time in English and German (10 in Polish), so an hour of audio takes about four minutes. The 4-bit build saves 0.9 GB and costs half a point in English and nearly five in Polish: a fair trade where memory is short and the recording is in one of its stronger languages.
 
 ## Limits
 

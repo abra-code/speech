@@ -5,7 +5,7 @@ NVIDIA's Parakeet v3, for 25 European languages. More accurate than the engine b
 | | |
 | --- | --- |
 | **Best for** | Long recordings in European languages |
-| **Speed** | 100 to 150 times real time |
+| **Speed** | 90 to 180 times real time |
 | **Memory** | 0.6 GB, or 1.0 GB for the most accurate build |
 | **Live typing** | Yes |
 
