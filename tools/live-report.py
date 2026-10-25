@@ -240,6 +240,36 @@ def read_cells(list_path):
     return cells
 
 
+def version_key(version):
+    """A macOS version as numbers, so 26.10.0 sorts after 26.9.0."""
+    return tuple(int(part) if part.isdigit() else -1 for part in str(version).split("."))
+
+
+def table_cells(cells):
+    """The cells the tables show: an Apple row once per macOS version, any other once.
+
+    The rule battery-report.py's table_cells follows, for the reason it gives:
+    any other row's weights are the same on every macOS, so a measurement after
+    an update - usually with a newer build of `speech` too - replaces the older
+    one, which would otherwise sit in the table as a second, stale figure for the
+    same model. An Apple row on a new macOS is a new model and stays beside the
+    old one. Unlike the batch tables, identical Apple rows are not collapsed: a
+    live row is also judged on its latencies, which differ between any two runs.
+    live-measurements.tsv keeps every cell.
+    """
+    def key(cell):
+        return (cell["model"], cell["corpus"],
+                cell["os"] if cell["model"].startswith("apple.") else "")
+
+    chosen = {}
+    for cell in cells:
+        best = chosen.get(key(cell))
+        if best is None or (version_key(cell["os"]), cell["date"]) > (
+                version_key(best["os"]), best["date"]):
+            chosen[key(cell)] = cell
+    return [cell for cell in cells if chosen[key(cell)] is cell]
+
+
 def base_language(tag):
     """The base of a language tag: pl-PL and pl both answer pl."""
     return tag.split("-")[0].lower() if tag else ""
@@ -421,10 +451,13 @@ Two gaps, both from the cost of measuring at real time:
   Every other row has English, plus the Polish that two of them were swept
   through at their shipping setting. A language with no row here is not a
   language these rows fail at; it is a language nobody has measured live.
-- **Re-runs.** `ggml.nemotron-3.5-asr-streaming-0.6b`'s final lag was measured
-  before the commit-freeze workaround this build carries (docs/live.md): its
-  accuracy is unaffected and its lag figure is not what the shipping build
-  does. The row needs a re-run, and the battery takes hours.
+- **Older builds.** Every LibriSpeech row but Apple's was measured again on
+  macOS 27.0.1 with speech 0.2 (FluidAudio 0.17.7, transcribe.cpp 0.4.1), and
+  each shows only that measurement. The FLEURS one-sentence cells (English and
+  Polish) were measured on macOS 26.7.0 with speech 0.1.0 and FluidAudio
+  0.15.6, and have not been run again; on the continuous corpus that move
+  changed `fluid.parakeet-v3@int8` the most, from 18.69% to 5.28% WER. Apple's
+  rows name the macOS they were measured on.
 
 The raw cells, the sweeps at settings nobody ships, and the reasoning behind
 each row's chunk length are in docs/live.md and in the repository's `Private/`.
@@ -558,7 +591,7 @@ def main():
     cells = read_cells(options.cells)
     if not cells:
         die("no publishable live cell in %s" % os.path.relpath(options.cells, REPO))
-    groups = by_corpus(cells)
+    groups = by_corpus(table_cells(cells))
     prov = provenance(cells)
 
     if not options.check:

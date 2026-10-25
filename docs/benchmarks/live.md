@@ -33,8 +33,8 @@ measured on a handful of them separates nothing.
 
 ## Provenance
 
-Machine Apple M5, macOS 26.6.2 / 26.7.0 / 27.0.0, measured 2026-09-13 to
-2026-09-20, 40 cells, from tools/live-cells.tsv.
+Machine Apple M5, macOS 26.6.2 / 26.7.0 / 27.0.0 / 27.0.1, measured 2026-09-13
+to 2026-10-23, 51 cells, from tools/live-cells.tsv.
 
 ## The rows, by corpus
 
@@ -49,23 +49,23 @@ else.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `fluid.parakeet-unified@stream-640` | 20 | 26.6.2 | 1.80% | 1.25 s | 0.77 s | 2.46 s | none | 0.66 GB |
-| 2 | `ggml.parakeet-unified-en-0.6b@q8_0` | 20 | 26.6.2 | 1.89% | 2.29 s | 3.07 s | 3.83 s | none | 0.89 GB |
-| 3 | `fluid.parakeet-unified@stream-2080` | 20 | 26.6.2 | 1.92% | 2.15 s | 2.14 s | 3.07 s | none | 0.67 GB |
-| 4 | `fluid.parakeet-unified@stream-1120` | 20 | 26.6.2 | 1.96% | 1.76 s | 1.27 s | 3.04 s | none | 0.67 GB |
-| 5 | `fluid.parakeet-unified@stream-320` | 20 | 26.6.2 | 2.08% | 1.18 s | 0.75 s | 2.59 s | none | 0.66 GB |
+| 1 | `fluid.parakeet-unified@stream-640` | 20 | 27.0.1 | 1.80% | 1.26 s | 0.78 s | 2.47 s | none | 0.66 GB |
+| 2 | `ggml.parakeet-unified-en-0.6b@q8_0` | 20 | 27.0.1 | 1.89% | 2.19 s | 2.73 s | 3.45 s | none | 0.91 GB |
+| 3 | `fluid.parakeet-unified@stream-2080` | 20 | 27.0.1 | 1.92% | 2.15 s | 2.14 s | 3.08 s | none | 0.67 GB |
+| 4 | `fluid.parakeet-unified@stream-1120` | 20 | 27.0.1 | 1.96% | 1.77 s | 1.27 s | 3.04 s | none | 0.67 GB |
+| 5 | `fluid.parakeet-unified@stream-320` | 20 | 27.0.1 | 2.08% | 1.19 s | 0.75 s | 2.59 s | none | 0.66 GB |
 | 6 | `apple.transcriber` | 20 | 26.6.2 | 2.98% | 3.99 s | 3.88 s | 5.60 s | none | 0.02 GB |
 | 7 | `apple.transcriber` | 20 | 26.7.0 | 2.98% | 4.00 s | 3.80 s | 5.56 s | none | 0.02 GB |
 | 8 | `apple.transcriber` | 20 | 27.0.0 | 2.98% | 4.00 s | 3.80 s | 5.54 s | none | 0.02 GB |
-| 9 | `fluid.nemotron-multilingual@2240` | 20 | 26.6.2 | 3.01% | 2.31 s | 2.21 s | 3.52 s | 1 word | 0.66 GB |
-| 10 | `fluid.nemotron-multilingual@1120` | 20 | 26.6.2 | 3.14% | 1.19 s | 1.12 s | 2.75 s | 1 word | 0.65 GB |
-| 11 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 26.6.2 | 3.60% | 0.91 s | 34.40 s | 54.32 s | 1 word | 1.04 GB |
-| 12 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 26.6.2 | 3.91% | 0.89 s | 1.27 s | 54.33 s | 1 word | 0.78 GB |
-| 13 | `apple.dictation` | 20 | 26.6.2 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
-| 14 | `apple.dictation` | 20 | 26.7.0 | 7.64% | 1.12 s | 1.59 s | 2.21 s | none | 0.02 GB |
-| 15 | `apple.dictation` | 20 | 27.0.0 | 7.98% | 1.12 s | 1.70 s | 2.21 s | none | 0.02 GB |
-| 16 | `fluid.parakeet-v3@int4` | 20 | 26.6.2 | 10.28% | - | 0.81 s | 11.95 s | 79 words | 0.41 GB |
-| 17 | `fluid.parakeet-v3@int8` | 20 | 26.6.2 | 18.69% | - | 1.27 s | 11.76 s | 318 words | 0.56 GB |
+| 9 | `fluid.nemotron-multilingual@2240` | 20 | 27.0.1 | 3.01% | 2.31 s | 2.23 s | 3.51 s | 1 word | 0.67 GB |
+| 10 | `fluid.nemotron-multilingual@1120` | 20 | 27.0.1 | 3.14% | 1.20 s | 1.25 s | 2.98 s | 1 word | 0.65 GB |
+| 11 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 27.0.1 | 3.60% | 0.85 s | 0.36 s | 0.53 s | 1 word | 1.04 GB |
+| 12 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 27.0.1 | 3.91% | 0.87 s | 0.36 s | 0.67 s | 1 word | 0.79 GB |
+| 13 | `fluid.parakeet-v3@int4` | 20 | 27.0.1 | 4.81% | - | 0.77 s | 5.95 s | none | 0.41 GB |
+| 14 | `fluid.parakeet-v3@int8` | 20 | 27.0.1 | 5.28% | - | 0.84 s | 5.91 s | 9 words | 0.56 GB |
+| 15 | `apple.dictation` | 20 | 26.6.2 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
+| 16 | `apple.dictation` | 20 | 26.7.0 | 7.64% | 1.12 s | 1.59 s | 2.21 s | none | 0.02 GB |
+| 17 | `apple.dictation` | 20 | 27.0.0 | 7.98% | 1.12 s | 1.70 s | 2.21 s | none | 0.02 GB |
 
 ### FLEURS German (de_DE), continuous
 
@@ -184,10 +184,13 @@ Two gaps, both from the cost of measuring at real time:
   Every other row has English, plus the Polish that two of them were swept
   through at their shipping setting. A language with no row here is not a
   language these rows fail at; it is a language nobody has measured live.
-- **Re-runs.** `ggml.nemotron-3.5-asr-streaming-0.6b`'s final lag was measured
-  before the commit-freeze workaround this build carries (docs/live.md): its
-  accuracy is unaffected and its lag figure is not what the shipping build
-  does. The row needs a re-run, and the battery takes hours.
+- **Older builds.** Every LibriSpeech row but Apple's was measured again on
+  macOS 27.0.1 with speech 0.2 (FluidAudio 0.17.7, transcribe.cpp 0.4.1), and
+  each shows only that measurement. The FLEURS one-sentence cells (English and
+  Polish) were measured on macOS 26.7.0 with speech 0.1.0 and FluidAudio
+  0.15.6, and have not been run again; on the continuous corpus that move
+  changed `fluid.parakeet-v3@int8` the most, from 18.69% to 5.28% WER. Apple's
+  rows name the macOS they were measured on.
 
 The raw cells, the sweeps at settings nobody ships, and the reasoning behind
 each row's chunk length are in docs/live.md and in the repository's `Private/`.

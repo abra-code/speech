@@ -34,27 +34,27 @@ property of the model and the speed as a property of this machine.
 | --- | --- |
 | Machine | Apple M5 |
 | Memory | 25.77 GB |
-| macOS | 26.6.2 / 26.7.0 / 27.0.0 |
-| Measured | 2026-09-08 to 2026-09-19 |
-| Cells | 222 model-corpus pairs |
-| `speech` | speech 0.1.0 |
-| Apple Speech | bundled with macOS 27.0.0 |
-| FluidAudio | 0.15.6 |
-| transcribe.cpp | 0.2.3 |
-| mlx-audio-swift | 0.1.3 |
-| mlx-swift | 0.31.6 |
+| macOS | 26.6.2 / 26.7.0 / 27.0.0 / 27.0.1 |
+| Measured | 2026-09-08 to 2026-10-25 |
+| Cells | 410 model-corpus pairs |
+| `speech` | speech 0.2.1 |
+| Apple Speech | bundled with macOS 27.0.1 |
+| FluidAudio | 0.17.7 |
+| transcribe.cpp | 0.4.1 |
+| mlx-audio-swift | 0.1.6 |
+| mlx-swift | 0.32.3 |
 
 The machine, the OS and the date are recorded by each cell. The version rows
 are not: `speech eval` does not write them into a summary, so they are read
 from the build in this tree and are correct as long as the report is generated
 from the tree that ran the battery.
 
-This battery spans macOS 26.6.2, 26.7.0 and 27.0.0. Apple's two rows appear
-once for each version they were measured on, because they are part of the
-operating system - except where a newer version made exactly the same errors as
-the one before it, which shows only the newer row. Every other row is shown
-from the newest version it was measured on, and measurements.tsv holds every
-cell.
+This battery spans macOS 26.6.2, 26.7.0, 27.0.0 and 27.0.1. Apple's two rows
+appear once for each version they were measured on, because they are part of
+the operating system - except where a newer version made exactly the same
+errors as the one before it, which shows only the newer row. Every other row is
+shown from the newest version it was measured on, and measurements.tsv holds
+every cell.
 
 ## The corpora
 
@@ -63,7 +63,7 @@ cell.
 | en_us | 647 | 1.8 h | 14,465 | 35 |
 | de_de | 862 | 3.2 h | 18,703 | 22 |
 | es_419 | 908 | 3.1 h | 23,314 | 22 |
-| fr_fr | 676 | 2.0 h | 17,075 | 22 |
+| fr_fr | 676 | 2.0 h | 17,075 | 23 |
 | pl_pl | 758 | 2.1 h | 14,380 | 20 |
 | cmn_hans_cn | 945 | 3.1 h | 32,925 | 14 |
 | librispeech-test-clean | 2620 | 5.5 h | 52,576 | 34 |
@@ -81,19 +81,19 @@ splits are ranked apart and never pooled.
 
 | Corpus | Most accurate | Score | RTFx | Peak memory |
 | --- | --- | --- | --- | --- |
-| en_us | `ggml.qwen3-asr-1.7b@q8_0` | 3.74% WER | 16.6x | 3.66 GB |
-| de_de | `ggml.qwen3-asr-1.7b@q8_0` | 4.06% WER | 11.6x | 3.68 GB |
-| es_419 | `ggml.qwen3-asr-1.7b@q8_0` | 3.05% WER | 11.6x | 3.66 GB |
-| fr_fr | `ggml.qwen3-asr-1.7b@q8_0` | 4.59% WER | 9.6x | 3.67 GB |
-| pl_pl | `ggml.whisper-large-v3-turbo@q8_0` | 5.81% WER | 11.3x | 1.12 GB |
-| cmn_hans_cn | `ggml.qwen3-asr-1.7b@q8_0` | 7.19% CER | 13.6x | 3.67 GB |
-| librispeech-test-clean | `ggml.granite-speech-4.1-2b-nar@q8_0` | 1.41% WER | 15.6x | 5.17 GB |
-| librispeech-test-other | `ggml.granite-speech-4.1-2b@q8_0` | 2.84% WER | 9.2x | 3.77 GB |
+| en_us | `ggml.qwen3-asr-1.7b@q8_0` | 3.74% WER | 15.7x | 2.59 GB |
+| de_de | `ggml.qwen3-asr-1.7b@q8_0` | 4.05% WER | 15.0x | 2.59 GB |
+| es_419 | `mlx.qwen3-asr-1.7b@8bit` | 2.99% WER | 11.9x | 3.98 GB |
+| fr_fr | `mlx.qwen3-asr-1.7b@8bit` | 4.52% WER | 10.1x | 4.10 GB |
+| pl_pl | `ggml.whisper-large-v3-turbo@q8_0` | 5.81% WER | 12.2x | 1.05 GB |
+| cmn_hans_cn | `mlx.qwen3-asr-1.7b@8bit` | 7.04% CER | 16.6x | 3.98 GB |
+| librispeech-test-clean | `ggml.granite-speech-4.1-2b-nar@q8_0` | 1.42% WER | 33.3x | 2.88 GB |
+| librispeech-test-other | `ggml.granite-speech-4.1-2b@q8_0` | 2.84% WER | 12.0x | 2.87 GB |
 
-8 corpora, 4 different models on top. `ggml.qwen3-asr-1.7b@q8_0` takes 5, and
-the remaining 3 go to 3 other rows. Both English corpora are read speech, and
+8 corpora, 5 different models on top. `mlx.qwen3-asr-1.7b@8bit` takes 3, and
+the remaining 5 go to 4 other rows. Both English corpora are read speech, and
 `ggml.granite-speech-4.1-2b-nar@q8_0` is first on librispeech-test-clean and
-20th of 35 on en_us - which is a fact about how alike a model's training data
+21st of 35 on en_us - which is a fact about how alike a model's training data
 and a test set are, not a tie-break. That spread is why all of them are
 published instead of a recommendation.
 
