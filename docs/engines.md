@@ -142,9 +142,9 @@ A fourteenth, `fluid.canary-1b-v2@int4`, is built but unlisted. Its entry in
 `catalog/fluid.json` is `"hidden": true`, which leaves it out of both sides of
 the join below, so neither check reports it; `make` still builds it, so the id
 still works when typed in full.
-The measurements are in the README: the GGUF build of the same weights is 1.3 to
-2.9 WER points better and 8x faster on an M5, and on M1-class hardware the ANE
-compile fails outright after 85 minutes and leaves the row at RTFx 3.7.
+The measurements are in the README: the GGUF build of the same weights is 1.4 to
+4.6 WER points better and 7 to 8 times faster on an M5, and on M1-class hardware
+the ANE compile fails outright after 85 minutes and leaves the row at RTFx 3.7.
 
 ### `fluid.silero-vad`, the row that produces no text
 

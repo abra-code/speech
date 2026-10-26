@@ -211,14 +211,14 @@ compiled in and an id typed in full still downloads, loads and transcribes, but
 the row is absent from `speech catalog` and `speech engines` so that nothing
 offers it. It was measured against `ggml.canary-1b-v2@q4_k_m`, which is the same
 NVIDIA weights quantized to 4 bits as a GGUF, over the whole of FLEURS per
-language:
+language (macOS 27.0.1, speech 0.2.1, October 2026):
 
 | language | int4 WER | q4_k_m WER | int4 RTFx | q4_k_m RTFx |
 | --- | --- | --- | --- | --- |
-| de_de | 6.96 | 4.59 | 7.7 | 59.5 |
-| en_us | 6.36 | 5.04 | 7.6 | 63.1 |
-| es_419 | 6.03 | 3.10 | 5.4 | 49.8 |
-| pl_pl | 11.77 | 7.19 | 6.0 | 49.3 |
+| de_de | 6.93 | 4.59 | 8.3 | 63.6 |
+| en_us | 6.39 | 5.04 | 8.1 | 60.2 |
+| es_419 | 6.04 | 3.09 | 8.1 | 62.8 |
+| pl_pl | 11.80 | 7.18 | 6.5 | 54.2 |
 
 Those are M5 figures, on the hardware where the conversion works. On M1 and M1
 Pro the CoreML runtime fails to compile part of the graph for the Neural Engine
