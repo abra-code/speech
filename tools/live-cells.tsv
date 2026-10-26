@@ -16,8 +16,8 @@
 #   2 corpus id, or "row.tsv" to take it from the cell's own row
 #   3 note for the published page, or empty
 Private/live-battery/macos-*/*	row.tsv
-Private/live-chunk-sweep-2026-09-17/chunk-11-en_us	en_us	the shipping 11-second chunk
-Private/live-chunk-sweep-2026-09-17/chunk-11-pl_pl	pl_pl	the shipping 11-second chunk
-Private/nemotron-560-2026-09-17/fluid.nemotron-multilingual@560-en_us-live	en_us
-Private/nemotron-560-2026-09-17/fluid.nemotron-multilingual@560-pl_pl-live	pl_pl
-Private/nemotron-560-2026-09-17/fluid.nemotron-multilingual@1120-en_us-live	en_us
+Private/live-fleurs-sentences-0.2.1/chunk-11-en_us	en_us	the shipping 11-second chunk
+Private/live-fleurs-sentences-0.2.1/chunk-11-pl_pl	pl_pl	the shipping 11-second chunk
+Private/live-fleurs-sentences-0.2.1/fluid.nemotron-multilingual@560-en_us-live	en_us
+Private/live-fleurs-sentences-0.2.1/fluid.nemotron-multilingual@560-pl_pl-live	pl_pl
+Private/live-fleurs-sentences-0.2.1/fluid.nemotron-multilingual@1120-en_us-live	en_us

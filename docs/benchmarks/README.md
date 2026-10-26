@@ -35,8 +35,8 @@ property of the model and the speed as a property of this machine.
 | Machine | Apple M5 |
 | Memory | 25.77 GB |
 | macOS | 26.6.2 / 26.7.0 / 27.0.0 / 27.0.1 |
-| Measured | 2026-09-08 to 2026-10-25 |
-| Cells | 410 model-corpus pairs |
+| Measured | 2026-09-08 to 2026-10-26 |
+| Cells | 414 model-corpus pairs |
 | `speech` | speech 0.2.1 |
 | Apple Speech | bundled with macOS 27.0.1 |
 | FluidAudio | 0.17.7 |

@@ -451,13 +451,11 @@ Two gaps, both from the cost of measuring at real time:
   Every other row has English, plus the Polish that two of them were swept
   through at their shipping setting. A language with no row here is not a
   language these rows fail at; it is a language nobody has measured live.
-- **Older builds.** Every LibriSpeech row but Apple's was measured again on
-  macOS 27.0.1 with speech 0.2 (FluidAudio 0.17.7, transcribe.cpp 0.4.1), and
-  each shows only that measurement. The FLEURS one-sentence cells (English and
-  Polish) were measured on macOS 26.7.0 with speech 0.1.0 and FluidAudio
-  0.15.6, and have not been run again; on the continuous corpus that move
-  changed `fluid.parakeet-v3@int8` the most, from 18.69% to 5.28% WER. Apple's
-  rows name the macOS they were measured on.
+- **Older builds.** Every row but Apple's was measured again on macOS 27.0.1
+  with speech 0.2 (FluidAudio 0.17.7, transcribe.cpp 0.4.1), and each shows
+  only that measurement. Apple's engines ship with macOS, so its rows appear
+  once per macOS version they were measured on; not every Apple cell has been
+  measured on 27.0.1, and the ones that have match 27.0.0.
 
 The raw cells, the sweeps at settings nobody ships, and the reasoning behind
 each row's chunk length are in docs/live.md and in the repository's `Private/`.

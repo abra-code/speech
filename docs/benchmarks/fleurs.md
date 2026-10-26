@@ -38,7 +38,7 @@ columns mean and what is missing from them.
 | 21 | `ggml.granite-speech-4.1-2b-nar@q8_0` | 5.65% | 2.91% | 35.1x | 2.87 GB |
 | 22 | `fluid.parakeet-v3@int8` | 5.95% | 2.81% | 170.7x | 564 MB |
 | 23 | `ggml.granite-speech-4.1-2b@q8_0` | 5.98% | 3.38% | 14.1x | 2.83 GB |
-| 24 | `fluid.canary-1b-v2@int4` | 6.36% | 2.87% | 7.6x | 342 MB |
+| 24 | `fluid.canary-1b-v2@int4` | 6.39% | 2.89% | 8.1x | 340 MB |
 | 25 | `fluid.parakeet-unified@stream-640` | 6.80% | 3.25% | 35.7x | 663 MB |
 | 26 | `ggml.granite-4.0-1b-speech@q8_0` | 6.87% | 4.11% | 14.3x | 2.83 GB |
 | 27 | `fluid.parakeet-unified@stream-320` | 7.24% | 3.50% | 12.0x | 657 MB |
@@ -75,7 +75,7 @@ cell's totals.
 | 13 | `fluid.parakeet-v3@int8` | 5.56% | 1.69% | 178.4x | 575 MB |
 | 14 | `apple.transcriber` on macOS 27.0.1 | 6.51% | 2.15% | 91.1x | 24 MB |
 | 15 | `ggml.qwen3-asr-0.6b@q8_0` | 6.65% | 2.27% | 33.5x | 1.25 GB |
-| 16 | `fluid.canary-1b-v2@int4` | 6.96% | 2.99% | 7.7x | 327 MB |
+| 16 | `fluid.canary-1b-v2@int4` | 6.93% | 2.98% | 8.3x | 319 MB |
 | 17 | `ggml.qwen3-asr-0.6b@q4_k_m` | 8.12% | 2.83% | 39.7x | 991 MB |
 | 18 | `fluid.parakeet-v3@int4` | 9.99% | 3.29% | 170.7x | 430 MB |
 | 19 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 10.31% | 4.91% | 55.6x | 1.07 GB |
@@ -109,7 +109,7 @@ cell's totals.
 | 15 | `ggml.qwen3-asr-0.6b@q8_0` | 4.75% | 1.69% | 32.7x | 1.25 GB |
 | 16 | `ggml.qwen3-asr-0.6b@q4_k_m` | 5.37% | 1.89% | 39.3x | 990 MB |
 | 17 | `fluid.parakeet-v3@int4` | 5.57% | 2.24% | 177.4x | 424 MB |
-| 18 | `fluid.canary-1b-v2@int4` | 6.03% | 3.31% | 5.4x | 444 MB |
+| 18 | `fluid.canary-1b-v2@int4` | 6.04% | 3.33% | 8.1x | 441 MB |
 | 19 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 6.28% | 3.54% | 53.1x | 1.06 GB |
 | 20 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 6.60% | 3.62% | 52.5x | 799 MB |
 | 21 | `apple.dictation` on macOS 26.7.0 | 6.93% | 2.46% | 51.0x | 19 MB |
@@ -163,7 +163,7 @@ cell's totals.
 | 7 | `mlx.parakeet-tdt-0.6b-v3` | 7.45% | 2.32% | 143.7x | 3.93 GB |
 | 8 | `ggml.parakeet-tdt-0.6b-v3@q4_k_m` | 7.58% | 2.28% | 84.9x | 742 MB |
 | 9 | `fluid.parakeet-v3@int8` | 7.75% | 2.46% | 156.4x | 559 MB |
-| 10 | `fluid.canary-1b-v2@int4` | 11.77% | 5.16% | 6.0x | 295 MB |
+| 10 | `fluid.canary-1b-v2@int4` | 11.80% | 5.17% | 6.5x | 299 MB |
 | 11 | `ggml.qwen3-asr-1.7b@q8_0` | 12.19% | 4.30% | 10.5x | 2.58 GB |
 | 12 | `mlx.qwen3-asr-1.7b@8bit` | 12.43% | 4.49% | 8.7x | 3.93 GB |
 | 13 | `apple.dictation` on macOS 27.0.1 | 13.16% | 6.69% | 59.1x | 21 MB |

@@ -34,7 +34,7 @@ measured on a handful of them separates nothing.
 ## Provenance
 
 Machine Apple M5, macOS 26.6.2 / 26.7.0 / 27.0.0 / 27.0.1, measured 2026-09-13
-to 2026-10-23, 51 cells, from tools/live-cells.tsv.
+to 2026-10-26, 54 cells, from tools/live-cells.tsv.
 
 ## The rows, by corpus
 
@@ -45,7 +45,7 @@ Consecutive utterances of one chapter joined into minute-long passages
 judged on: a row that loses the tail of long speech loses it here and nowhere
 else.
 
-17 rows, ranked by WER.
+19 rows, ranked by WER.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -57,15 +57,17 @@ else.
 | 6 | `apple.transcriber` | 20 | 26.6.2 | 2.98% | 3.99 s | 3.88 s | 5.60 s | none | 0.02 GB |
 | 7 | `apple.transcriber` | 20 | 26.7.0 | 2.98% | 4.00 s | 3.80 s | 5.56 s | none | 0.02 GB |
 | 8 | `apple.transcriber` | 20 | 27.0.0 | 2.98% | 4.00 s | 3.80 s | 5.54 s | none | 0.02 GB |
-| 9 | `fluid.nemotron-multilingual@2240` | 20 | 27.0.1 | 3.01% | 2.31 s | 2.23 s | 3.51 s | 1 word | 0.67 GB |
-| 10 | `fluid.nemotron-multilingual@1120` | 20 | 27.0.1 | 3.14% | 1.20 s | 1.25 s | 2.98 s | 1 word | 0.65 GB |
-| 11 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 27.0.1 | 3.60% | 0.85 s | 0.36 s | 0.53 s | 1 word | 1.04 GB |
-| 12 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 27.0.1 | 3.91% | 0.87 s | 0.36 s | 0.67 s | 1 word | 0.79 GB |
-| 13 | `fluid.parakeet-v3@int4` | 20 | 27.0.1 | 4.81% | - | 0.77 s | 5.95 s | none | 0.41 GB |
-| 14 | `fluid.parakeet-v3@int8` | 20 | 27.0.1 | 5.28% | - | 0.84 s | 5.91 s | 9 words | 0.56 GB |
-| 15 | `apple.dictation` | 20 | 26.6.2 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
-| 16 | `apple.dictation` | 20 | 26.7.0 | 7.64% | 1.12 s | 1.59 s | 2.21 s | none | 0.02 GB |
-| 17 | `apple.dictation` | 20 | 27.0.0 | 7.98% | 1.12 s | 1.70 s | 2.21 s | none | 0.02 GB |
+| 9 | `apple.transcriber` | 20 | 27.0.1 | 2.98% | 4.00 s | 3.79 s | 5.54 s | none | 0.02 GB |
+| 10 | `fluid.nemotron-multilingual@2240` | 20 | 27.0.1 | 3.01% | 2.31 s | 2.23 s | 3.51 s | 1 word | 0.67 GB |
+| 11 | `fluid.nemotron-multilingual@1120` | 20 | 27.0.1 | 3.14% | 1.20 s | 1.25 s | 2.98 s | 1 word | 0.65 GB |
+| 12 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 27.0.1 | 3.60% | 0.85 s | 0.36 s | 0.53 s | 1 word | 1.04 GB |
+| 13 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 27.0.1 | 3.91% | 0.87 s | 0.36 s | 0.67 s | 1 word | 0.79 GB |
+| 14 | `fluid.parakeet-v3@int4` | 20 | 27.0.1 | 4.81% | - | 0.77 s | 5.95 s | none | 0.41 GB |
+| 15 | `fluid.parakeet-v3@int8` | 20 | 27.0.1 | 5.28% | - | 0.84 s | 5.91 s | 9 words | 0.56 GB |
+| 16 | `apple.dictation` | 20 | 26.6.2 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
+| 17 | `apple.dictation` | 20 | 26.7.0 | 7.64% | 1.12 s | 1.59 s | 2.21 s | none | 0.02 GB |
+| 18 | `apple.dictation` | 20 | 27.0.0 | 7.98% | 1.12 s | 1.70 s | 2.21 s | none | 0.02 GB |
+| 19 | `apple.dictation` | 20 | 27.0.1 | 7.98% | 1.11 s | 1.69 s | 2.21 s | none | 0.02 GB |
 
 ### FLEURS German (de_DE), continuous
 
@@ -126,12 +128,13 @@ changes from sentence to sentence; what the passage has in common with the
 LibriSpeech one is the thing being measured - a minute of speech with no cut
 edge for a session to find a boundary at.
 
-2 rows, ranked by WER.
+3 rows, ranked by WER.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `apple.dictation` | 20 | 26.7.0 | 18.18% | 1.81 s | 2.48 s | 5.50 s | 16 words | 0.02 GB |
 | 2 | `apple.dictation` | 20 | 27.0.0 | 18.18% | 1.81 s | 2.48 s | 5.49 s | 16 words | 0.02 GB |
+| 3 | `apple.dictation` | 20 | 27.0.1 | 18.18% | 1.81 s | 2.48 s | 5.48 s | 16 words | 0.02 GB |
 
 ### FLEURS Mandarin (cmn_Hans_CN), continuous
 
@@ -159,9 +162,9 @@ a weak test of a streaming row.
 
 | # | Model | Recordings | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `fluid.nemotron-multilingual@560` | 6 | 3.23% | 1.77 s | 1.22 s | 2.12 s | none | 0.65 GB |
-| 2 | `fluid.nemotron-multilingual@1120` | 6 | 4.03% | 2.29 s | 1.39 s | 2.13 s | none | 0.64 GB |
-| 3 | `fluid.parakeet-v3@int8`, the shipping 11-second chunk | 25 | 6.67% | - | 0.73 s | 2.25 s | 8 words | 0.54 GB |
+| 1 | `fluid.nemotron-multilingual@560` | 6 | 3.23% | 1.77 s | 1.23 s | 2.22 s | none | 0.65 GB |
+| 2 | `fluid.nemotron-multilingual@1120` | 6 | 4.03% | 2.29 s | 1.36 s | 2.24 s | none | 0.66 GB |
+| 3 | `fluid.parakeet-v3@int8`, the shipping 11-second chunk | 25 | 5.49% | - | 0.82 s | 2.28 s | none | 0.56 GB |
 
 ### FLEURS Polish (pl_PL)
 
@@ -171,8 +174,8 @@ One sentence per recording, as above.
 
 | # | Model | Recordings | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `fluid.parakeet-v3@int8`, the shipping 11-second chunk | 25 | 11.52% | - | 0.50 s | 1.72 s | 6 words | 0.54 GB |
-| 2 | `fluid.nemotron-multilingual@560` | 6 | 22.61% | 1.77 s | 0.17 s | 1.33 s | 1 word | 0.64 GB |
+| 1 | `fluid.parakeet-v3@int8`, the shipping 11-second chunk | 25 | 12.11% | - | 0.50 s | 1.63 s | 6 words | 0.54 GB |
+| 2 | `fluid.nemotron-multilingual@560` | 6 | 22.61% | 1.77 s | 0.18 s | 1.33 s | 1 word | 0.65 GB |
 
 ## What is missing, and why
 
@@ -184,13 +187,11 @@ Two gaps, both from the cost of measuring at real time:
   Every other row has English, plus the Polish that two of them were swept
   through at their shipping setting. A language with no row here is not a
   language these rows fail at; it is a language nobody has measured live.
-- **Older builds.** Every LibriSpeech row but Apple's was measured again on
-  macOS 27.0.1 with speech 0.2 (FluidAudio 0.17.7, transcribe.cpp 0.4.1), and
-  each shows only that measurement. The FLEURS one-sentence cells (English and
-  Polish) were measured on macOS 26.7.0 with speech 0.1.0 and FluidAudio
-  0.15.6, and have not been run again; on the continuous corpus that move
-  changed `fluid.parakeet-v3@int8` the most, from 18.69% to 5.28% WER. Apple's
-  rows name the macOS they were measured on.
+- **Older builds.** Every row but Apple's was measured again on macOS 27.0.1
+  with speech 0.2 (FluidAudio 0.17.7, transcribe.cpp 0.4.1), and each shows
+  only that measurement. Apple's engines ship with macOS, so its rows appear
+  once per macOS version they were measured on; not every Apple cell has been
+  measured on 27.0.1, and the ones that have match 27.0.0.
 
 The raw cells, the sweeps at settings nobody ships, and the reasoning behind
 each row's chunk length are in docs/live.md and in the repository's `Private/`.
