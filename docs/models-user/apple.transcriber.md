@@ -5,7 +5,7 @@ The engine macOS uses for Notes and Voice Memos, meant for recordings. Nothing t
 | | |
 | --- | --- |
 | **Best for** | Getting started without downloading anything, and for recordings in the languages it covers |
-| **Speed** | 53 to 85 times real time |
+| **Speed** | 56 to 90 times real time |
 | **Memory** | About 20 MB |
 | **Download** | None, though macOS fetches a language the first time you use it |
 | **Live typing** | Yes |
@@ -23,10 +23,10 @@ Word error rate (WER) is the share of words you would have to fix, so lower is b
 
 | | This engine | Apple dictation | Best downloadable model |
 | --- | --- | --- | --- |
-| English | 8.0% | 12.9% | 3.7% |
-| German | 6.5% | 13.0% | 4.1% |
-| Spanish | 4.5% | 7.4% | 3.1% |
-| French | 7.5% | 16.5% | 4.6% |
+| English | 8.0% | 12.7% | 3.7% |
+| German | 6.5% | 13.1% | 4.1% |
+| Spanish | 4.5% | 7.5% | 3.1% |
+| French | 7.5% | 16.4% | 4.6% |
 
 It is the better of the two built-in engines everywhere both exist, by 3 to 9 points.
 
@@ -39,6 +39,6 @@ It is the better of the two built-in engines everywhere both exist, by 3 to 9 po
 **Worth knowing**
 
 - **It arrived in macOS 26.** On anything older it does not exist, and Speech says so rather than offering it.
-- **A macOS update can change it, but so far has not.** The same recordings measured on macOS 26.6.2, 26.7.0 and 27.0 gave identical accuracy to two decimal places in every language.
+- **A macOS update can change it, but so far has hardly done so.** The same recordings measured on every macOS from 26.6.2 to 27.0.1 gave identical accuracy to two decimal places in every language; 27.2 changed a handful of words per language and moved no figure by more than 0.03 points.
 - It produces word-level timings, so it can make subtitles.
 - It cannot be given your own vocabulary, and learns nothing from your corrections.

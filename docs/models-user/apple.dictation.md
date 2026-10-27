@@ -21,10 +21,10 @@ Word error rate (WER) is the share of words you would have to fix, so lower is b
 
 | | This engine | Apple long-form | Best downloadable model |
 | --- | --- | --- | --- |
-| English | 12.9% | 8.0% | 3.7% |
-| German | 13.0% | 6.5% | 4.1% |
-| Spanish | 7.4% | 4.5% | 3.1% |
-| French | 16.5% | 7.5% | 4.6% |
+| English | 12.7% | 8.0% | 3.7% |
+| German | 13.1% | 6.5% | 4.1% |
+| Spanish | 7.5% | 4.5% | 3.1% |
+| French | 16.4% | 7.5% | 4.6% |
 | Polish | 13.2% | not supported | 5.8% |
 
 Where both built-in engines exist, this is the weaker one by 3 to 9 points. Where it is the only one, a downloaded model typically more than halves its errors.
@@ -38,7 +38,7 @@ Where both built-in engines exist, this is the weaker one by 3 to 9 points. Wher
 **Worth knowing**
 
 - **It arrived in macOS 26.** On anything older it does not exist, and Speech says so rather than offering it.
-- **A macOS update can change it, but so far barely has.** Across macOS 26.6.2, 26.7.0 and 27.0 its accuracy moved by at most a fifth of a percentage point.
+- **A macOS update can change it, but so far barely has.** From macOS 26.6.2 to 27.2, no update moved its accuracy by more than a quarter of a percentage point. Spanish moved by half a point on 27.0, but that came from which regional Spanish model was used, not from the update.
 - Speech turns punctuation on for it; on its own it returns unpunctuated text.
 - It produces word-level timings, so it can make subtitles.
 - It cannot be given your own vocabulary, and learns nothing from your corrections.
