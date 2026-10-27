@@ -11,7 +11,7 @@ columns mean and what is missing from them.
 
 ## English (en_US)
 
-35 models, 647 rows, 1.8 h of audio, 14,465 reference words.
+37 models, 647 rows, 1.8 h of audio, 14,465 reference words.
 
 | # | Model | WER | CER | RTFx | Peak memory |
 | --- | --- | --- | --- | --- | --- |
@@ -42,18 +42,20 @@ columns mean and what is missing from them.
 | 25 | `fluid.parakeet-unified@stream-640` | 6.80% | 3.25% | 35.7x | 663 MB |
 | 26 | `ggml.granite-4.0-1b-speech@q8_0` | 6.87% | 4.11% | 14.3x | 2.83 GB |
 | 27 | `fluid.parakeet-unified@stream-320` | 7.24% | 3.50% | 12.0x | 657 MB |
-| 28 | `apple.transcriber` on macOS 26.7.0 | 8.03% | 3.59% | 58.4x | 22 MB |
-| 29 | `apple.transcriber` on macOS 27.0.1 | 8.03% | 3.59% | 64.5x | 22 MB |
-| 30 | `mlx.parakeet-tdt_ctc-110m` | 8.86% | 5.03% | 295.0x | 1.01 GB |
-| 31 | `fluid.parakeet-v3@int4` | 9.27% | 4.87% | 168.2x | 419 MB |
-| 32 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 10.37% | 5.83% | 51.2x | 1.04 GB |
-| 33 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 10.94% | 6.29% | 51.6x | 799 MB |
-| 34 | `apple.dictation` on macOS 27.0.1 | 12.86% | 5.86% | 33.1x | 19 MB |
-| 35 | `apple.dictation` on macOS 26.7.0 | 13.08% | 5.94% | 34.7x | 22 MB |
+| 28 | `apple.transcriber` on macOS 27.2.0 | 8.00% | 3.58% | 65.7x | 18 MB |
+| 29 | `apple.transcriber` on macOS 26.7.0 | 8.03% | 3.59% | 58.4x | 22 MB |
+| 30 | `apple.transcriber` on macOS 27.0.1 | 8.03% | 3.59% | 64.5x | 22 MB |
+| 31 | `mlx.parakeet-tdt_ctc-110m` | 8.86% | 5.03% | 295.0x | 1.01 GB |
+| 32 | `fluid.parakeet-v3@int4` | 9.27% | 4.87% | 168.2x | 419 MB |
+| 33 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 10.37% | 5.83% | 51.2x | 1.04 GB |
+| 34 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 10.94% | 6.29% | 51.6x | 799 MB |
+| 35 | `apple.dictation` on macOS 27.2.0 | 12.72% | 5.76% | 33.2x | 22 MB |
+| 36 | `apple.dictation` on macOS 27.0.1 | 12.86% | 5.86% | 33.1x | 19 MB |
+| 37 | `apple.dictation` on macOS 26.7.0 | 13.08% | 5.94% | 34.7x | 22 MB |
 
 ## German (de_DE)
 
-22 models, 862 rows, 3.2 h of audio, 18,703 reference words.
+24 models, 862 rows, 3.2 h of audio, 18,703 reference words.
 
 2 rows could not be scored in one cell or another and were left out of that
 cell's totals.
@@ -74,20 +76,22 @@ cell's totals.
 | 12 | `ggml.whisper-large-v3-turbo@q4_k_m` | 5.29% | 2.08% | 16.1x | 710 MB |
 | 13 | `fluid.parakeet-v3@int8` | 5.56% | 1.69% | 178.4x | 575 MB |
 | 14 | `apple.transcriber` on macOS 27.0.1 | 6.51% | 2.15% | 91.1x | 24 MB |
-| 15 | `ggml.qwen3-asr-0.6b@q8_0` | 6.65% | 2.27% | 33.5x | 1.25 GB |
-| 16 | `fluid.canary-1b-v2@int4` | 6.93% | 2.98% | 8.3x | 319 MB |
-| 17 | `ggml.qwen3-asr-0.6b@q4_k_m` | 8.12% | 2.83% | 39.7x | 991 MB |
-| 18 | `fluid.parakeet-v3@int4` | 9.99% | 3.29% | 170.7x | 430 MB |
-| 19 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 10.31% | 4.91% | 55.6x | 1.07 GB |
-| 20 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 11.08% | 5.05% | 54.4x | 809 MB |
-| 21 | `apple.dictation` on macOS 27.0.1 | 13.03% | 3.91% | 46.1x | 24 MB |
-| 22 | `apple.dictation` on macOS 26.7.0 | 13.20% | 4.07% | 47.4x | 21 MB |
+| 15 | `apple.transcriber` on macOS 27.2.0 | 6.51% | 2.15% | 89.9x | 23 MB |
+| 16 | `ggml.qwen3-asr-0.6b@q8_0` | 6.65% | 2.27% | 33.5x | 1.25 GB |
+| 17 | `fluid.canary-1b-v2@int4` | 6.93% | 2.98% | 8.3x | 319 MB |
+| 18 | `ggml.qwen3-asr-0.6b@q4_k_m` | 8.12% | 2.83% | 39.7x | 991 MB |
+| 19 | `fluid.parakeet-v3@int4` | 9.99% | 3.29% | 170.7x | 430 MB |
+| 20 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 10.31% | 4.91% | 55.6x | 1.07 GB |
+| 21 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 11.08% | 5.05% | 54.4x | 809 MB |
+| 22 | `apple.dictation` on macOS 27.0.1 | 13.03% | 3.91% | 46.1x | 24 MB |
+| 23 | `apple.dictation` on macOS 27.2.0 | 13.13% | 3.94% | 38.4x | 22 MB |
+| 24 | `apple.dictation` on macOS 26.7.0 | 13.20% | 4.07% | 47.4x | 21 MB |
 
 ## Spanish (es_419, Latin America)
 
-22 models, 908 rows, 3.1 h of audio, 23,314 reference words.
+24 models, 908 rows, 3.1 h of audio, 23,314 reference words.
 
-1 row could not be scored in one cell or another and was left out of that
+2 rows could not be scored in one cell or another and were left out of that
 cell's totals.
 
 | # | Model | WER | CER | RTFx | Peak memory |
@@ -105,19 +109,21 @@ cell's totals.
 | 11 | `ggml.parakeet-tdt-0.6b-v3@q8_0` | 3.72% | 1.45% | 100.9x | 1.01 GB |
 | 12 | `ggml.parakeet-tdt-0.6b-v3@q4_k_m` | 3.77% | 1.47% | 97.8x | 758 MB |
 | 13 | `apple.transcriber` on macOS 27.0.1 | 4.54% | 1.74% | 88.4x | 19 MB |
-| 14 | `fluid.parakeet-v3@int8` | 4.68% | 2.01% | 178.4x | 570 MB |
-| 15 | `ggml.qwen3-asr-0.6b@q8_0` | 4.75% | 1.69% | 32.7x | 1.25 GB |
-| 16 | `ggml.qwen3-asr-0.6b@q4_k_m` | 5.37% | 1.89% | 39.3x | 990 MB |
-| 17 | `fluid.parakeet-v3@int4` | 5.57% | 2.24% | 177.4x | 424 MB |
-| 18 | `fluid.canary-1b-v2@int4` | 6.04% | 3.33% | 8.1x | 441 MB |
-| 19 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 6.28% | 3.54% | 53.1x | 1.06 GB |
-| 20 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 6.60% | 3.62% | 52.5x | 799 MB |
-| 21 | `apple.dictation` on macOS 26.7.0 | 6.93% | 2.46% | 51.0x | 19 MB |
-| 22 | `apple.dictation` on macOS 27.0.1 | 7.44% | 2.55% | 47.1x | 21 MB |
+| 14 | `apple.transcriber` on macOS 27.2.0 | 4.55% | 1.74% | 87.4x | 20 MB |
+| 15 | `fluid.parakeet-v3@int8` | 4.68% | 2.01% | 178.4x | 570 MB |
+| 16 | `ggml.qwen3-asr-0.6b@q8_0` | 4.75% | 1.69% | 32.7x | 1.25 GB |
+| 17 | `ggml.qwen3-asr-0.6b@q4_k_m` | 5.37% | 1.89% | 39.3x | 990 MB |
+| 18 | `fluid.parakeet-v3@int4` | 5.57% | 2.24% | 177.4x | 424 MB |
+| 19 | `fluid.canary-1b-v2@int4` | 6.04% | 3.33% | 8.1x | 441 MB |
+| 20 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 6.28% | 3.54% | 53.1x | 1.06 GB |
+| 21 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 6.60% | 3.62% | 52.5x | 799 MB |
+| 22 | `apple.dictation` on macOS 26.7.0 | 6.93% | 2.46% | 51.0x | 19 MB |
+| 23 | `apple.dictation` on macOS 27.0.1 | 7.44% | 2.55% | 47.1x | 21 MB |
+| 24 | `apple.dictation` on macOS 27.2.0 | 7.51% | 2.59% | 46.7x | 18 MB |
 
 ## French (fr_FR)
 
-23 models, 676 rows, 2.0 h of audio, 17,075 reference words.
+24 models, 676 rows, 2.0 h of audio, 17,075 reference words.
 
 5 rows could not be scored in one cell or another and were left out of that
 cell's totals.
@@ -138,19 +144,20 @@ cell's totals.
 | 12 | `ggml.whisper-large-v3-turbo@q4_k_m` | 6.35% | 2.26% | 13.7x | 705 MB |
 | 13 | `fluid.parakeet-v3@int8` | 6.45% | 2.44% | 162.7x | 564 MB |
 | 14 | `apple.transcriber` on macOS 27.0.1 | 7.47% | 2.74% | 81.3x | 20 MB |
-| 15 | `ggml.qwen3-asr-0.6b@q8_0` | 8.13% | 3.57% | 27.2x | 1.25 GB |
-| 16 | `ggml.qwen3-asr-0.6b@q4_k_m` | 9.28% | 3.73% | 34.1x | 989 MB |
-| 17 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 11.29% | 5.13% | 49.2x | 1.03 GB |
-| 18 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 11.67% | 5.34% | 49.9x | 782 MB |
-| 19 | `fluid.parakeet-v3@int4` | 12.18% | 5.34% | 156.0x | 420 MB |
-| 20 | `apple.dictation` on macOS 26.6.2 | 16.39% | 6.36% | 34.3x | 17 MB |
-| 21 | `apple.dictation` on macOS 27.0.1 | 16.43% | 6.40% | 35.2x | 23 MB |
-| 22 | `apple.dictation` on macOS 27.0.0 | 16.50% | 6.45% | 34.5x | 22 MB |
-| 23 | `apple.dictation` on macOS 26.7.0 | 16.55% | 6.58% | 35.2x | 20 MB |
+| 15 | `apple.transcriber` on macOS 27.2.0 | 7.48% | 2.74% | 80.2x | 21 MB |
+| 16 | `ggml.qwen3-asr-0.6b@q8_0` | 8.13% | 3.57% | 27.2x | 1.25 GB |
+| 17 | `ggml.qwen3-asr-0.6b@q4_k_m` | 9.28% | 3.73% | 34.1x | 989 MB |
+| 18 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 11.29% | 5.13% | 49.2x | 1.03 GB |
+| 19 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 11.67% | 5.34% | 49.9x | 782 MB |
+| 20 | `fluid.parakeet-v3@int4` | 12.18% | 5.34% | 156.0x | 420 MB |
+| 21 | `apple.dictation` on macOS 26.6.2 | 16.39% | 6.36% | 34.3x | 17 MB |
+| 22 | `apple.dictation` on macOS 27.2.0 | 16.43% | 6.40% | 33.9x | 21 MB |
+| 23 | `apple.dictation` on macOS 27.0.0 | 16.50% | 6.45% | 34.5x | 22 MB |
+| 24 | `apple.dictation` on macOS 26.7.0 | 16.55% | 6.58% | 35.2x | 20 MB |
 
 ## Polish (pl_PL)
 
-20 models, 758 rows, 2.1 h of audio, 14,380 reference words.
+21 models, 758 rows, 2.1 h of audio, 14,380 reference words.
 
 | # | Model | WER | CER | RTFx | Peak memory |
 | --- | --- | --- | --- | --- | --- |
@@ -167,17 +174,18 @@ cell's totals.
 | 11 | `ggml.qwen3-asr-1.7b@q8_0` | 12.19% | 4.30% | 10.5x | 2.58 GB |
 | 12 | `mlx.qwen3-asr-1.7b@8bit` | 12.43% | 4.49% | 8.7x | 3.93 GB |
 | 13 | `apple.dictation` on macOS 27.0.1 | 13.16% | 6.69% | 59.1x | 21 MB |
-| 14 | `mlx.qwen3-asr-1.7b@4bit` | 15.50% | 5.62% | 13.1x | 2.98 GB |
-| 15 | `fluid.parakeet-v3@int4` | 16.46% | 5.30% | 152.5x | 415 MB |
-| 16 | `ggml.qwen3-asr-1.7b@q4_k_m` | 16.95% | 6.34% | 13.6x | 1.72 GB |
-| 17 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 17.78% | 7.11% | 49.0x | 1.03 GB |
-| 18 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 19.12% | 7.41% | 47.5x | 771 MB |
-| 19 | `ggml.qwen3-asr-0.6b@q8_0` | 24.83% | 9.05% | 23.8x | 1.25 GB |
-| 20 | `ggml.qwen3-asr-0.6b@q4_k_m` | 31.17% | 11.35% | 29.2x | 986 MB |
+| 14 | `apple.dictation` on macOS 27.2.0 | 13.22% | 6.68% | 59.0x | 20 MB |
+| 15 | `mlx.qwen3-asr-1.7b@4bit` | 15.50% | 5.62% | 13.1x | 2.98 GB |
+| 16 | `fluid.parakeet-v3@int4` | 16.46% | 5.30% | 152.5x | 415 MB |
+| 17 | `ggml.qwen3-asr-1.7b@q4_k_m` | 16.95% | 6.34% | 13.6x | 1.72 GB |
+| 18 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 17.78% | 7.11% | 49.0x | 1.03 GB |
+| 19 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 19.12% | 7.41% | 47.5x | 771 MB |
+| 20 | `ggml.qwen3-asr-0.6b@q8_0` | 24.83% | 9.05% | 23.8x | 1.25 GB |
+| 21 | `ggml.qwen3-asr-0.6b@q4_k_m` | 31.17% | 11.35% | 29.2x | 986 MB |
 
 ## Mandarin Chinese (cmn_hans_cn)
 
-14 models, 945 rows, 3.1 h of audio, 32,925 reference words.
+16 models, 945 rows, 3.1 h of audio, 32,925 reference words.
 
 Ranked by CER, the character error rate. The references put a space between
 every character while the models write natural text, so the
@@ -196,7 +204,9 @@ should be read into its ordering.
 | 8 | `ggml.whisper-large-v3-turbo@q8_0` | (99.94%) | 8.53% | 15.1x | 1.05 GB |
 | 9 | `ggml.whisper-large-v3-turbo@q4_k_m` | (99.94%) | 8.91% | 15.8x | 703 MB |
 | 10 | `apple.transcriber` on macOS 27.0.1 | (99.83%) | 8.99% | 64.3x | 20 MB |
-| 11 | `apple.dictation` on macOS 26.7.0 | (99.99%) | 11.20% | 36.0x | 19 MB |
-| 12 | `apple.dictation` on macOS 27.0.1 | (99.99%) | 11.22% | 36.9x | 19 MB |
-| 13 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | (98.91%) | 18.83% | 60.3x | 1.05 GB |
-| 14 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | (98.89%) | 21.02% | 61.0x | 785 MB |
+| 11 | `apple.transcriber` on macOS 27.2.0 | (99.83%) | 8.99% | 62.7x | 20 MB |
+| 12 | `apple.dictation` on macOS 27.2.0 | (99.98%) | 11.18% | 34.1x | 20 MB |
+| 13 | `apple.dictation` on macOS 26.7.0 | (99.99%) | 11.20% | 36.0x | 19 MB |
+| 14 | `apple.dictation` on macOS 27.0.1 | (99.99%) | 11.22% | 36.9x | 19 MB |
+| 15 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | (98.91%) | 18.83% | 60.3x | 1.05 GB |
+| 16 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | (98.89%) | 21.02% | 61.0x | 785 MB |

@@ -33,8 +33,8 @@ measured on a handful of them separates nothing.
 
 ## Provenance
 
-Machine Apple M5, macOS 26.6.2 / 26.7.0 / 27.0.0 / 27.0.1, measured 2026-09-13
-to 2026-10-26, 54 cells, from tools/live-cells.tsv.
+Machine Apple M5, macOS 26.6.2 / 26.7.0 / 27.0.0 / 27.0.1 / 27.2.0, measured
+2026-09-13 to 2026-10-27, 65 cells, from tools/live-cells.tsv.
 
 ## The rows, by corpus
 
@@ -45,7 +45,7 @@ Consecutive utterances of one chapter joined into minute-long passages
 judged on: a row that loses the tail of long speech loses it here and nowhere
 else.
 
-19 rows, ranked by WER.
+21 rows, ranked by WER.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -58,16 +58,18 @@ else.
 | 7 | `apple.transcriber` | 20 | 26.7.0 | 2.98% | 4.00 s | 3.80 s | 5.56 s | none | 0.02 GB |
 | 8 | `apple.transcriber` | 20 | 27.0.0 | 2.98% | 4.00 s | 3.80 s | 5.54 s | none | 0.02 GB |
 | 9 | `apple.transcriber` | 20 | 27.0.1 | 2.98% | 4.00 s | 3.79 s | 5.54 s | none | 0.02 GB |
-| 10 | `fluid.nemotron-multilingual@2240` | 20 | 27.0.1 | 3.01% | 2.31 s | 2.23 s | 3.51 s | 1 word | 0.67 GB |
-| 11 | `fluid.nemotron-multilingual@1120` | 20 | 27.0.1 | 3.14% | 1.20 s | 1.25 s | 2.98 s | 1 word | 0.65 GB |
-| 12 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 27.0.1 | 3.60% | 0.85 s | 0.36 s | 0.53 s | 1 word | 1.04 GB |
-| 13 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 27.0.1 | 3.91% | 0.87 s | 0.36 s | 0.67 s | 1 word | 0.79 GB |
-| 14 | `fluid.parakeet-v3@int4` | 20 | 27.0.1 | 4.81% | - | 0.77 s | 5.95 s | none | 0.41 GB |
-| 15 | `fluid.parakeet-v3@int8` | 20 | 27.0.1 | 5.28% | - | 0.84 s | 5.91 s | 9 words | 0.56 GB |
-| 16 | `apple.dictation` | 20 | 26.6.2 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
-| 17 | `apple.dictation` | 20 | 26.7.0 | 7.64% | 1.12 s | 1.59 s | 2.21 s | none | 0.02 GB |
-| 18 | `apple.dictation` | 20 | 27.0.0 | 7.98% | 1.12 s | 1.70 s | 2.21 s | none | 0.02 GB |
-| 19 | `apple.dictation` | 20 | 27.0.1 | 7.98% | 1.11 s | 1.69 s | 2.21 s | none | 0.02 GB |
+| 10 | `apple.transcriber` | 20 | 27.2.0 | 3.01% | 4.00 s | 3.79 s | 5.57 s | none | 0.02 GB |
+| 11 | `fluid.nemotron-multilingual@2240` | 20 | 27.0.1 | 3.01% | 2.31 s | 2.23 s | 3.51 s | 1 word | 0.67 GB |
+| 12 | `fluid.nemotron-multilingual@1120` | 20 | 27.0.1 | 3.14% | 1.20 s | 1.25 s | 2.98 s | 1 word | 0.65 GB |
+| 13 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 20 | 27.0.1 | 3.60% | 0.85 s | 0.36 s | 0.53 s | 1 word | 1.04 GB |
+| 14 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 20 | 27.0.1 | 3.91% | 0.87 s | 0.36 s | 0.67 s | 1 word | 0.79 GB |
+| 15 | `fluid.parakeet-v3@int4` | 20 | 27.0.1 | 4.81% | - | 0.77 s | 5.95 s | none | 0.41 GB |
+| 16 | `fluid.parakeet-v3@int8` | 20 | 27.0.1 | 5.28% | - | 0.84 s | 5.91 s | 9 words | 0.56 GB |
+| 17 | `apple.dictation` | 20 | 26.6.2 | 7.64% | 1.11 s | 1.78 s | 2.47 s | none | 0.02 GB |
+| 18 | `apple.dictation` | 20 | 26.7.0 | 7.64% | 1.12 s | 1.59 s | 2.21 s | none | 0.02 GB |
+| 19 | `apple.dictation` | 20 | 27.2.0 | 7.89% | 1.11 s | 1.66 s | 2.38 s | none | 0.02 GB |
+| 20 | `apple.dictation` | 20 | 27.0.0 | 7.98% | 1.12 s | 1.70 s | 2.21 s | none | 0.02 GB |
+| 21 | `apple.dictation` | 20 | 27.0.1 | 7.98% | 1.11 s | 1.69 s | 2.21 s | none | 0.02 GB |
 
 ### FLEURS German (de_DE), continuous
 
@@ -77,14 +79,16 @@ changes from sentence to sentence; what the passage has in common with the
 LibriSpeech one is the thing being measured - a minute of speech with no cut
 edge for a session to find a boundary at.
 
-4 rows, ranked by WER.
+6 rows, ranked by WER.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `apple.transcriber` | 20 | 26.7.0 | 10.67% | 11.74 s | 11.10 s | 13.84 s | 7 words | 0.03 GB |
 | 2 | `apple.transcriber` | 20 | 27.0.0 | 10.67% | 11.72 s | 11.07 s | 13.81 s | 7 words | 0.03 GB |
-| 3 | `apple.dictation` | 20 | 27.0.0 | 20.83% | 2.79 s | 2.33 s | 4.81 s | 43 words | 0.03 GB |
-| 4 | `apple.dictation` | 20 | 26.7.0 | 21.00% | 2.78 s | 2.37 s | 4.84 s | 43 words | 0.03 GB |
+| 3 | `apple.transcriber` | 20 | 27.2.0 | 10.72% | 11.72 s | 11.07 s | 13.81 s | 7 words | 0.03 GB |
+| 4 | `apple.dictation` | 20 | 27.2.0 | 20.75% | 2.77 s | 2.33 s | 4.82 s | 60 words | 0.03 GB |
+| 5 | `apple.dictation` | 20 | 27.0.0 | 20.83% | 2.79 s | 2.33 s | 4.81 s | 43 words | 0.03 GB |
+| 6 | `apple.dictation` | 20 | 26.7.0 | 21.00% | 2.78 s | 2.37 s | 4.84 s | 43 words | 0.03 GB |
 
 ### FLEURS Spanish (es_419), continuous
 
@@ -94,14 +98,16 @@ changes from sentence to sentence; what the passage has in common with the
 LibriSpeech one is the thing being measured - a minute of speech with no cut
 edge for a session to find a boundary at.
 
-4 rows, ranked by WER.
+6 rows, ranked by WER.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `apple.transcriber` | 20 | 26.7.0 | 4.30% | 11.73 s | 10.15 s | 13.00 s | none | 0.02 GB |
 | 2 | `apple.transcriber` | 20 | 27.0.0 | 4.30% | 11.72 s | 10.19 s | 12.98 s | none | 0.02 GB |
-| 3 | `apple.dictation` | 20 | 27.0.0 | 11.90% | 2.26 s | 2.33 s | 4.45 s | none | 0.02 GB |
-| 4 | `apple.dictation` | 20 | 26.7.0 | 18.43% | 2.07 s | 2.27 s | 2.52 s | 96 words | 0.02 GB |
+| 3 | `apple.transcriber` | 20 | 27.2.0 | 4.30% | 11.71 s | 10.19 s | 12.97 s | none | 0.02 GB |
+| 4 | `apple.dictation` | 20 | 27.2.0 | 11.83% | 2.26 s | 2.31 s | 4.46 s | none | 0.02 GB |
+| 5 | `apple.dictation` | 20 | 27.0.0 | 11.90% | 2.26 s | 2.33 s | 4.45 s | none | 0.02 GB |
+| 6 | `apple.dictation` | 20 | 26.7.0 | 18.43% | 2.07 s | 2.27 s | 2.52 s | 96 words | 0.02 GB |
 
 ### FLEURS French (fr_FR), continuous
 
@@ -111,14 +117,16 @@ changes from sentence to sentence; what the passage has in common with the
 LibriSpeech one is the thing being measured - a minute of speech with no cut
 edge for a session to find a boundary at.
 
-4 rows, ranked by WER.
+6 rows, ranked by WER.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `apple.transcriber` | 20 | 26.7.0 | 8.07% | 11.74 s | 10.15 s | 13.31 s | none | 0.02 GB |
 | 2 | `apple.transcriber` | 20 | 27.0.0 | 8.07% | 11.71 s | 10.13 s | 13.27 s | none | 0.02 GB |
-| 3 | `apple.dictation` | 20 | 26.7.0 | 30.28% | 1.57 s | 2.22 s | 2.67 s | 73 words | 0.02 GB |
-| 4 | `apple.dictation` | 20 | 27.0.0 | 30.59% | 1.57 s | 2.32 s | 3.15 s | 158 words | 0.02 GB |
+| 3 | `apple.transcriber` | 20 | 27.2.0 | 8.07% | 11.71 s | 10.12 s | 13.27 s | none | 0.02 GB |
+| 4 | `apple.dictation` | 20 | 26.7.0 | 30.28% | 1.57 s | 2.22 s | 2.67 s | 73 words | 0.02 GB |
+| 5 | `apple.dictation` | 20 | 27.2.0 | 30.43% | 1.56 s | 2.23 s | 2.51 s | 72 words | 0.02 GB |
+| 6 | `apple.dictation` | 20 | 27.0.0 | 30.59% | 1.57 s | 2.32 s | 3.15 s | 158 words | 0.02 GB |
 
 ### FLEURS Polish (pl_PL), continuous
 
@@ -128,13 +136,14 @@ changes from sentence to sentence; what the passage has in common with the
 LibriSpeech one is the thing being measured - a minute of speech with no cut
 edge for a session to find a boundary at.
 
-3 rows, ranked by WER.
+4 rows, ranked by WER.
 
 | # | Model | Recordings | macOS | WER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `apple.dictation` | 20 | 26.7.0 | 18.18% | 1.81 s | 2.48 s | 5.50 s | 16 words | 0.02 GB |
-| 2 | `apple.dictation` | 20 | 27.0.0 | 18.18% | 1.81 s | 2.48 s | 5.49 s | 16 words | 0.02 GB |
-| 3 | `apple.dictation` | 20 | 27.0.1 | 18.18% | 1.81 s | 2.48 s | 5.48 s | 16 words | 0.02 GB |
+| 1 | `apple.dictation` | 20 | 27.2.0 | 18.14% | 1.80 s | 2.44 s | 5.50 s | 16 words | 0.02 GB |
+| 2 | `apple.dictation` | 20 | 26.7.0 | 18.18% | 1.81 s | 2.48 s | 5.50 s | 16 words | 0.02 GB |
+| 3 | `apple.dictation` | 20 | 27.0.0 | 18.18% | 1.81 s | 2.48 s | 5.49 s | 16 words | 0.02 GB |
+| 4 | `apple.dictation` | 20 | 27.0.1 | 18.18% | 1.81 s | 2.48 s | 5.48 s | 16 words | 0.02 GB |
 
 ### FLEURS Mandarin (cmn_Hans_CN), continuous
 
@@ -144,14 +153,16 @@ changes from sentence to sentence; what the passage has in common with the
 LibriSpeech one is the thing being measured - a minute of speech with no cut
 edge for a session to find a boundary at.
 
-4 rows, ranked by CER.
+6 rows, ranked by CER.
 
 | # | Model | Recordings | macOS | CER | First text | Finals behind | Worst | Tail lost | Peak memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `apple.transcriber` | 20 | 26.7.0 | 9.61% | 11.73 s | 11.27 s | 13.13 s | - | 0.02 GB |
 | 2 | `apple.transcriber` | 20 | 27.0.0 | 9.61% | 11.73 s | 11.26 s | 13.10 s | - | 0.02 GB |
-| 3 | `apple.dictation` | 20 | 26.7.0 | 23.81% | 2.52 s | 2.35 s | 5.66 s | - | 0.02 GB |
-| 4 | `apple.dictation` | 20 | 27.0.0 | 24.03% | 2.53 s | 2.37 s | 5.67 s | - | 0.02 GB |
+| 3 | `apple.transcriber` | 20 | 27.2.0 | 9.61% | 11.73 s | 11.27 s | 13.10 s | - | 0.02 GB |
+| 4 | `apple.dictation` | 20 | 26.7.0 | 23.81% | 2.52 s | 2.35 s | 5.66 s | - | 0.02 GB |
+| 5 | `apple.dictation` | 20 | 27.2.0 | 23.93% | 2.53 s | 2.33 s | 5.66 s | - | 0.02 GB |
+| 6 | `apple.dictation` | 20 | 27.0.0 | 24.03% | 2.53 s | 2.37 s | 5.67 s | - | 0.02 GB |
 
 ### FLEURS English (en_US)
 

@@ -14,7 +14,7 @@ columns mean and what is missing from them.
 
 ## test-clean
 
-34 models, 2620 rows, 5.5 h of audio, 52,576 reference words.
+36 models, 2620 rows, 5.5 h of audio, 52,576 reference words.
 
 | # | Model | WER | CER | RTFx | Peak memory |
 | --- | --- | --- | --- | --- | --- |
@@ -40,22 +40,24 @@ columns mean and what is missing from them.
 | 20 | `ggml.qwen3-asr-0.6b@q8_0` | 2.27% | 0.71% | 31.1x | 1.25 GB |
 | 21 | `fluid.parakeet-unified@stream-640` | 2.31% | 0.76% | 36.6x | 666 MB |
 | 22 | `apple.transcriber` on macOS 27.0.1 | 2.33% | 0.97% | 55.6x | 20 MB |
-| 23 | `apple.transcriber` on macOS 26.7.0 | 2.34% | 0.97% | 51.2x | 20 MB |
-| 24 | `fluid.parakeet-unified@stream-320` | 2.38% | 0.77% | 12.0x | 665 MB |
-| 25 | `ggml.qwen3-asr-0.6b@q4_k_m` | 2.44% | 0.76% | 37.4x | 993 MB |
-| 26 | `ggml.whisper-large-v3-turbo@q8_0` | 2.45% | 1.00% | 10.2x | 1.06 GB |
-| 27 | `ggml.whisper-large-v3-turbo@q4_k_m` | 2.50% | 1.01% | 10.2x | 709 MB |
-| 28 | `mlx.parakeet-tdt_ctc-110m` | 2.58% | 0.79% | 270.3x | 1.01 GB |
-| 29 | `mlx.whisper-large-v3-turbo` | 2.58% | 1.14% | 9.5x | 3.60 GB |
-| 30 | `fluid.parakeet-v3@int4` | 3.05% | 1.10% | 143.9x | 420 MB |
-| 31 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 3.15% | 0.97% | 47.5x | 1.07 GB |
-| 32 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 3.44% | 1.08% | 48.8x | 814 MB |
-| 33 | `apple.dictation` on macOS 26.7.0 | 8.38% | 3.47% | 37.9x | 20 MB |
-| 34 | `apple.dictation` on macOS 27.0.1 | 8.39% | 3.46% | 35.1x | 19 MB |
+| 23 | `apple.transcriber` on macOS 27.2.0 | 2.33% | 0.97% | 56.0x | 20 MB |
+| 24 | `apple.transcriber` on macOS 26.7.0 | 2.34% | 0.97% | 51.2x | 20 MB |
+| 25 | `fluid.parakeet-unified@stream-320` | 2.38% | 0.77% | 12.0x | 665 MB |
+| 26 | `ggml.qwen3-asr-0.6b@q4_k_m` | 2.44% | 0.76% | 37.4x | 993 MB |
+| 27 | `ggml.whisper-large-v3-turbo@q8_0` | 2.45% | 1.00% | 10.2x | 1.06 GB |
+| 28 | `ggml.whisper-large-v3-turbo@q4_k_m` | 2.50% | 1.01% | 10.2x | 709 MB |
+| 29 | `mlx.parakeet-tdt_ctc-110m` | 2.58% | 0.79% | 270.3x | 1.01 GB |
+| 30 | `mlx.whisper-large-v3-turbo` | 2.58% | 1.14% | 9.5x | 3.60 GB |
+| 31 | `fluid.parakeet-v3@int4` | 3.05% | 1.10% | 143.9x | 420 MB |
+| 32 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 3.15% | 0.97% | 47.5x | 1.07 GB |
+| 33 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 3.44% | 1.08% | 48.8x | 814 MB |
+| 34 | `apple.dictation` on macOS 27.2.0 | 8.29% | 3.44% | 35.4x | 20 MB |
+| 35 | `apple.dictation` on macOS 26.7.0 | 8.38% | 3.47% | 37.9x | 20 MB |
+| 36 | `apple.dictation` on macOS 27.0.1 | 8.39% | 3.46% | 35.1x | 19 MB |
 
 ## test-other
 
-34 models, 2939 rows, 5.4 h of audio, 52,343 reference words.
+36 models, 2939 rows, 5.4 h of audio, 52,343 reference words.
 
 | # | Model | WER | CER | RTFx | Peak memory |
 | --- | --- | --- | --- | --- | --- |
@@ -85,18 +87,20 @@ columns mean and what is missing from them.
 | 24 | `mlx.whisper-large-v3-turbo` | 4.81% | 2.21% | 8.7x | 3.60 GB |
 | 25 | `apple.transcriber` on macOS 26.7.0 | 4.90% | 2.27% | 51.0x | 20 MB |
 | 26 | `apple.transcriber` on macOS 27.0.1 | 4.91% | 2.28% | 55.7x | 21 MB |
-| 27 | `fluid.parakeet-unified@stream-320` | 4.95% | 1.99% | 12.1x | 658 MB |
-| 28 | `ggml.qwen3-asr-0.6b@q4_k_m` | 5.12% | 2.08% | 36.1x | 993 MB |
-| 29 | `mlx.parakeet-tdt_ctc-110m` | 5.44% | 2.14% | 266.6x | 1.00 GB |
-| 30 | `fluid.parakeet-v3@int4` | 6.68% | 2.92% | 134.7x | 419 MB |
-| 31 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 7.01% | 2.78% | 47.3x | 1.04 GB |
-| 32 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 7.58% | 3.04% | 47.1x | 808 MB |
-| 33 | `apple.dictation` on macOS 26.7.0 | 15.72% | 7.95% | 28.8x | 19 MB |
-| 34 | `apple.dictation` on macOS 27.0.1 | 15.83% | 7.99% | 26.6x | 20 MB |
+| 27 | `apple.transcriber` on macOS 27.2.0 | 4.91% | 2.28% | 56.1x | 20 MB |
+| 28 | `fluid.parakeet-unified@stream-320` | 4.95% | 1.99% | 12.1x | 658 MB |
+| 29 | `ggml.qwen3-asr-0.6b@q4_k_m` | 5.12% | 2.08% | 36.1x | 993 MB |
+| 30 | `mlx.parakeet-tdt_ctc-110m` | 5.44% | 2.14% | 266.6x | 1.00 GB |
+| 31 | `fluid.parakeet-v3@int4` | 6.68% | 2.92% | 134.7x | 419 MB |
+| 32 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 7.01% | 2.78% | 47.3x | 1.04 GB |
+| 33 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 7.58% | 3.04% | 47.1x | 808 MB |
+| 34 | `apple.dictation` on macOS 27.2.0 | 15.67% | 7.89% | 26.0x | 19 MB |
+| 35 | `apple.dictation` on macOS 26.7.0 | 15.72% | 7.95% | 28.8x | 19 MB |
+| 36 | `apple.dictation` on macOS 27.0.1 | 15.83% | 7.99% | 26.6x | 20 MB |
 
 ## Falling from clean to other
 
-The same 34 models, ranked by how much of their accuracy survives the harder
+The same 36 models, ranked by how much of their accuracy survives the harder
 split. This is a different ordering from either table above: the most accurate
 model on clean speech is not always the one that holds up best when the speech
 gets worse.
@@ -121,23 +125,25 @@ double and still be nowhere near the top of the test-other table.
 | 12 | `ggml.whisper-large-v3-turbo@q4_k_m` | 2.50% | 4.69% | 1.87x |
 | 13 | `apple.dictation` on macOS 26.7.0 | 8.38% | 15.72% | 1.88x |
 | 14 | `apple.dictation` on macOS 27.0.1 | 8.39% | 15.83% | 1.89x |
-| 15 | `fluid.parakeet-unified@stream-1120` | 2.02% | 3.83% | 1.90x |
-| 16 | `mlx.qwen3-asr-1.7b@8bit` | 1.93% | 3.69% | 1.91x |
-| 17 | `ggml.parakeet-unified-en-0.6b@q8_0` | 1.74% | 3.35% | 1.93x |
-| 18 | `ggml.granite-speech-4.1-2b@q8_0` | 1.47% | 2.84% | 1.93x |
-| 19 | `ggml.granite-4.0-1b-speech@q8_0` | 1.58% | 3.13% | 1.98x |
-| 20 | `ggml.qwen3-asr-1.7b@q8_0` | 1.87% | 3.70% | 1.98x |
-| 21 | `ggml.qwen3-asr-1.7b@q4_k_m` | 2.01% | 4.05% | 2.01x |
-| 22 | `mlx.qwen3-asr-1.7b@4bit` | 2.07% | 4.17% | 2.01x |
-| 23 | `ggml.granite-speech-4.1-2b-nar@q8_0` | 1.42% | 2.86% | 2.01x |
-| 24 | `fluid.parakeet-unified@stream-640` | 2.31% | 4.67% | 2.02x |
-| 25 | `ggml.granite-speech-4.1-2b-plus@q8_0` | 1.64% | 3.35% | 2.04x |
-| 26 | `ggml.qwen3-asr-0.6b@q8_0` | 2.27% | 4.67% | 2.06x |
-| 27 | `fluid.parakeet-unified@stream-320` | 2.38% | 4.95% | 2.08x |
-| 28 | `apple.transcriber` on macOS 26.7.0 | 2.34% | 4.90% | 2.09x |
-| 29 | `ggml.qwen3-asr-0.6b@q4_k_m` | 2.44% | 5.12% | 2.10x |
-| 30 | `apple.transcriber` on macOS 27.0.1 | 2.33% | 4.91% | 2.11x |
-| 31 | `mlx.parakeet-tdt_ctc-110m` | 2.58% | 5.44% | 2.11x |
-| 32 | `fluid.parakeet-v3@int4` | 3.05% | 6.68% | 2.19x |
-| 33 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 3.44% | 7.58% | 2.21x |
-| 34 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 3.15% | 7.01% | 2.22x |
+| 15 | `apple.dictation` on macOS 27.2.0 | 8.29% | 15.67% | 1.89x |
+| 16 | `fluid.parakeet-unified@stream-1120` | 2.02% | 3.83% | 1.90x |
+| 17 | `mlx.qwen3-asr-1.7b@8bit` | 1.93% | 3.69% | 1.91x |
+| 18 | `ggml.parakeet-unified-en-0.6b@q8_0` | 1.74% | 3.35% | 1.93x |
+| 19 | `ggml.granite-speech-4.1-2b@q8_0` | 1.47% | 2.84% | 1.93x |
+| 20 | `ggml.granite-4.0-1b-speech@q8_0` | 1.58% | 3.13% | 1.98x |
+| 21 | `ggml.qwen3-asr-1.7b@q8_0` | 1.87% | 3.70% | 1.98x |
+| 22 | `ggml.qwen3-asr-1.7b@q4_k_m` | 2.01% | 4.05% | 2.01x |
+| 23 | `mlx.qwen3-asr-1.7b@4bit` | 2.07% | 4.17% | 2.01x |
+| 24 | `ggml.granite-speech-4.1-2b-nar@q8_0` | 1.42% | 2.86% | 2.01x |
+| 25 | `fluid.parakeet-unified@stream-640` | 2.31% | 4.67% | 2.02x |
+| 26 | `ggml.granite-speech-4.1-2b-plus@q8_0` | 1.64% | 3.35% | 2.04x |
+| 27 | `ggml.qwen3-asr-0.6b@q8_0` | 2.27% | 4.67% | 2.06x |
+| 28 | `fluid.parakeet-unified@stream-320` | 2.38% | 4.95% | 2.08x |
+| 29 | `apple.transcriber` on macOS 26.7.0 | 2.34% | 4.90% | 2.09x |
+| 30 | `ggml.qwen3-asr-0.6b@q4_k_m` | 2.44% | 5.12% | 2.10x |
+| 31 | `apple.transcriber` on macOS 27.0.1 | 2.33% | 4.91% | 2.11x |
+| 32 | `apple.transcriber` on macOS 27.2.0 | 2.33% | 4.91% | 2.11x |
+| 33 | `mlx.parakeet-tdt_ctc-110m` | 2.58% | 5.44% | 2.11x |
+| 34 | `fluid.parakeet-v3@int4` | 3.05% | 6.68% | 2.19x |
+| 35 | `ggml.nemotron-3.5-asr-streaming-0.6b@q4_k_m` | 3.44% | 7.58% | 2.21x |
+| 36 | `ggml.nemotron-3.5-asr-streaming-0.6b@q8_0` | 3.15% | 7.01% | 2.22x |
